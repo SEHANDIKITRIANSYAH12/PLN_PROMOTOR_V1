@@ -1,0 +1,1366 @@
+{
+  "p1": [
+    {
+      "cell": "I27",
+      "cell_row": 27,
+      "template_row": 27,
+      "uraian_pemicu": "TRF DIS;;20kV/400V;3P;50kVA;Dyn5;OD",
+      "template_desc": "TRF DIS;;20kV/400V;3P;50kVA;Dyn5;OD",
+      "trigger": "Kapasitas Trafo = 50 kVA; Trafo Baru = 50 kVA"
+    },
+    {
+      "cell": "I28",
+      "cell_row": 28,
+      "template_row": 28,
+      "uraian_pemicu": "TRF DIS;;20kV/400V;3P;100kVA;Dyn5;OD",
+      "template_desc": "TRF DIS;;20kV/400V;3P;100kVA;Dyn5;OD",
+      "trigger": "Kapasitas Trafo = 100 kVA; Trafo Baru = 100 kVA"
+    },
+    {
+      "cell": "I29",
+      "cell_row": 29,
+      "template_row": 29,
+      "uraian_pemicu": "TRF DIS;;20kV/400V;3P;160kVA;Dyn5;OD",
+      "template_desc": "TRF DIS;;20kV/400V;3P;160kVA;Dyn5;OD",
+      "trigger": "Kapasitas Trafo = 160 kVA; Trafo Baru = 160 kVA"
+    },
+    {
+      "cell": "I30",
+      "cell_row": 30,
+      "template_row": 30,
+      "uraian_pemicu": "TRF DIS;D3;20kV/400V;3P;200kVA;Dyn5;OD",
+      "template_desc": "TRF DIS;D3;20kV/400V;3P;200kVA;Dyn5;OD",
+      "trigger": "Kapasitas Trafo = 200 kVA; Trafo Baru = 200 kVA"
+    },
+    {
+      "cell": "I31",
+      "cell_row": 31,
+      "template_row": 31,
+      "uraian_pemicu": "TRF DIS;D3;20kV/400V;3P;250kVA;Dyn5;OD",
+      "template_desc": "TRF DIS;D3;20kV/400V;3P;250kVA;Dyn5;OD",
+      "trigger": "Kapasitas Trafo = 250 kVA; Trafo Baru = 250 kVA"
+    },
+    {
+      "cell": "I32",
+      "cell_row": 32,
+      "template_row": 32,
+      "uraian_pemicu": "TRF DIS;D3;20kV/400V;3P;400kVA;Dyn5;OD",
+      "template_desc": "TRF DIS;D3;20kV/400V;3P;400kVA;Dyn5;OD",
+      "trigger": "Kapasitas Trafo = 400 kVA; Trafo Baru = 400 kVA"
+    },
+    {
+      "cell": "I34",
+      "cell_row": 34,
+      "template_row": 34,
+      "uraian_pemicu": "LVSB;DIST;3P;400V;400A;2LINE;OD",
+      "template_desc": "LVSB;DIST;3P;400V;400A;2LINE;OD",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI"
+    },
+    {
+      "cell": "I36",
+      "cell_row": 36,
+      "template_row": 36,
+      "uraian_pemicu": "LVSB;DIST;3P;400V;630A;4LINE;OD",
+      "template_desc": "LVSB;DIST;3P;400V;630A;4LINE;OD",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I37",
+      "cell_row": 37,
+      "template_row": 37,
+      "uraian_pemicu": "CABLE PWR;NYY;1X70MM2;0.6/1KV;OH",
+      "template_desc": "CABLE PWR;NYY;1X70MM2;0.6/1KV;OH",
+      "trigger": "Jumlah Kabel Naik = 1; Jumlah Kabel Naik = 2; Jumlah Kabel Naik = 3; Jumlah Kabel Naik = 4"
+    },
+    {
+      "cell": "I38",
+      "cell_row": 38,
+      "template_row": 38,
+      "uraian_pemicu": "CABLE PWR;NYY;1X95MM2;0.6/1KV;OH",
+      "template_desc": "CABLE PWR;NYY;1X95MM2;0.6/1KV;OH",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI"
+    },
+    {
+      "cell": "I40",
+      "cell_row": 40,
+      "template_row": 40,
+      "uraian_pemicu": "CABLE PWR;NYY;1X240MM2;0.6/1KV;OH",
+      "template_desc": "CABLE PWR;NYY;1X240MM2;0.6/1KV;OH",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I41",
+      "cell_row": 41,
+      "template_row": 41,
+      "uraian_pemicu": "CABLE PWR;NYFGBY;4X95mm2;0.6/1kV;UG",
+      "template_desc": "CABLE PWR;NYFGBY;4X95mm2;0.6/1kV;UG",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS"
+    },
+    {
+      "cell": "I42",
+      "cell_row": 42,
+      "template_row": 42,
+      "uraian_pemicu": "CABLE PWR;N2XSY;1X35mm2;20kV;UG",
+      "template_desc": "CABLE PWR;N2XSY;1X35mm2;20kV;UG",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I43",
+      "cell_row": 43,
+      "template_row": 109,
+      "uraian_pemicu": "CABLE PWR ACC; CABLE-SHOE CU 70 MM2",
+      "template_desc": "CABLE PWR ACC; CABLE-SHOE CU 70 MM2",
+      "trigger": "Jumlah Kabel Naik = 1; Jumlah Kabel Naik = 2; Jumlah Kabel Naik = 3; Jumlah Kabel Naik = 4"
+    },
+    {
+      "cell": "I44",
+      "cell_row": 44,
+      "template_row": 110,
+      "uraian_pemicu": "CABLE PWR ACC; CABLE-SHOE CU 95 MM2",
+      "template_desc": "CABLE PWR ACC; CABLE-SHOE CU 95 MM2",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS"
+    },
+    {
+      "cell": "I46",
+      "cell_row": 46,
+      "template_row": 112,
+      "uraian_pemicu": "CABLE PWR ACC; CABLE-SHOE CU 240 MM2",
+      "template_desc": "CABLE PWR ACC; CABLE-SHOE CU 240 MM2",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I47",
+      "cell_row": 47,
+      "template_row": 113,
+      "uraian_pemicu": "CABLE PWR ACC; CABLE-SHOE AL-CU 150 MM2",
+      "template_desc": "CABLE PWR ACC; CABLE-SHOE AL-CU 150 MM2",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I49",
+      "cell_row": 49,
+      "template_row": 49,
+      "uraian_pemicu": "TRF ACC;SERANDANG TRAFO 3P;1 TIANG",
+      "template_desc": "TRF ACC;SERANDANG TRAFO 3P;1 TIANG",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS"
+    },
+    {
+      "cell": "I50",
+      "cell_row": 50,
+      "template_row": 50,
+      "uraian_pemicu": "TRF ACC;SERANDANG TRAFO 3P;2 TIANG",
+      "template_desc": "TRF ACC;SERANDANG TRAFO 3P;2 TIANG",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I51",
+      "cell_row": 51,
+      "template_row": 51,
+      "uraian_pemicu": "LA;20-24kV;K;10kA;POLYMER;;",
+      "template_desc": "LA;20-24kV;K;10kA;POLYMER;;",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 11B; Tiang TM (kolom B baris 44) = TM - 14B; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I52",
+      "cell_row": 52,
+      "template_row": 52,
+      "uraian_pemicu": "CUT OUT;24kV;6-100A;8kA;125kV",
+      "template_desc": "CUT OUT;24kV;6-100A;8kA;125kV",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU; Tiang TM (kolom B baris 44) = CO AFTAK"
+    },
+    {
+      "cell": "I53",
+      "cell_row": 53,
+      "template_row": 53,
+      "uraian_pemicu": "CUT OUT ACC;FUSE LINK 20kV 2A",
+      "template_desc": "CUT OUT ACC;FUSE LINK 20kV 2A",
+      "trigger": "Trafo Baru = 25 kVA; Trafo Baru = 50 kVA"
+    },
+    {
+      "cell": "I54",
+      "cell_row": 54,
+      "template_row": 54,
+      "uraian_pemicu": "CUT OUT ACC;FUSE LINK 20kV 4A",
+      "template_desc": "CUT OUT ACC;FUSE LINK 20kV 4A",
+      "trigger": "Trafo Baru = 100 kVA; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS"
+    },
+    {
+      "cell": "I56",
+      "cell_row": 56,
+      "template_row": 56,
+      "uraian_pemicu": "CUT OUT ACC;FUSE LINK 20kV 8A",
+      "template_desc": "CUT OUT ACC;FUSE LINK 20kV 8A",
+      "trigger": "Trafo Baru = 160 kVA; Trafo Baru = 200 kVA; Trafo Baru = 250 kVA; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I57",
+      "cell_row": 57,
+      "template_row": 57,
+      "uraian_pemicu": "CUT OUT ACC;FUSE LINK 20kV 12A",
+      "template_desc": "CUT OUT ACC;FUSE LINK 20kV 12A",
+      "trigger": "Trafo Baru = 400 kVA; Tiang TM (kolom B baris 44) = CO AFTAK"
+    },
+    {
+      "cell": "I59",
+      "cell_row": 59,
+      "template_row": 59,
+      "uraian_pemicu": "UNIV ACC;TRAVES TUMPU",
+      "template_desc": "UNIV ACC;TRAVES TUMPU",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 1B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = TM - 14B; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I60",
+      "cell_row": 60,
+      "template_row": 60,
+      "uraian_pemicu": "UNIV ACC;TRAVES TUMPU DOUBLE",
+      "template_desc": "UNIV ACC;TRAVES TUMPU DOUBLE",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 2B"
+    },
+    {
+      "cell": "I61",
+      "cell_row": 61,
+      "template_row": 61,
+      "uraian_pemicu": "UNIV ACC;TRAVES AFSPAN",
+      "template_desc": "UNIV ACC;TRAVES AFSPAN",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 4B; Tiang TM (kolom B baris 44) = TM - 5B; Tiang TM (kolom B baris 44) = TM - 6B; Tiang TM (kolom B baris 44) = TM - 7B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 9B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = TM - 11B; Tiang TM (kolom B baris 44) = TM - 14B; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS"
+    },
+    {
+      "cell": "I62",
+      "cell_row": 62,
+      "template_row": 62,
+      "uraian_pemicu": "POLE ACC;CR ARM UNP100X50X6X2000mm GALV",
+      "template_desc": "POLE ACC;CR ARM UNP100X50X6X2000mm GALV",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 1B; Tiang TM (kolom B baris 44) = TM - 2B; Tiang TM (kolom B baris 44) = TM - 4B; Tiang TM (kolom B baris 44) = TM - 5B; Tiang TM (kolom B baris 44) = TM - 6B; Tiang TM (kolom B baris 44) = TM - 7B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 9B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = TM - 11B; Tiang TM (kolom B baris 44) = TM - 14B; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I65",
+      "cell_row": 65,
+      "template_row": 63,
+      "uraian_pemicu": "ISOLATOR;PINPOST;PORC;24KV;;12.5kN",
+      "template_desc": "ISOLATOR;PINPOST;PORC;24KV;;12.5kN",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 1B; Tiang TM (kolom B baris 44) = TM - 2B; Tiang TM (kolom B baris 44) = TM - 4B; Tiang TM (kolom B baris 44) = TM - 5B; Tiang TM (kolom B baris 44) = TM - 7B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 9B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I66",
+      "cell_row": 66,
+      "template_row": 64,
+      "uraian_pemicu": "ISOLATOR;STRAIN KAP PIN;PORC;24KV;;70kN",
+      "template_desc": "ISOLATOR;STRAIN KAP PIN;PORC;24KV;;70kN",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 4B; Tiang TM (kolom B baris 44) = TM - 5B; Tiang TM (kolom B baris 44) = TM - 6B; Tiang TM (kolom B baris 44) = TM - 7B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 9B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = TM - 11B; Tiang TM (kolom B baris 44) = TM - 14B; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS"
+    },
+    {
+      "cell": "I67",
+      "cell_row": 67,
+      "template_row": 65,
+      "uraian_pemicu": "TOP TIES",
+      "template_desc": "TOP TIES",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 1B; Tiang TM (kolom B baris 44) = TM - 4B; Tiang TM (kolom B baris 44) = TM - 5B; Tiang TM (kolom B baris 44) = TM - 7B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 9B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I68",
+      "cell_row": 68,
+      "template_row": 66,
+      "uraian_pemicu": "DOUBLE TIES",
+      "template_desc": "DOUBLE TIES",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 2B"
+    },
+    {
+      "cell": "I69",
+      "cell_row": 69,
+      "template_row": 67,
+      "uraian_pemicu": "POLE ACC; STAYSET TM",
+      "template_desc": "POLE ACC; STAYSET TM",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 11B; Tiang TM (kolom B baris 44) = STAYSET; Tiang TM (kolom B baris 44) = KONTRAMASK"
+    },
+    {
+      "cell": "I70",
+      "cell_row": 70,
+      "template_row": 68,
+      "uraian_pemicu": "UNIV ACC;GROUND ROD CU 5/8\"X2500mm",
+      "template_desc": "UNIV ACC;GROUND ROD CU 5/8\"X2500mm",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 11B; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I71",
+      "cell_row": 71,
+      "template_row": 108,
+      "uraian_pemicu": "CABLE PWR ACC; CABLE-SHOE CU 50 MM2",
+      "template_desc": "CABLE PWR ACC; CABLE-SHOE CU 50 MM2",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 11B; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I72",
+      "cell_row": 72,
+      "template_row": 70,
+      "uraian_pemicu": "CUB;N ISO;CBOG;24kV;630A;16kA; (CT;20KV;K;10/5-5A;0.2S;30VA;ID)",
+      "template_desc": "CUB;N ISO;CBOG;24kV;630A;16kA; (CT;20KV;K;10/5-5A;0.2S;30VA;ID)",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU BETON"
+    },
+    {
+      "cell": "I73",
+      "cell_row": 73,
+      "template_row": 71,
+      "uraian_pemicu": "CUB;N ISO;METERING;24kV;630A;16kA;",
+      "template_desc": "CUB;N ISO;METERING;24kV;630A;16kA;",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU BETON"
+    },
+    {
+      "cell": "I74",
+      "cell_row": 74,
+      "template_row": 72,
+      "uraian_pemicu": "CUB;N ISO;LBS;24kV;630A;16kA;",
+      "template_desc": "CUB;N ISO;LBS;24kV;630A;16kA;",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I75",
+      "cell_row": 75,
+      "template_row": 73,
+      "uraian_pemicu": "CUB;N ISO;TP;24KV;630A;16KA",
+      "template_desc": "CUB;N ISO;TP;24KV;630A;16KA",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I77",
+      "cell_row": 77,
+      "template_row": 75,
+      "uraian_pemicu": "CT;20KV;K;10/5-5A;0.2S;30VA;ID",
+      "template_desc": "CT;20KV;K;10/5-5A;0.2S;30VA;ID",
+      "trigger": "Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 240000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 345000"
+    },
+    {
+      "cell": "I78",
+      "cell_row": 78,
+      "template_row": 76,
+      "uraian_pemicu": "CT;20KV;K;20/5-5A;0.2S;30VA;ID",
+      "template_desc": "CT;20KV;K;20/5-5A;0.2S;30VA;ID",
+      "trigger": "Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 555000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 690000"
+    },
+    {
+      "cell": "I79",
+      "cell_row": 79,
+      "template_row": 77,
+      "uraian_pemicu": "CT;20KV;K;25/5-5A;0.2S;30VA;ID",
+      "template_desc": "CT;20KV;K;25/5-5A;0.2S;30VA;ID",
+      "trigger": "Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 865000"
+    },
+    {
+      "cell": "I80",
+      "cell_row": 80,
+      "template_row": 78,
+      "uraian_pemicu": "CT;20KV;K;40/5-5A;0.2S;30VA;ID",
+      "template_desc": "CT;20KV;K;40/5-5A;0.2S;30VA;ID",
+      "trigger": "Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1110000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1385000"
+    },
+    {
+      "cell": "I81",
+      "cell_row": 81,
+      "template_row": 79,
+      "uraian_pemicu": "CT;20KV;K;50/5-5A;0.2S;30VA;ID",
+      "template_desc": "CT;20KV;K;50/5-5A;0.2S;30VA;ID",
+      "trigger": "Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1730000"
+    },
+    {
+      "cell": "I82",
+      "cell_row": 82,
+      "template_row": 80,
+      "uraian_pemicu": "CT;20KV;K;75/5-5A;0.2S;30VA;ID",
+      "template_desc": "CT;20KV;K;75/5-5A;0.2S;30VA;ID",
+      "trigger": "Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2180000"
+    },
+    {
+      "cell": "I83",
+      "cell_row": 83,
+      "template_row": 81,
+      "uraian_pemicu": "CT;20KV;K;80/5-5A;0.2S;30VA;ID",
+      "template_desc": "CT;20KV;K;80/5-5A;0.2S;30VA;ID",
+      "trigger": "Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2770000"
+    },
+    {
+      "cell": "I84",
+      "cell_row": 84,
+      "template_row": 82,
+      "uraian_pemicu": "CT;20KV;K;100/5-5A;0.2S;30VA;ID",
+      "template_desc": "CT;20KV;K;100/5-5A;0.2S;30VA;ID",
+      "trigger": "Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 3465000"
+    },
+    {
+      "cell": "I85",
+      "cell_row": 85,
+      "template_row": 83,
+      "uraian_pemicu": "CT;20KV;K;150/5-5A;0.2S;30VA;ID",
+      "template_desc": "CT;20KV;K;150/5-5A;0.2S;30VA;ID",
+      "trigger": "Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 4360000"
+    },
+    {
+      "cell": "I86",
+      "cell_row": 86,
+      "template_row": 84,
+      "uraian_pemicu": "CT;20KV;K;250/5-5A;0.2S;30VA;ID",
+      "template_desc": "CT;20KV;K;250/5-5A;0.2S;30VA;ID",
+      "trigger": "Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 8660000"
+    },
+    {
+      "cell": "I96",
+      "cell_row": 96,
+      "template_row": 94,
+      "uraian_pemicu": "CONDUCTOR;AAAC-S;150mm2;",
+      "template_desc": "CONDUCTOR;AAAC-S;150mm2;",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS"
+    },
+    {
+      "cell": "I105",
+      "cell_row": 105,
+      "template_row": 103,
+      "uraian_pemicu": "TERM;20KV;CUB;CU;3P;3X1X35;N ISO;ID",
+      "template_desc": "TERM;20KV;CUB;CU;3P;3X1X35;N ISO;ID",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I106",
+      "cell_row": 106,
+      "template_row": 104,
+      "uraian_pemicu": "TERM;20KV;TRF;AL-CU;3P;3X1X35MM2;N ISO;OD",
+      "template_desc": "TERM;20KV;TRF;AL-CU;3P;3X1X35MM2;N ISO;OD",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I117",
+      "cell_row": 117,
+      "template_row": 115,
+      "uraian_pemicu": "CONN;20KV;H;AL;150-150MM2;PRS;",
+      "template_desc": "CONN;20KV;H;AL;150-150MM2;PRS;",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I119",
+      "cell_row": 119,
+      "template_row": 117,
+      "uraian_pemicu": "CABLE PWR ACC; LINK 25X25MM",
+      "template_desc": "CABLE PWR ACC; LINK 25X25MM",
+      "trigger": "Tipe Pembangunan Gardu = Gardu Cantol Distribusi; Tipe Pembangunan Gardu = Gardu Cantol Khusus; Tipe Pembangunan Gardu = Gardu Portal Distribusi; Tipe Pembangunan Gardu = Gardu Portal Khusus; Tipe Pembangunan Gardu = Gardu Portal RMU"
+    },
+    {
+      "cell": "I120",
+      "cell_row": 120,
+      "template_row": 118,
+      "uraian_pemicu": "POLE ACC; STAINLESS STEEL STRAP 20X0.7 MM",
+      "template_desc": "POLE ACC; STAINLESS STEEL STRAP 20X0.7 MM",
+      "trigger": "Tipe Pembangunan Gardu = Gardu Cantol Distribusi; Tipe Pembangunan Gardu = Gardu Cantol Khusus; Tipe Pembangunan Gardu = Gardu Portal Distribusi; Tipe Pembangunan Gardu = Gardu Portal Khusus; Tipe Pembangunan Gardu = Gardu Portal RMU"
+    },
+    {
+      "cell": "I121",
+      "cell_row": 121,
+      "template_row": 119,
+      "uraian_pemicu": "CABLE PWR ACC; STOPPING BUCKLE SSS 20X40MM",
+      "template_desc": "CABLE PWR ACC; STOPPING BUCKLE SSS 20X40MM",
+      "trigger": "Tipe Pembangunan Gardu = Gardu Cantol Distribusi; Tipe Pembangunan Gardu = Gardu Cantol Khusus; Tipe Pembangunan Gardu = Gardu Portal Distribusi; Tipe Pembangunan Gardu = Gardu Portal Khusus; Tipe Pembangunan Gardu = Gardu Portal RMU"
+    },
+    {
+      "cell": "I128",
+      "cell_row": 128,
+      "template_row": 126,
+      "uraian_pemicu": "COVER BUSHING TRAFO INPUT ATAS",
+      "template_desc": "COVER BUSHING TRAFO INPUT ATAS",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I129",
+      "cell_row": 129,
+      "template_row": 127,
+      "uraian_pemicu": "COVER ISOLATOR",
+      "template_desc": "COVER ISOLATOR",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 1B; Tiang TM (kolom B baris 44) = TM - 2B; Tiang TM (kolom B baris 44) = TM - 4B; Tiang TM (kolom B baris 44) = TM - 5B; Tiang TM (kolom B baris 44) = TM - 7B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 9B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS"
+    },
+    {
+      "cell": "I134",
+      "cell_row": 134,
+      "template_row": 132,
+      "uraian_pemicu": "POLE;CONCRETE;20KV;CIRCL;9M;200DAN;;(TERPASANG) - KONTRAMASK",
+      "template_desc": "POLE;CONCRETE;20KV;CIRCL;9M;200DAN;;(TERPASANG) - KONTRAMASK",
+      "trigger": "Tiang TM (kolom B baris 44) = KONTRAMASK"
+    },
+    {
+      "cell": "I135",
+      "cell_row": 135,
+      "template_row": 133,
+      "uraian_pemicu": "POLE;CONCRETE;20KV;CIRCL;12M;200DAN;;(TERPASANG)",
+      "template_desc": "POLE;CONCRETE;20KV;CIRCL;12M;200DAN;;(TERPASANG)",
+      "trigger": "Tiang TM jenis tiang (kolom A baris 44) = 12/200"
+    },
+    {
+      "cell": "I136",
+      "cell_row": 136,
+      "template_row": 134,
+      "uraian_pemicu": "POLE;CONCRETE;20KV;CIRCL;12M;350DAN;;(TERPASANG)",
+      "template_desc": "POLE;CONCRETE;20KV;CIRCL;12M;350DAN;;(TERPASANG)",
+      "trigger": "Tiang TM jenis tiang (kolom A baris 44) = 12/350"
+    },
+    {
+      "cell": "I137",
+      "cell_row": 137,
+      "template_row": 135,
+      "uraian_pemicu": "POLE;CONCRETE;20KV;CIRCL;12M;350DAN;;(TERPASANG)- Tiang Gardu",
+      "template_desc": "POLE;CONCRETE;20KV;CIRCL;12M;350DAN;;(TERPASANG)- Tiang Gardu",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I177",
+      "cell_row": 177,
+      "template_row": 175,
+      "uraian_pemicu": "Pembuatan Pondasi Tiang 11 -13 m 350 daN Type A jenis 1 (tanah biasa)",
+      "template_desc": "Pembuatan Pondasi Tiang 11 -13 m 350 daN Type A jenis 1 (tanah biasa)",
+      "trigger": "Tiang TM jenis tiang (kolom A baris 44) = 12/200; Tiang TM jenis tiang (kolom A baris 44) = 12/350"
+    },
+    {
+      "cell": "I186",
+      "cell_row": 186,
+      "template_row": 184,
+      "uraian_pemicu": "Pemasangan Travers Tunggal : UNP 12-1800 mm",
+      "template_desc": "Pemasangan Travers Tunggal : UNP 12-1800 mm",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 1B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = TM - 14B; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I187",
+      "cell_row": 187,
+      "template_row": 185,
+      "uraian_pemicu": "Pemasangan Travers Ganda : UNP 12-2200 mm",
+      "template_desc": "Pemasangan Travers Ganda : UNP 12-2200 mm",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 2B; Tiang TM (kolom B baris 44) = TM - 4B; Tiang TM (kolom B baris 44) = TM - 5B; Tiang TM (kolom B baris 44) = TM - 6B; Tiang TM (kolom B baris 44) = TM - 7B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 9B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = TM - 11B; Tiang TM (kolom B baris 44) = TM - 14B; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS"
+    },
+    {
+      "cell": "I189",
+      "cell_row": 189,
+      "template_row": 187,
+      "uraian_pemicu": "Pemasangan PIN ISOLATOR",
+      "template_desc": "Pemasangan PIN ISOLATOR",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 1B; Tiang TM (kolom B baris 44) = TM - 2B; Tiang TM (kolom B baris 44) = TM - 4B; Tiang TM (kolom B baris 44) = TM - 5B; Tiang TM (kolom B baris 44) = TM - 7B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 9B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I190",
+      "cell_row": 190,
+      "template_row": 188,
+      "uraian_pemicu": "Pemasangan HANG ISOLATOR",
+      "template_desc": "Pemasangan HANG ISOLATOR",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 4B; Tiang TM (kolom B baris 44) = TM - 5B; Tiang TM (kolom B baris 44) = TM - 6B; Tiang TM (kolom B baris 44) = TM - 7B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 9B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = TM - 11B; Tiang TM (kolom B baris 44) = TM - 14B; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS"
+    },
+    {
+      "cell": "I195",
+      "cell_row": 195,
+      "template_row": 193,
+      "uraian_pemicu": "Pasang Stayset TM / Tupang Tarik TM",
+      "template_desc": "Pasang Stayset TM / Tupang Tarik TM",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 11B; Tiang TM (kolom B baris 44) = STAYSET; Tiang TM (kolom B baris 44) = KONTRAMASK"
+    },
+    {
+      "cell": "I198",
+      "cell_row": 198,
+      "template_row": 196,
+      "uraian_pemicu": "Pasang Top Ties (segala uk.)",
+      "template_desc": "Pasang Top Ties (segala uk.)",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 1B; Tiang TM (kolom B baris 44) = TM - 4B; Tiang TM (kolom B baris 44) = TM - 5B; Tiang TM (kolom B baris 44) = TM - 7B; Tiang TM (kolom B baris 44) = TM - 8B; Tiang TM (kolom B baris 44) = TM - 9B; Tiang TM (kolom B baris 44) = TM - 10B; Tiang TM (kolom B baris 44) = GARDU CANTOL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU CANTOL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL DISTRIBUSI; Tiang TM (kolom B baris 44) = GARDU PORTAL KHUSUS; Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I199",
+      "cell_row": 199,
+      "template_row": 197,
+      "uraian_pemicu": "Pasang Double Side Ties (segala uk.)",
+      "template_desc": "Pasang Double Side Ties (segala uk.)",
+      "trigger": "Tiang TM (kolom B baris 44) = TM - 2B"
+    },
+    {
+      "cell": "I223",
+      "cell_row": 223,
+      "template_row": 221,
+      "uraian_pemicu": "GARDU CANTOL",
+      "template_desc": "GARDU CANTOL",
+      "trigger": "Tipe Pembangunan Gardu = Gardu Cantol Distribusi; Tipe Pembangunan Gardu = Gardu Cantol Khusus"
+    },
+    {
+      "cell": "I240",
+      "cell_row": 240,
+      "template_row": 238,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 25 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 25 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 25 kVA"
+    },
+    {
+      "cell": "I241",
+      "cell_row": 241,
+      "template_row": 354,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 50 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 50 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 50 kVA"
+    },
+    {
+      "cell": "I242",
+      "cell_row": 242,
+      "template_row": 355,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 100 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 100 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 100 kVA"
+    },
+    {
+      "cell": "I247",
+      "cell_row": 247,
+      "template_row": 287,
+      "uraian_pemicu": "PEMBANGUNAN GARDU CANTOL & PORTAL : - Pasang kabel naik TR & pipa pelindung kabel",
+      "template_desc": "PEMBANGUNAN GARDU CANTOL & PORTAL : - Pasang kabel naik TR & pipa pelindung kabel",
+      "trigger": "Jumlah Kabel Naik = 1; Jumlah Kabel Naik = 2; Jumlah Kabel Naik = 3; Jumlah Kabel Naik = 4"
+    },
+    {
+      "cell": "I257",
+      "cell_row": 257,
+      "template_row": 255,
+      "uraian_pemicu": "GARDU PORTAL",
+      "template_desc": "GARDU PORTAL",
+      "trigger": "Tipe Pembangunan Gardu = Gardu Portal Distribusi; Tipe Pembangunan Gardu = Gardu Portal Khusus"
+    },
+    {
+      "cell": "I278",
+      "cell_row": 278,
+      "template_row": 354,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 50 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 50 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 50 kVA"
+    },
+    {
+      "cell": "I279",
+      "cell_row": 279,
+      "template_row": 355,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 100 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 100 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 100 kVA"
+    },
+    {
+      "cell": "I280",
+      "cell_row": 280,
+      "template_row": 356,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 160 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 160 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 160 kVA"
+    },
+    {
+      "cell": "I281",
+      "cell_row": 281,
+      "template_row": 357,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 200 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 200 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 200 kVA"
+    },
+    {
+      "cell": "I282",
+      "cell_row": 282,
+      "template_row": 358,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 250 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 250 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 250 kVA"
+    },
+    {
+      "cell": "I283",
+      "cell_row": 283,
+      "template_row": 359,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 400 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 400 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 400 kVA"
+    },
+    {
+      "cell": "I289",
+      "cell_row": 289,
+      "template_row": 287,
+      "uraian_pemicu": "PEMBANGUNAN GARDU CANTOL & PORTAL : - Pasang kabel naik TR & pipa pelindung kabel",
+      "template_desc": "PEMBANGUNAN GARDU CANTOL & PORTAL : - Pasang kabel naik TR & pipa pelindung kabel",
+      "trigger": "Jumlah Kabel Naik = 1; Jumlah Kabel Naik = 2; Jumlah Kabel Naik = 3; Jumlah Kabel Naik = 4"
+    },
+    {
+      "cell": "I291",
+      "cell_row": 291,
+      "template_row": 369,
+      "uraian_pemicu": "JASA ANGKUTAN MATERIAL : Angkutan Trafo 25/ 50/ 100 /160/ 250 / 315 KVA (1 s.d 4 )",
+      "template_desc": "JASA ANGKUTAN MATERIAL : Angkutan Trafo 25/ 50/ 100 /160/ 250 / 315 KVA (1 s.d 4 )",
+      "trigger": "Kapasitas Trafo = 50 kVA; Kapasitas Trafo = 100 kVA; Kapasitas Trafo = 160 kVA; Kapasitas Trafo = 200 kVA; Kapasitas Trafo = 250 kVA"
+    },
+    {
+      "cell": "I292",
+      "cell_row": 292,
+      "template_row": 370,
+      "uraian_pemicu": "JASA ANGKUTAN MATERIAL : Angkutan Trafo 400 / 630 KVA (1 s.d 3)",
+      "template_desc": "JASA ANGKUTAN MATERIAL : Angkutan Trafo 400 / 630 KVA (1 s.d 3)",
+      "trigger": "Kapasitas Trafo = 400 kVA"
+    },
+    {
+      "cell": "I356",
+      "cell_row": 356,
+      "template_row": 354,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 50 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 50 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 50 kVA"
+    },
+    {
+      "cell": "I357",
+      "cell_row": 357,
+      "template_row": 355,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 100 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 100 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 100 kVA"
+    },
+    {
+      "cell": "I358",
+      "cell_row": 358,
+      "template_row": 356,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 160 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 160 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 160 kVA"
+    },
+    {
+      "cell": "I359",
+      "cell_row": 359,
+      "template_row": 357,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 200 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 200 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 200 kVA"
+    },
+    {
+      "cell": "I360",
+      "cell_row": 360,
+      "template_row": 358,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 250 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 250 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 250 kVA"
+    },
+    {
+      "cell": "I361",
+      "cell_row": 361,
+      "template_row": 359,
+      "uraian_pemicu": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 400 kva Gardu Tiang",
+      "template_desc": "PEKERJAAN PEMASANGAN INSTALASI GARDU : Pasang trafo 400 kva Gardu Tiang",
+      "trigger": "Kapasitas Trafo = 400 kVA"
+    },
+    {
+      "cell": "I367",
+      "cell_row": 367,
+      "template_row": 365,
+      "uraian_pemicu": "PEMBANGUNAN GARDU CANTOL & PORTAL : Pasang Kabel Naik TR & Pipa Pelindung untuk Jurusan Baru lengkap perbaikan Rabat",
+      "template_desc": "PEMBANGUNAN GARDU CANTOL & PORTAL : Pasang Kabel Naik TR & Pipa Pelindung untuk Jurusan Baru lengkap perbaikan Rabat",
+      "trigger": "Jumlah Kabel Naik = 1; Jumlah Kabel Naik = 2; Jumlah Kabel Naik = 3; Jumlah Kabel Naik = 4"
+    },
+    {
+      "cell": "I371",
+      "cell_row": 371,
+      "template_row": 369,
+      "uraian_pemicu": "JASA ANGKUTAN MATERIAL : Angkutan Trafo 25/ 50/ 100 /160/ 250 / 315 KVA (1 s.d 4 )",
+      "template_desc": "JASA ANGKUTAN MATERIAL : Angkutan Trafo 25/ 50/ 100 /160/ 250 / 315 KVA (1 s.d 4 )",
+      "trigger": "Kapasitas Trafo = 50 kVA; Kapasitas Trafo = 100 kVA; Kapasitas Trafo = 160 kVA; Kapasitas Trafo = 200 kVA; Kapasitas Trafo = 250 kVA"
+    },
+    {
+      "cell": "I372",
+      "cell_row": 372,
+      "template_row": 370,
+      "uraian_pemicu": "JASA ANGKUTAN MATERIAL : Angkutan Trafo 400 / 630 KVA (1 s.d 3)",
+      "template_desc": "JASA ANGKUTAN MATERIAL : Angkutan Trafo 400 / 630 KVA (1 s.d 3)",
+      "trigger": "Kapasitas Trafo = 400 kVA"
+    },
+    {
+      "cell": "I381",
+      "cell_row": 381,
+      "template_row": 379,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu Kubikel LBS / PT / B1 / PB",
+      "template_desc": "Pemasangan Instalasi Gardu Kubikel LBS / PT / B1 / PB",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU; Tiang TM (kolom B baris 44) = GARDU BETON"
+    },
+    {
+      "cell": "I382",
+      "cell_row": 382,
+      "template_row": 380,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu Kubikel PGDB / PGDT/CBOM",
+      "template_desc": "Pemasangan Instalasi Gardu Kubikel PGDB / PGDT/CBOM",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU BETON"
+    },
+    {
+      "cell": "I384",
+      "cell_row": 384,
+      "template_row": 382,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu  Pasang trafo 25 kva Gardu Tiang",
+      "template_desc": "Pemasangan Instalasi Gardu Pasang trafo 25 kva Gardu Tiang",
+      "trigger": "Trafo Baru = 25 kVA"
+    },
+    {
+      "cell": "I385",
+      "cell_row": 385,
+      "template_row": 383,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu  Pasang trafo 50 kva Gardu Tiang",
+      "template_desc": "Pemasangan Instalasi Gardu Pasang trafo 50 kva Gardu Tiang",
+      "trigger": "Trafo Baru = 50 kVA"
+    },
+    {
+      "cell": "I386",
+      "cell_row": 386,
+      "template_row": 384,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu  Pasang trafo 100 kva Gardu Tiang",
+      "template_desc": "Pemasangan Instalasi Gardu Pasang trafo 100 kva Gardu Tiang",
+      "trigger": "Trafo Baru = 100 kVA"
+    },
+    {
+      "cell": "I387",
+      "cell_row": 387,
+      "template_row": 385,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu  Pasang trafo 160 kva Gardu Tiang",
+      "template_desc": "Pemasangan Instalasi Gardu Pasang trafo 160 kva Gardu Tiang",
+      "trigger": "Trafo Baru = 160 kVA"
+    },
+    {
+      "cell": "I388",
+      "cell_row": 388,
+      "template_row": 386,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu  Pasang trafo 200 kva Gardu Tiang",
+      "template_desc": "Pemasangan Instalasi Gardu Pasang trafo 200 kva Gardu Tiang",
+      "trigger": "Trafo Baru = 200 kVA"
+    },
+    {
+      "cell": "I389",
+      "cell_row": 389,
+      "template_row": 387,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu  Pasang trafo 250 kva Gardu Tiang",
+      "template_desc": "Pemasangan Instalasi Gardu Pasang trafo 250 kva Gardu Tiang",
+      "trigger": "Trafo Baru = 250 kVA"
+    },
+    {
+      "cell": "I391",
+      "cell_row": 391,
+      "template_row": 389,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu  Pasang trafo 400 kva Gardu Tiang",
+      "template_desc": "Pemasangan Instalasi Gardu Pasang trafo 400 kva Gardu Tiang",
+      "trigger": "Trafo Baru = 400 kVA"
+    },
+    {
+      "cell": "I399",
+      "cell_row": 399,
+      "template_row": 397,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu Pasang Single Core TR di Trafo ( kabel 4 x 1 x 240 mm )",
+      "template_desc": "Pemasangan Instalasi Gardu Pasang Single Core TR di Trafo ( kabel 4 x 1 x 240 mm )",
+      "trigger": "Trafo Baru = 25 kVA; Trafo Baru = 50 kVA; Trafo Baru = 100 kVA; Trafo Baru = 160 kVA; Trafo Baru = 200 kVA; Trafo Baru = 250 kVA; Trafo Baru = 400 kVA"
+    },
+    {
+      "cell": "I401",
+      "cell_row": 401,
+      "template_row": 399,
+      "uraian_pemicu": "Pengadaan Penyangga Kabel TM 20 kV",
+      "template_desc": "Pengadaan Penyangga Kabel TM 20 kV",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU"
+    },
+    {
+      "cell": "I402",
+      "cell_row": 402,
+      "template_row": 400,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu Pemasangan Instalasi Heater Kubikel",
+      "template_desc": "Pemasangan Instalasi Gardu Pemasangan Instalasi Heater Kubikel",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU; Tiang TM (kolom B baris 44) = GARDU BETON"
+    },
+    {
+      "cell": "I403",
+      "cell_row": 403,
+      "template_row": 401,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu Pengadaan Kabel Heater Kubikel",
+      "template_desc": "Pemasangan Instalasi Gardu Pengadaan Kabel Heater Kubikel",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU; Tiang TM (kolom B baris 44) = GARDU BETON"
+    },
+    {
+      "cell": "I404",
+      "cell_row": 404,
+      "template_row": 402,
+      "uraian_pemicu": "Pemasangan Instalasi Gardu Pemasangan CT/PT 20 KV di Cubikel",
+      "template_desc": "Pemasangan Instalasi Gardu Pemasangan CT/PT 20 KV di Cubikel",
+      "trigger": "Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 240000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 345000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 555000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 690000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 865000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1110000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1385000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1730000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2180000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2770000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 3465000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 4360000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 8660000"
+    },
+    {
+      "cell": "I408",
+      "cell_row": 408,
+      "template_row": 465,
+      "uraian_pemicu": "PEKERJAAN PEMELIHARAAN INSTALASI GARDU : Pembersihan Ruangan Gardu",
+      "template_desc": "PEKERJAAN PEMELIHARAAN INSTALASI GARDU : Pembersihan Ruangan Gardu",
+      "trigger": "Jenis Pekerjaan (Gardu Beton) = Pemasangan Instalasi Gardu; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 240000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 345000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 555000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 690000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 865000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1110000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1385000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1730000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2180000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2770000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 3465000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 4360000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 8660000"
+    },
+    {
+      "cell": "I410",
+      "cell_row": 410,
+      "template_row": 408,
+      "uraian_pemicu": "INST LISTRIK & LAIN-LAIN : Lampu penerangan komplit untuk Gardu",
+      "template_desc": "INST LISTRIK & LAIN-LAIN : Lampu penerangan komplit untuk Gardu",
+      "trigger": "Jenis Pekerjaan (Gardu Beton) = Pemasangan Instalasi Gardu; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 240000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 345000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 555000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 690000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 865000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1110000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1385000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1730000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2180000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2770000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 3465000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 4360000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 8660000"
+    },
+    {
+      "cell": "I411",
+      "cell_row": 411,
+      "template_row": 409,
+      "uraian_pemicu": "INST LISTRIK & LAIN-LAIN : Tanda LBS Masuk ukuran A5",
+      "template_desc": "INST LISTRIK & LAIN-LAIN : Tanda LBS Masuk ukuran A5",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU; Tiang TM (kolom B baris 44) = GARDU BETON"
+    },
+    {
+      "cell": "I412",
+      "cell_row": 412,
+      "template_row": 410,
+      "uraian_pemicu": "INST LISTRIK & LAIN-LAIN : Tanda LBS Keluar ukuran A5",
+      "template_desc": "INST LISTRIK & LAIN-LAIN : Tanda LBS Keluar ukuran A5",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU; Tiang TM (kolom B baris 44) = GARDU BETON"
+    },
+    {
+      "cell": "I413",
+      "cell_row": 413,
+      "template_row": 411,
+      "uraian_pemicu": "INST LISTRIK & LAIN-LAIN : Tanda Awas Jangan Dimasukkan uk",
+      "template_desc": "INST LISTRIK & LAIN-LAIN : Tanda Awas Jangan Dimasukkan uk",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU; Tiang TM (kolom B baris 44) = GARDU BETON"
+    },
+    {
+      "cell": "I414",
+      "cell_row": 414,
+      "template_row": 412,
+      "uraian_pemicu": "INST LISTRIK & LAIN-LAIN : Tanda Aman Tidak Ada Tegangan u",
+      "template_desc": "INST LISTRIK & LAIN-LAIN : Tanda Aman Tidak Ada Tegangan u",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU; Tiang TM (kolom B baris 44) = GARDU BETON"
+    },
+    {
+      "cell": "I415",
+      "cell_row": 415,
+      "template_row": 413,
+      "uraian_pemicu": "INST LISTRIK & LAIN-LAIN : PEKERJAAN LAIN - LAIN : Pengadaan & pemasangan nomor gardu",
+      "template_desc": "INST LISTRIK & LAIN-LAIN : PEKERJAAN LAIN - LAIN : Pengadaan & pemasangan nomor gardu",
+      "trigger": "Jenis Pekerjaan (Gardu Beton) = Pemasangan Instalasi Gardu; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 240000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 345000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 555000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 690000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 865000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1110000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1385000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1730000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2180000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2770000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 3465000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 4360000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 8660000"
+    },
+    {
+      "cell": "I416",
+      "cell_row": 416,
+      "template_row": 414,
+      "uraian_pemicu": "PEKERJAAN LAIN - LAIN : Tanda K3 gardu (5 S)",
+      "template_desc": "PEKERJAAN LAIN - LAIN : Tanda K3 gardu (5 S)",
+      "trigger": "Jenis Pekerjaan (Gardu Beton) = Pemasangan Instalasi Gardu; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 240000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 345000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 555000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 690000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 865000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1110000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1385000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1730000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2180000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2770000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 3465000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 4360000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 8660000"
+    },
+    {
+      "cell": "I428",
+      "cell_row": 428,
+      "template_row": 426,
+      "uraian_pemicu": "Pembongkaran CT/PT 20 KV di Cubikel",
+      "template_desc": "Pembongkaran CT/PT 20 KV di Cubikel",
+      "trigger": "Jenis Pekerjaan (Gardu Beton) = Pemasangan Instalasi Gardu; Jenis Pekerjaan (Gardu Beton) = Bongkar Pasang CT TM Gardu; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 240000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 345000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 555000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 690000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 865000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1110000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1385000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1730000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2180000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2770000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 3465000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 4360000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 8660000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 240000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 345000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 555000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 690000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 865000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1110000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1385000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1730000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 2180000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 2770000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 3465000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 4360000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 8660000"
+    },
+    {
+      "cell": "I432",
+      "cell_row": 432,
+      "template_row": 430,
+      "uraian_pemicu": "Pembongkaran Instalasi Gardu Trafo 25 kVA s/d 50 kVA",
+      "template_desc": "Pembongkaran Instalasi Gardu Trafo 25 kVA s/d 50 kVA",
+      "trigger": "Trafo Lama = 25 kVA; Trafo Lama = 50 kVA"
+    },
+    {
+      "cell": "I433",
+      "cell_row": 433,
+      "template_row": 431,
+      "uraian_pemicu": "Pembongkaran Instalasi Gardu Trafo 100 kVA s/d 315 kVA",
+      "template_desc": "Pembongkaran Instalasi Gardu Trafo 100 kVA s/d 315 kVA",
+      "trigger": "Trafo Lama = 100 kVA; Trafo Lama = 160 kVA; Trafo Lama = 200 kVA; Trafo Lama = 250 kVA"
+    },
+    {
+      "cell": "I434",
+      "cell_row": 434,
+      "template_row": 432,
+      "uraian_pemicu": "Pembongkaran Instalasi Gardu Trafo 400 kVA s/d 630 kVA",
+      "template_desc": "Pembongkaran Instalasi Gardu Trafo 400 kVA s/d 630 kVA",
+      "trigger": "Trafo Lama = 400 kVA; Trafo Lama = 630 kVA"
+    },
+    {
+      "cell": "I443",
+      "cell_row": 443,
+      "template_row": 441,
+      "uraian_pemicu": "Pembongkaran Instalasi Gardu Single Core TR di Trafo ( kabel 4 x 1 x 240 mm )",
+      "template_desc": "Pembongkaran Instalasi Gardu Single Core TR di Trafo ( kabel 4 x 1 x 240 mm )",
+      "trigger": "Trafo Lama = 25 kVA; Trafo Lama = 50 kVA; Trafo Lama = 100 kVA; Trafo Lama = 160 kVA; Trafo Lama = 200 kVA; Trafo Lama = 250 kVA; Trafo Lama = 400 kVA; Trafo Lama = 630 kVA"
+    },
+    {
+      "cell": "I451",
+      "cell_row": 451,
+      "template_row": 449,
+      "uraian_pemicu": "JASA ANGKUTAN MATERIAL : Angkutan Pickup",
+      "template_desc": "JASA ANGKUTAN MATERIAL : Angkutan Pickup",
+      "trigger": "Jenis Pekerjaan (Gardu Beton) = Pemasangan Instalasi Gardu; Jenis Pekerjaan (Gardu Beton) = Bongkar Pasang CT TM Gardu; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 240000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 345000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 555000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 690000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 865000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1110000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1385000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 1730000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2180000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 2770000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 3465000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 4360000; Gardu Beton: Pemasangan Instalasi Gardu + Daya Baru = 8660000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 240000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 345000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 555000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 690000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 865000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1110000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1385000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1730000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 2180000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 2770000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 3465000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 4360000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 8660000"
+    },
+    {
+      "cell": "I452",
+      "cell_row": 452,
+      "template_row": 450,
+      "uraian_pemicu": "Angkutan Trafo 25/ 50/ 100 /160/ 250 / 315 KVA (1 s.d 4 )",
+      "template_desc": "Angkutan Trafo 25/ 50/ 100 /160/ 250 / 315 KVA (1 s.d 4 )",
+      "trigger": "Trafo Lama = 25 kVA; Trafo Lama = 50 kVA; Trafo Lama = 100 kVA; Trafo Lama = 160 kVA; Trafo Lama = 200 kVA; Trafo Lama = 250 kVA; Trafo Lama = 400 kVA; Trafo Lama = 630 kVA; Trafo Baru = 25 kVA; Trafo Baru = 50 kVA; Trafo Baru = 100 kVA; Trafo Baru = 160 kVA; Trafo Baru = 200 kVA; Trafo Baru = 250 kVA"
+    },
+    {
+      "cell": "I453",
+      "cell_row": 453,
+      "template_row": 451,
+      "uraian_pemicu": "Angkutan Trafo 400 / 630 KVA (1 s.d 3)",
+      "template_desc": "Angkutan Trafo 400 / 630 KVA (1 s.d 3)",
+      "trigger": "Trafo Lama = 400 kVA; Trafo Lama = 630 kVA; Trafo Baru = 400 kVA"
+    },
+    {
+      "cell": "I454",
+      "cell_row": 454,
+      "template_row": 452,
+      "uraian_pemicu": "JASA ANGKT MATERIAL : ANGKT kubikel ( 1 s/d 3 ) bh",
+      "template_desc": "JASA ANGKT MATERIAL : ANGKT kubikel ( 1 s/d 3 ) bh",
+      "trigger": "Tiang TM (kolom B baris 44) = GARDU PORTAL RMU; Tiang TM (kolom B baris 44) = GARDU BETON"
+    },
+    {
+      "cell": "I468",
+      "cell_row": 468,
+      "template_row": 466,
+      "uraian_pemicu": "INST LISTRIK & LAIN-LAIN : Foto Dokumentasi @ 15 lembar+Soft Copy",
+      "template_desc": "INST LISTRIK & LAIN-LAIN : Foto Dokumentasi @ 15 lembar+Soft Copy",
+      "trigger": "Trafo Lama = 25 kVA; Trafo Lama = 50 kVA; Trafo Lama = 100 kVA; Trafo Lama = 160 kVA; Trafo Lama = 200 kVA; Trafo Lama = 250 kVA; Trafo Lama = 400 kVA; Trafo Lama = 630 kVA"
+    },
+    {
+      "cell": "I469",
+      "cell_row": 469,
+      "template_row": 467,
+      "uraian_pemicu": "INST LISTRIK & LAIN-LAIN : Gambar As Built Drawing (1 kalkir + 3 blue print) +Soft Copy",
+      "template_desc": "INST LISTRIK & LAIN-LAIN : Gambar As Built Drawing (1 kalkir + 3 blue print) +Soft Copy",
+      "trigger": "Trafo Lama = 25 kVA; Trafo Lama = 50 kVA; Trafo Lama = 100 kVA; Trafo Lama = 160 kVA; Trafo Lama = 200 kVA; Trafo Lama = 250 kVA; Trafo Lama = 400 kVA; Trafo Lama = 630 kVA"
+    }
+  ],
+  "p2": [
+    {
+      "cell": "I25",
+      "cell_row": 25,
+      "template_row": 25,
+      "uraian_pemicu": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;; 53 KVA",
+      "template_desc": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;; 53 KVA",
+      "trigger": "Daya Baru = 53000"
+    },
+    {
+      "cell": "I26",
+      "cell_row": 26,
+      "template_row": 26,
+      "uraian_pemicu": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;; 66 KVA",
+      "template_desc": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;; 66 KVA",
+      "trigger": "Daya Baru = 66000"
+    },
+    {
+      "cell": "I27",
+      "cell_row": 27,
+      "template_row": 27,
+      "uraian_pemicu": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S; 82.5 KVA",
+      "template_desc": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S; 82.5 KVA",
+      "trigger": "Daya Baru = 82500"
+    },
+    {
+      "cell": "I28",
+      "cell_row": 28,
+      "template_row": 28,
+      "uraian_pemicu": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;105 KVA",
+      "template_desc": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;105 KVA",
+      "trigger": "Daya Baru = 105000"
+    },
+    {
+      "cell": "I29",
+      "cell_row": 29,
+      "template_row": 29,
+      "uraian_pemicu": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;131 KVA",
+      "template_desc": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;131 KVA",
+      "trigger": "Daya Baru = 131000"
+    },
+    {
+      "cell": "I30",
+      "cell_row": 30,
+      "template_row": 30,
+      "uraian_pemicu": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;147 KVA",
+      "template_desc": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;147 KVA",
+      "trigger": "Daya Baru = 147000"
+    },
+    {
+      "cell": "I31",
+      "cell_row": 31,
+      "template_row": 31,
+      "uraian_pemicu": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;164 KVA",
+      "template_desc": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;164 KVA",
+      "trigger": "Daya Baru = 164000"
+    },
+    {
+      "cell": "I32",
+      "cell_row": 32,
+      "template_row": 32,
+      "uraian_pemicu": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;197 KVA",
+      "template_desc": "BOX APP TRPDU LKP MCCB SHT TRIP;CT 0,5S;197 KVA",
+      "trigger": "Daya Baru = 197000"
+    },
+    {
+      "cell": "I33",
+      "cell_row": 33,
+      "template_row": 33,
+      "uraian_pemicu": "CABLE PWR;NYY;1X70mm2;0.6/1kV;Opstig",
+      "template_desc": "CABLE PWR;NYY;1X70mm2;0.6/1kV;Opstig",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 11B"
+    },
+    {
+      "cell": "I39",
+      "cell_row": 39,
+      "template_row": 39,
+      "uraian_pemicu": "CABLE PWR ACC;SUSPENSION ASSY 70mm",
+      "template_desc": "CABLE PWR ACC;SUSPENSION ASSY 70mm",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 1B; Tiang TR (kolom B baris 123) = TR - 4B; Tiang TR (kolom B baris 123) = TR - 7B"
+    },
+    {
+      "cell": "I40",
+      "cell_row": 40,
+      "template_row": 40,
+      "uraian_pemicu": "CABLE PWR ACC;LARGE ANGLE ASSY 70mm",
+      "template_desc": "CABLE PWR ACC;LARGE ANGLE ASSY 70mm",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 2B; Tiang TR (kolom B baris 123) = TR - 5B; Tiang TR (kolom B baris 123) = TR - 8B; Tiang TR (kolom B baris 123) = TR - 9B"
+    },
+    {
+      "cell": "I41",
+      "cell_row": 41,
+      "template_row": 41,
+      "uraian_pemicu": "CABLE PWR ACC;DEAD END ASSY FIXED 70mm",
+      "template_desc": "CABLE PWR ACC;DEAD END ASSY FIXED 70mm",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 3B; Tiang TR (kolom B baris 123) = TR - 4B; Tiang TR (kolom B baris 123) = TR - 5B; Tiang TR (kolom B baris 123) = TR - 6B; Tiang TR (kolom B baris 123) = TR - 7B; Tiang TR (kolom B baris 123) = TR - 8B; Tiang TR (kolom B baris 123) = TR - 10B AWAL; Tiang TR (kolom B baris 123) = TR - 11B"
+    },
+    {
+      "cell": "I42",
+      "cell_row": 42,
+      "template_row": 42,
+      "uraian_pemicu": "CABLE PWR ACC;DEAD END ASSY ADJ 70mm",
+      "template_desc": "CABLE PWR ACC;DEAD END ASSY ADJ 70mm",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 3B; Tiang TR (kolom B baris 123) = TR - 6B; Tiang TR (kolom B baris 123) = TR - 10 B AKHIR"
+    },
+    {
+      "cell": "I43",
+      "cell_row": 43,
+      "template_row": 43,
+      "uraian_pemicu": "CABLE PWR ACC;BUNDLE END PROTECTION",
+      "template_desc": "CABLE PWR ACC;BUNDLE END PROTECTION",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 10 B AKHIR"
+    },
+    {
+      "cell": "I45",
+      "cell_row": 45,
+      "template_row": 45,
+      "uraian_pemicu": "CONN;1KV;CCO;AL;50-70/50-70;INSUL;PITA",
+      "template_desc": "CONN;1KV;CCO;AL;50-70/50-70;INSUL;PITA",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 10B AWAL; Tiang TR (kolom B baris 123) = TR - 10 B AKHIR; Tiang TR (kolom B baris 123) = PEMBUMIAN TR"
+    },
+    {
+      "cell": "I46",
+      "cell_row": 46,
+      "template_row": 46,
+      "uraian_pemicu": "COND ACC;JOINT ALCU 50-70mm2 INSUL",
+      "template_desc": "COND ACC;JOINT ALCU 50-70mm2 INSUL",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 10 B AKHIR; Tiang TR (kolom B baris 123) = TR - 11B"
+    },
+    {
+      "cell": "I53",
+      "cell_row": 53,
+      "template_row": 53,
+      "uraian_pemicu": "UNIV ACC;GROUND ROD CU 5/8\"X2500mm",
+      "template_desc": "UNIV ACC;GROUND ROD CU 5/8\"X2500mm",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 10 B AKHIR; Tiang TR (kolom B baris 123) = PEMBUMIAN TR"
+    },
+    {
+      "cell": "I54",
+      "cell_row": 54,
+      "template_row": 54,
+      "uraian_pemicu": "POLE ACC; STAYSET TR",
+      "template_desc": "POLE ACC; STAYSET TR",
+      "trigger": "Tiang TR (kolom B baris 123) = STAY SET TR"
+    },
+    {
+      "cell": "I55",
+      "cell_row": 55,
+      "template_row": 55,
+      "uraian_pemicu": "CABLE PWR ACC; CABLE-SHOE CU 70 MM2",
+      "template_desc": "CABLE PWR ACC; CABLE-SHOE CU 70 MM2",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 10 B AKHIR; Tiang TR (kolom B baris 123) = TR - 11B; Tiang TR (kolom B baris 123) = PEMBUMIAN TR"
+    },
+    {
+      "cell": "I60",
+      "cell_row": 60,
+      "template_row": 60,
+      "uraian_pemicu": "POLE;CONCRETE;20KV;CIRCL;9M;200DAN;;(TERPASANG)",
+      "template_desc": "POLE;CONCRETE;20KV;CIRCL;9M;200DAN;;(TERPASANG)",
+      "trigger": "Tiang TR jenis tiang (kolom A baris 123) = 9/200"
+    },
+    {
+      "cell": "I61",
+      "cell_row": 61,
+      "template_row": 61,
+      "uraian_pemicu": "POLE;CONCRETE;20KV;CIRCL;9M;350DAN;;(TERPASANG)",
+      "template_desc": "POLE;CONCRETE;20KV;CIRCL;9M;350DAN;;(TERPASANG)",
+      "trigger": "Tiang TR jenis tiang (kolom A baris 123) = 9/350"
+    },
+    {
+      "cell": "I65",
+      "cell_row": 65,
+      "template_row": 65,
+      "uraian_pemicu": "Pemasangan Box TR / combo",
+      "template_desc": "Pemasangan Box TR / combo",
+      "trigger": "Daya Baru = 53000; Daya Baru = 66000; Daya Baru = 82500; Daya Baru = 105000; Daya Baru = 131000; Daya Baru = 147000; Daya Baru = 164000; Daya Baru = 197000"
+    },
+    {
+      "cell": "I66",
+      "cell_row": 66,
+      "template_row": 66,
+      "uraian_pemicu": "Bongkar Box TR / combo",
+      "template_desc": "Bongkar Box TR / combo",
+      "trigger": "Daya Lama = 53000; Daya Lama = 66000; Daya Lama = 82500; Daya Lama = 105000; Daya Lama = 131000; Daya Lama = 147000; Daya Lama = 164000; Daya Lama = 197000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 240000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 345000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 555000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 690000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 865000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1110000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1385000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1730000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 2180000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 2770000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 3465000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 4360000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 8660000"
+    },
+    {
+      "cell": "I69",
+      "cell_row": 69,
+      "template_row": 69,
+      "uraian_pemicu": "Penarikan Kabel 4 x 70  s/d  150 mm2",
+      "template_desc": "Penarikan Kabel 4 x 70 s/d 150 mm2",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 11B"
+    },
+    {
+      "cell": "I75",
+      "cell_row": 75,
+      "template_row": 75,
+      "uraian_pemicu": "Pembuatan Pondasi tiang besi/beton 9 m 200 daN type A jenis 1 (tanah biasa)",
+      "template_desc": "Pembuatan Pondasi tiang besi/beton 9 m 200 daN type A jenis 1 (tanah biasa)",
+      "trigger": "Tiang TR jenis tiang (kolom A baris 123) = 9/200"
+    },
+    {
+      "cell": "I77",
+      "cell_row": 77,
+      "template_row": 77,
+      "uraian_pemicu": "Pembuatan Pondasi tiang besi/beton 9 m 350 daN type A jenis 1 (tanah biasa)",
+      "template_desc": "Pembuatan Pondasi tiang besi/beton 9 m 350 daN type A jenis 1 (tanah biasa)",
+      "trigger": "Tiang TR jenis tiang (kolom A baris 123) = 9/350"
+    },
+    {
+      "cell": "I82",
+      "cell_row": 82,
+      "template_row": 82,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  1 B/ H ( Pemasangan TIC 45 / smaal angle )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 1 B/ H ( Pemasangan TIC 45 / smaal angle )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 1B"
+    },
+    {
+      "cell": "I83",
+      "cell_row": 83,
+      "template_row": 83,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  2 B/ H ( Pemasangan TIC 45 s/d 120 / large angle )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 2 B/ H ( Pemasangan TIC 45 s/d 120 / large angle )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 2B"
+    },
+    {
+      "cell": "I84",
+      "cell_row": 84,
+      "template_row": 84,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  3 B/ H ( Pemasangan TIC pada tiang penegang )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 3 B/ H ( Pemasangan TIC pada tiang penegang )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 3B"
+    },
+    {
+      "cell": "I85",
+      "cell_row": 85,
+      "template_row": 85,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  4 B/ H ( Pemasangan TIC 1 percabanganpada  smaal  angle )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 4 B/ H ( Pemasangan TIC 1 percabanganpada smaal angle )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 4B"
+    },
+    {
+      "cell": "I86",
+      "cell_row": 86,
+      "template_row": 86,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  5 B/ H ( Pemasangan TIC 1 percab. pada large angle 45 -120 )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 5 B/ H ( Pemasangan TIC 1 percab. pada large angle 45 -120 )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 5B"
+    },
+    {
+      "cell": "I87",
+      "cell_row": 87,
+      "template_row": 87,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  6 B/ H ( Pemasangan TIC 1 percab. pada tiang penegang )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 6 B/ H ( Pemasangan TIC 1 percab. pada tiang penegang )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 6B"
+    },
+    {
+      "cell": "I88",
+      "cell_row": 88,
+      "template_row": 88,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  7 B/ H ( Pemasangan TIC 2 percabangan pada small angle )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 7 B/ H ( Pemasangan TIC 2 percabangan pada small angle )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 7B"
+    },
+    {
+      "cell": "I89",
+      "cell_row": 89,
+      "template_row": 89,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  8 B/ H ( Pemasangan TIC 2 percab. pada large angle 45 -120 )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 8 B/ H ( Pemasangan TIC 2 percab. pada large angle 45 -120 )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 8B"
+    },
+    {
+      "cell": "I90",
+      "cell_row": 90,
+      "template_row": 90,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  9 B/ H ( Pemasangan TIC 2 percab. pada penegang )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 9 B/ H ( Pemasangan TIC 2 percab. pada penegang )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 9B"
+    },
+    {
+      "cell": "I91",
+      "cell_row": 91,
+      "template_row": 91,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  10 B/ H ( Pemasangan TIC  pada awal jaringan )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 10 B/ H ( Pemasangan TIC pada awal jaringan )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 10B AWAL"
+    },
+    {
+      "cell": "I92",
+      "cell_row": 92,
+      "template_row": 92,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  10 B/ H ( Pemasangan TIC  pada ujung jaringan )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 10 B/ H ( Pemasangan TIC pada ujung jaringan )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 10 B AKHIR"
+    },
+    {
+      "cell": "I93",
+      "cell_row": 93,
+      "template_row": 93,
+      "uraian_pemicu": "PEMASANGAN KONSTRUKSI SUTR TR -  11 B / H ( Pemasangan TIC  untuk kabel naik )",
+      "template_desc": "PEMASANGAN KONSTRUKSI SUTR TR - 11 B / H ( Pemasangan TIC untuk kabel naik )",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 11B"
+    },
+    {
+      "cell": "I94",
+      "cell_row": 94,
+      "template_row": 94,
+      "uraian_pemicu": "Pasang Electrical & Mechanical Protetyve Device",
+      "template_desc": "Pasang Electrical & Mechanical Protetyve Device",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 10 B AKHIR"
+    },
+    {
+      "cell": "I95",
+      "cell_row": 95,
+      "template_row": 95,
+      "uraian_pemicu": "pembumian  tiang TR",
+      "template_desc": "pembumian tiang TR",
+      "trigger": "Tiang TR (kolom B baris 123) = TR - 10 B AKHIR; Tiang TR (kolom B baris 123) = PEMBUMIAN TR"
+    },
+    {
+      "cell": "I96",
+      "cell_row": 96,
+      "template_row": 96,
+      "uraian_pemicu": "Pasang Stay-set/ Tupang Tarik TR (TTR-1 TB)",
+      "template_desc": "Pasang Stay-set/ Tupang Tarik TR (TTR-1 TB)",
+      "trigger": "Tiang TR (kolom B baris 123) = STAY SET TR"
+    },
+    {
+      "cell": "I117",
+      "cell_row": 117,
+      "template_row": 117,
+      "uraian_pemicu": "ANGKUTAN BOX SKTR DAN PERLENGKAPANNYA",
+      "template_desc": "ANGKUTAN BOX SKTR DAN PERLENGKAPANNYA",
+      "trigger": "Daya Baru = 53000; Daya Baru = 66000; Daya Baru = 82500; Daya Baru = 105000; Daya Baru = 131000; Daya Baru = 147000; Daya Baru = 164000; Daya Baru = 197000; Daya Lama = 53000; Daya Lama = 66000; Daya Lama = 82500; Daya Lama = 105000; Daya Lama = 131000; Daya Lama = 147000; Daya Lama = 164000; Daya Lama = 197000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 240000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 345000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 555000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 690000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 865000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1110000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1385000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 1730000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 2180000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 2770000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 3465000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 4360000; Gardu Beton: Bongkar Pasang CT + Daya Lama = 8660000"
+    }
+  ]
+}

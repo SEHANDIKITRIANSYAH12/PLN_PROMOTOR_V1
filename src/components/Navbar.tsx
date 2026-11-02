@@ -21,6 +21,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
     monitoring: { title: 'PENGAWASAN LAPANGAN', sub: 'Reservasi material & monitoring progres konstruksi' },
     warehouse: { title: 'GUDANG & LOGISTIK', sub: 'Stok fisik gudang & sinkronisasi SAP' },
     contract: { title: 'KONTRAK JASA & MATERIAL', sub: 'Pagu kontrak, sisa anggaran, dan SPK vendor' },
+    vendor: { title: 'MASTER REKANAN VENDOR', sub: 'Database mitra pelaksana konstruksi distribusi & kontrak aktif' },
+    khs: { title: 'MASTER HS WO PAKET 1 & 2', sub: 'Katalog harga satuan material dan jasa distribusi UP3 Banten Selatan' },
     need: { title: 'KEBUTUHAN MATERIAL', sub: 'Kalkulasi kekurangan dan analisis kebutuhan proyek' },
     audit: { title: 'AUDIT LOG AKTIVITAS', sub: 'Jejak rekam historis setiap aktivitas sistem' },
     std: { title: 'STANDAR KONSTRUKSI', sub: 'Master matriks konstruksi TM/TR & BOM' },
@@ -61,7 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
 
   return (
     <>
-      <header className="h-20 bg-white border-b border-slate-200/80 sticky top-0 z-20 px-4 lg:px-8 flex items-center justify-between shadow-2xs">
+      <header className="h-20 bg-white border-b border-slate-200/80 sticky top-0 z-20 px-4 lg:px-8 flex items-center justify-between shadow-2xs print:hidden">
         {/* Left: Module Title & Breadcrumbs */}
         <div className="flex items-center gap-3">
           <button 
@@ -84,8 +86,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
         {/* Right: PLN Unit Badge, Sync Data Button, and RBAC User Switcher Dropdown */}
         <div className="flex items-center gap-3">
           {/* PLN UP3 Banten Selatan Small Logo Badge */}
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-xs">
-            <Zap className="w-3.5 h-3.5 fill-amber-400 text-red-600" />
+          <div className="hidden md:flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-xs">
+            <img
+              src="/Logo_PLN.png"
+              alt="PLN Logo"
+              className="h-5 w-auto object-contain shrink-0"
+            />
             <span className="font-bold text-[11px] text-slate-800">PLN UP3 BANTEN SELATAN</span>
           </div>
 

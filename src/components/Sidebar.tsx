@@ -6,6 +6,7 @@ import {
   LayoutGrid, 
   Crosshair, 
   FileText, 
+  Calculator,
   FileCode,
   ArrowLeftRight, 
   Radio, 
@@ -20,7 +21,10 @@ import {
   Plus,
   Zap,
   LogOut,
-  X
+  X,
+  Building2,
+  HardHat,
+  UserCheck
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -46,9 +50,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   // Collapsible Groups state (default all open)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     workspace: true,
-    pelaksanaan: true,
-    pengawasan: true,
-    persediaan: true,
     master: true,
   });
 
@@ -62,46 +63,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const navGroups: NavGroup[] = [
     {
       id: 'workspace',
-      title: 'WORKSPACE',
+      title: 'ALUR KERJA & EKSEKUSI',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
-        { id: 'survey', label: 'Survey', icon: Crosshair },
-        { id: 'daftung', label: 'Daftung', icon: FileText },
-      ],
-    },
-    {
-      id: 'pelaksanaan',
-      title: 'PELAKSANAAN',
-      items: [
-        { id: 'wo', label: 'Work Order', icon: FileCode },
-        { id: 'vendor', label: 'Vendor & Pengambilan', icon: ArrowLeftRight },
-      ],
-    },
-    {
-      id: 'pengawasan',
-      title: 'PENGAWASAN',
-      items: [
-        { id: 'monitoring', label: 'Monitoring Pengawas', icon: Radio },
-        { id: 'sj', label: 'Verifikasi Surat Jalan', icon: FileCheck },
-      ],
-    },
-    {
-      id: 'persediaan',
-      title: 'PERSEDIAAN',
-      items: [
-        { id: 'warehouse', label: 'Stok Gudang', icon: Server },
-        { id: 'need', label: 'Kebutuhan Material', icon: SplitSquareVertical },
-        { id: 'analysis', label: 'Analisis Material', icon: Sigma },
+        { id: 'survey', label: 'Survey Pelanggan', icon: Crosshair },
+        { id: 'daftung', label: 'Daftung (Daftar Tunggu)', icon: FileText },
+        { id: 'wo', label: 'Work Order (WO)', icon: HardHat },
       ],
     },
     {
       id: 'master',
-      title: 'MASTER & ADMINISTRASI',
+      title: 'MASTER DATA & STANDAR',
       items: [
-        { id: 'masterwo', label: 'Mapping Material per Jenis WO', icon: ArrowLeftRight },
-        { id: 'std', label: 'STD Konstruksi', icon: Layers },
-        { id: 'contract', label: 'Kontrak', icon: FileCheck2 },
-        { id: 'audit', label: 'Laporan & Riwayat', icon: Clock },
+        { id: 'vendor', label: 'Master Rekanan Vendor', icon: Building2 },
+        { id: 'pengawas', label: 'Master Pengawas', icon: UserCheck },
+        { id: 'std', label: 'Standar Konstruksi (STD)', icon: Layers },
       ],
     },
   ];
@@ -117,15 +93,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       )}
 
       <aside className={`
-        fixed top-0 bottom-0 left-0 z-40 w-64 bg-white text-slate-800 border-r border-slate-200/90 flex flex-col transition-transform duration-200 font-sans shadow-xs
+        fixed top-0 bottom-0 left-0 z-40 w-64 bg-white text-slate-800 border-r border-slate-200/90 flex flex-col transition-transform duration-200 font-sans shadow-xs print:hidden
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         {/* Brand Header */}
-        <div className="h-16 flex items-center justify-between px-5 border-b border-slate-100 bg-white">
+        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100 bg-white">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-md bg-[#fff7d6] border border-[#f5d752] flex items-center justify-center shadow-xs">
-              <Zap className="w-4 h-4 fill-[#00a2b9] text-[#e01a22]" />
-            </div>
+            <img
+              src="/Logo_PLN.png"
+              alt="Logo PLN"
+              className="h-9 w-auto object-contain shrink-0"
+            />
             <div>
               <div className="flex items-center gap-1.5 font-black text-sm text-[#0c3c60] tracking-tight">
                 PLN <span className="text-[10px] text-slate-400 font-semibold">UP3 BANTEN SELATAN</span>

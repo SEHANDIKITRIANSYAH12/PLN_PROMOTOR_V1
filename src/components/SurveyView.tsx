@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
 import { PoleData } from '@/types';
 import { GeotagMap } from '@/components/GeotagMap';
 import { Pagination } from '@/components/Pagination';
+import { calculateRabFromSurvey } from '@/data/rabMasterData';
+import { RabDocumentModal } from '@/components/RabDocumentModal';
 import {
   Plus,
   MapPin,
@@ -25,17 +27,31 @@ import {
   Sparkles,
   Calculator,
   RefreshCw,
-
+  FileText,
 } from 'lucide-react';
 
 export const SurveyView: React.FC = () => {
-  const { surveys, addSurvey, updateSurveyStatus, deleteSurvey, showToast } = usePromotorStore();
+  const { 
+    surveys, 
+    addSurvey, 
+    updateSurveyStatus, 
+    deleteSurvey, 
+    showToast, 
+    setCurrentPage,
+    setActiveDaftungTab,
+    openRabForSurvey,
+    customKhsPrices 
+  } = usePromotorStore();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDetailMode, setIsDetailMode] = useState(false);
+  const [detailSurveyId, setDetailSurveyId] = useState<string | null>(null);
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [step5Tab, setStep5Tab] = useState<'rabPaket2' | 'rabPaket1' | 'poles'>('rabPaket2');
+  const [selectedRabDoc, setSelectedRabDoc] = useState<{ survey: any; paket: 'paket1' | 'paket2' } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [surveyPage, setSurveyPage] = useState(1);
-  const [surveyPageSize, setSurveyPageSize] = useState(5);
+  const [surveyPageSize, setSurveyPageSize] = useState(10);
 
   // Selected Photo Preview Modal
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string; caption: string } | null>(null);
@@ -133,11 +149,12 @@ export const SurveyView: React.FC = () => {
     {
       id: 'TM 1',
       name: 'Tiang TM #1',
-      std: 'Tiang A1',
+      std: 'Tiang 12/200',
       networkType: 'JTM',
-      poleType: 'Tiang Beton 11m / 200 daN',
-      tmConstruction: '1B',
-      a3cs: '3x150 mm²',
+      poleType: '12/200',
+      tmConstruction: 'TM - 1B',
+      a3cs: '50 m',
+      conductorLength: 50,
       qty: 1,
       coordStr: '',
       lat: null,
@@ -151,11 +168,12 @@ export const SurveyView: React.FC = () => {
     {
       id: 'TR 1',
       name: 'Tiang TR #1',
-      std: 'Tiang A1',
+      std: 'Tiang 9/200',
       networkType: 'JTR',
-      poleType: 'Tiang Beton 9m / 200 daN',
-      trConstruction: '1B',
-      lvTwisted: 'JTR 70',
+      poleType: '9/200',
+      trConstruction: 'TR - 1B',
+      lvTwisted: '45 m',
+      conductorLength: 45,
       qty: 1,
       coordStr: '',
       lat: null,
@@ -168,6 +186,84 @@ export const SurveyView: React.FC = () => {
   // Gabungan semua tiang untuk Peta & Review
   const allPoles = [...tmPoles, ...trPoles];
 
+  // Real-time Live RAB preview from current survey form inputs
+  const previewSurveyObj = useMemo(() => {
+    return {
+      id: 'DRAFT',
+      customerName: (name.trim() || computedCustomerName || 'Survey Baru').trim(),
+      namaDasar: (name.trim() || computedCustomerName || 'Survey Baru').trim(),
+      location: (address.trim() || computedLocation || location || '-').trim(),
+      jobType: dayaLama ? 'Perubahan Daya' : 'Pasang Baru',
+      poles: allPoles,
+      jumlahUnit: parseInt(jumlahUnit) || 1,
+      dayaPerUnit: dayaBaru || daya || '1.300',
+      dayaBaru: dayaBaru || daya,
+      tarifBaru: tarifBaru || tarif,
+      garduInduk,
+      penyulang,
+      gardu,
+      ulp,
+      tipePembangunanGardu: tipeGardu,
+      tipeGardu,
+      kapasitasTrafo,
+      locationPhotos: locationPhotos.map((p) => p.url),
+      status: 'Menunggu verifikasi Daftung' as const,
+      createdAt: 'Baru saja',
+    };
+  }, [
+    name,
+    computedCustomerName,
+    address,
+    computedLocation,
+    location,
+    dayaLama,
+    allPoles,
+    jumlahUnit,
+    dayaBaru,
+    daya,
+    tarifBaru,
+    tarif,
+    garduInduk,
+    penyulang,
+    gardu,
+    ulp,
+    tipeGardu,
+    kapasitasTrafo,
+    locationPhotos,
+  ]);
+
+  const liveRabP2 = useMemo(() => calculateRabFromSurvey(previewSurveyObj, 'paket2', customKhsPrices), [previewSurveyObj, customKhsPrices]);
+  const liveRabP1 = useMemo(() => calculateRabFromSurvey(previewSurveyObj, 'paket1', customKhsPrices), [previewSurveyObj, customKhsPrices]);
+
+  const liveRabTotals = useMemo(() => {
+    const calc = (items: typeof liveRabP2) => {
+      let mat = 0;
+      let jas = 0;
+      items.forEach((it) => {
+        if (!it.isHeader) {
+          if (it.section === 'MATERIAL') mat += it.rencanaTotal;
+          else jas += it.rencanaTotal;
+        }
+      });
+      const tot = mat + jas;
+      const ppn = Math.round(tot * 0.11);
+      const grand = tot + ppn;
+      return {
+        mat,
+        jas,
+        tot,
+        ppn,
+        grand,
+        dibulatkan: Math.round(grand / 1000) * 1000,
+        activeItems: items.filter((x) => !x.isHeader && x.rencanaVol > 0),
+      };
+    };
+    return {
+      p1: calc(liveRabP1),
+      p2: calc(liveRabP2),
+    };
+  }, [liveRabP1, liveRabP2]);
+
   const addPoleRow = () => {
     if (networkTab === 'JTM') {
       const nextIdx = tmPoles.length + 1;
@@ -176,11 +272,12 @@ export const SurveyView: React.FC = () => {
         {
           id: `TM ${nextIdx}`,
           name: `Tiang TM #${nextIdx}`,
-          std: 'Tiang A1',
+          std: 'Tiang 12/200',
           networkType: 'JTM',
-          poleType: 'Tiang Beton 11m / 200 daN',
-          tmConstruction: '1B',
-          a3cs: '3x150 mm²',
+          poleType: '12/200',
+          tmConstruction: 'TM - 1B',
+          a3cs: '50 m',
+          conductorLength: 50,
           qty: 1,
           coordStr: '',
           lat: null,
@@ -196,11 +293,12 @@ export const SurveyView: React.FC = () => {
         {
           id: `TR ${nextIdx}`,
           name: `Tiang TR #${nextIdx}`,
-          std: 'Tiang A1',
+          std: 'Tiang 9/200',
           networkType: 'JTR',
-          poleType: 'Tiang Beton 9m / 200 daN',
-          trConstruction: '1B',
-          lvTwisted: 'JTR 70',
+          poleType: '9/200',
+          trConstruction: 'TR - 1B',
+          lvTwisted: '45 m',
+          conductorLength: 45,
           qty: 1,
           coordStr: '',
           lat: null,
@@ -313,7 +411,7 @@ export const SurveyView: React.FC = () => {
     const finalLocation = (address.trim() || computedLocation || location).trim();
 
     if (!finalCustomerName || !finalLocation) {
-      showToast('Nama pelanggan dan alamat lokasi pekerjaan wajib diisi');
+      showToast('Nama pekerjaan dan alamat lokasi pekerjaan wajib diisi');
       return;
     }
 
@@ -349,6 +447,8 @@ export const SurveyView: React.FC = () => {
       locationPhotos: locationPhotos.map((lp) => lp.url),
     });
 
+    showToast(`✓ Survey berhasil dibuat! Output RAB Paket 1 (JTM) & Paket 2 (JTR) otomatis diterbitkan.`);
+
     // Reset Form
     setIsModalOpen(false);
     setStep(1);
@@ -380,11 +480,12 @@ export const SurveyView: React.FC = () => {
       {
         id: 'TM 1',
         name: 'Tiang TM #1',
-        std: 'Tiang A1',
+        std: 'Tiang 12/200',
         networkType: 'JTM',
-        poleType: 'Tiang Beton 11m / 200 daN',
-        tmConstruction: '1B',
-        a3cs: '3x150 mm²',
+        poleType: '12/200',
+        tmConstruction: 'TM - 1B',
+        a3cs: '50 m',
+        conductorLength: 50,
         qty: 1,
         coordStr: '',
         lat: null,
@@ -397,11 +498,12 @@ export const SurveyView: React.FC = () => {
       {
         id: 'TR 1',
         name: 'Tiang TR #1',
-        std: 'Tiang A1',
+        std: 'Tiang 9/200',
         networkType: 'JTR',
-        poleType: 'Tiang Beton 9m / 200 daN',
-        trConstruction: '1B',
-        lvTwisted: 'JTR 70',
+        poleType: '9/200',
+        trConstruction: 'TR - 1B',
+        lvTwisted: '45 m',
+        conductorLength: 45,
         qty: 1,
         coordStr: '',
         lat: null,
@@ -429,30 +531,50 @@ export const SurveyView: React.FC = () => {
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-base font-bold text-slate-900">Survey Lapangan & Geotagging Tiang</h2>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+              Tahap 1: Alur Utama
+            </span>
+            <span className="text-xs text-slate-400 font-medium">
+              Survey Pelanggan ➔ Daftar Tunggu (Daftung) ➔ Work Order
+            </span>
+          </div>
+          <h2 className="text-base font-bold text-slate-900">Survey Pelanggan & Geotagging Tiang</h2>
           <p className="text-xs text-slate-500">
-            Pendataan calon pelanggan, penentuan posisi GPS tiang, dokumentasi foto, dan plotting peta otomatis.
+            Lakukan survey lapangan pelanggan terlebih dahulu untuk menentukan rincian teknis tiang/kabel dan RAB. Setelah selesai, data dikirim ke Daftar Tunggu (Daftung / AP2T).
           </p>
         </div>
-        <button
-          onClick={() => {
-            setName('');
-            setNamaDasar('');
-            setIdpel('');
-            setDayaLama('');
-            setTarifLama('');
-            setDayaBaru('1.300');
-            setTarifBaru('R1T');
-            setAddress('');
-            setLocation('');
-            setOfficer('Petugas Lapangan');
-            setIsModalOpen(true);
-            setStep(1);
-          }}
-          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition shadow-xs flex items-center justify-center gap-2"
-        >
-          <Plus className="w-4 h-4" /> ＋ Survey Baru
-        </button>
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setCurrentPage('daftung')}
+            className="px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+            title="Lanjut ke menu Daftar Tunggu"
+          >
+            <span>Ke Daftar Tunggu →</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsDetailMode(false);
+              setDetailSurveyId(null);
+              setName('');
+              setNamaDasar('');
+              setIdpel('');
+              setDayaLama('');
+              setTarifLama('');
+              setDayaBaru('1.300');
+              setTarifBaru('R1T');
+              setAddress('');
+              setLocation('');
+              setOfficer('Petugas Lapangan');
+              setIsModalOpen(true);
+              setStep(1);
+            }}
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" /> ＋ Survey Baru
+          </button>
+        </div>
       </div>
 
       {/* Filter and Table */}
@@ -462,7 +584,7 @@ export const SurveyView: React.FC = () => {
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Cari pelanggan, nomor survey, atau lokasi..."
+              placeholder="Cari nama pekerjaan, nomor survey, atau lokasi..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -482,7 +604,7 @@ export const SurveyView: React.FC = () => {
               <tr className="divide-x divide-blue-200">
                 <th className="py-3.5 px-4">No. Survey</th>
                 <th className="py-3.5 px-4">IDPEL</th>
-                <th className="py-3.5 px-4">Nama Pelanggan</th>
+                <th className="py-3.5 px-4">Nama Pekerjaan</th>
                 <th className="py-3.5 px-4">Lokasi</th>
                 <th className="py-3.5 px-4">Status</th>
                 <th className="py-3.5 px-4 text-center">Aksi</th>
@@ -517,6 +639,8 @@ export const SurveyView: React.FC = () => {
                     <div className="flex items-center justify-center gap-1.5">
                       <button
                         onClick={() => {
+                          setIsDetailMode(true);
+                          setDetailSurveyId(s.id);
                           const tm = s.poles.filter((p) => (p.networkType || 'JTM') === 'JTM' || p.networkType === 'SUTM');
                           const tr = s.poles.filter((p) => p.networkType === 'JTR' || p.networkType === 'SUTR');
                           setTmPoles(tm.length > 0 ? tm : []);
@@ -558,24 +682,64 @@ export const SurveyView: React.FC = () => {
                         Detail
                       </button>
 
+                      {/* 1 Tombol Dokumen RAB */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const initialPaket = s.poles?.some((p) => p.networkType === 'JTM' || p.id.startsWith('TM'))
+                            ? 'paket1'
+                            : 'paket2';
+                          setSelectedRabDoc({ survey: s, paket: initialPaket });
+                        }}
+                        className="px-3 py-1.5 text-xs text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-bold rounded-lg transition border border-indigo-300 flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                        title="Buka Dokumen RAB (Paket 1 & Paket 2)"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>RAB</span>
+                      </button>
+
                       {s.status === 'Menunggu verifikasi Daftung' && (
                         <button
                           onClick={() => {
                             updateSurveyStatus(s.id, 'Masuk Antrean AP2T');
-                            showToast(`✓ Survey ${s.id} berhasil dikirim ke Antrean AP2T Daftung`);
+                            setActiveDaftungTab('ap2t');
+                            showToast(`✓ Survey ${s.id} masuk ke Daftung (Menunggu Verifikasi AP2T)`);
                           }}
                           className="px-3 py-1.5 text-xs text-white bg-blue-600 hover:bg-blue-500 font-bold rounded-lg transition shadow-xs flex items-center gap-1.5 cursor-pointer"
-                          title="Kirim survey ini ke antrean pencocokan AP2T Daftung"
+                          title="Kirim survey ini ke Daftung untuk Verifikasi AP2T"
                         >
-                          <span>Kirim ke Antrean AP2T →</span>
+                          <span>Kirim ke Daftung →</span>
                         </button>
                       )}
 
                       {s.status === 'Masuk Antrean AP2T' && (
-                        <span className="text-[11px] text-amber-800 font-bold bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveDaftungTab('ap2t');
+                            setCurrentPage('daftung');
+                          }}
+                          className="px-2.5 py-1.5 text-xs text-amber-800 font-bold bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 flex items-center gap-1.5 transition cursor-pointer"
+                          title="Buka Verifikasi AP2T di menu Daftung"
+                        >
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                          <span>Di Antrean AP2T</span>
-                        </span>
+                          <span>Verifikasi AP2T →</span>
+                        </button>
+                      )}
+
+                      {s.status === 'Terverifikasi' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveDaftungTab('daftung');
+                            setCurrentPage('daftung');
+                          }}
+                          className="px-2.5 py-1.5 text-xs text-emerald-800 font-bold bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 flex items-center gap-1.5 transition cursor-pointer"
+                          title="Buka data resmi di Daftar Tunggu"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Masuk Daftung ✓</span>
+                        </button>
                       )}
 
                       <button
@@ -616,9 +780,11 @@ export const SurveyView: React.FC = () => {
             {/* Modal Header */}
             <div className="p-4 px-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div>
-                <h3 className="font-bold text-slate-900 text-sm">Form Survey Lapangan & Geotagging</h3>
+                <h3 className="font-bold text-slate-900 text-sm">
+                  {isDetailMode ? `Detail Data Survey: ${detailSurveyId || ''} (${name})` : 'Form Survey Lapangan & Geotagging'}
+                </h3>
                 <p className="text-[11px] text-slate-500">
-                  Tahap {step} dari 5: {step === 1 ? 'Data Pelanggan' : step === 2 ? 'Data Teknis' : step === 3 ? 'Survey Lapangan & Koordinat' : step === 4 ? 'Peta & Hasil Tagging' : 'Review & Simpan'}
+                  Tahap {step} dari 5: {step === 1 ? 'Data Pelanggan' : step === 2 ? 'Data Teknis' : step === 3 ? 'Survey Lapangan & Koordinat' : step === 4 ? 'Peta & Hasil Tagging' : isDetailMode ? 'Detail Survey & Foto' : 'Detail Survey & Simpan'}
                 </p>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 p-1">
@@ -656,7 +822,7 @@ export const SurveyView: React.FC = () => {
                 onClick={() => setStep(5)}
                 className={`flex-1 py-2.5 px-3 text-center border-b-2 whitespace-nowrap transition ${step === 5 ? 'border-blue-600 text-blue-600 bg-white' : 'border-transparent text-slate-500'}`}
               >
-                5. Review & Simpan
+                {isDetailMode ? '5. Detail & Foto' : '5. Detail & Simpan'}
               </button>
             </div>
 
@@ -684,10 +850,10 @@ export const SurveyView: React.FC = () => {
                       />
                     </div>
 
-                    {/* Nama Pelanggan */}
+                    {/* Nama Pekerjaan */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl sm:col-span-2">
                       <label className="block font-bold text-slate-800 text-xs mb-1.5">
-                        Nama Pelanggan *
+                        Nama Pekerjaan *
                       </label>
                       <input
                         type="text"
@@ -696,7 +862,7 @@ export const SurveyView: React.FC = () => {
                           setName(e.target.value);
                           setNamaDasar(e.target.value);
                         }}
-                        placeholder="Contoh: PERUMAHAN MUTIARA MAJA CLUSTER BERYL 212 X 1.300 VA"
+                        placeholder="Contoh: Pembangunan SUTR Untuk PB / PERUMAHAN MUTIARA MAJA 212 X 1.300 VA"
                         className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                       />
                     </div>
@@ -833,88 +999,114 @@ export const SurveyView: React.FC = () => {
                       />
                     </div>
 
-                    {/* Baris 24: ULP */}
+                    {/* Baris 24: ULP (Dropdown) */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <label className="block font-bold text-slate-800 text-xs mb-1.5">
                         ULP *
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={ulp}
                         onChange={(e) => setUlp(e.target.value)}
-                        placeholder="Contoh: ULP Rangkasbitung"
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                      />
+                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="ULP Rangkasbitung">ULP Rangkasbitung</option>
+                        <option value="ULP Pandeglang">ULP Pandeglang</option>
+                        <option value="ULP Malingping">ULP Malingping</option>
+                        <option value="ULP Labuan">ULP Labuan</option>
+                      </select>
                     </div>
 
-                    {/* Baris 26: Perluasan JTM */}
+                    {/* Baris 26: Perluasan JTM (Dropdown) */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <label className="block font-bold text-slate-800 text-xs mb-1.5">
                         Perluasan JTM
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={perluasanJTM}
                         onChange={(e) => setPerluasanJTM(e.target.value)}
-                        placeholder="Kosongkan jika tidak ada"
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                      />
+                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="">— Kosongkan / Tidak Ada —</option>
+                        <option value="SUTM">SUTM</option>
+                        <option value="SKUTM (MVTIC)">SKUTM (MVTIC)</option>
+                        <option value="SKTM">SKTM</option>
+                      </select>
                     </div>
 
-                    {/* Baris 27: Tipe Pembangunan Gardu */}
+                    {/* Baris 27: Tipe Pembangunan Gardu (Dropdown) */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <label className="block font-bold text-slate-800 text-xs mb-1.5">
                         Tipe Pembangunan Gardu
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={tipeGardu}
                         onChange={(e) => setTipeGardu(e.target.value)}
-                        placeholder="Contoh: Portal / Cantol / Beton"
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                      />
+                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="">— Kosongkan / Tidak Ada —</option>
+                        <option value="Gardu Cantol Distribusi">Gardu Cantol Distribusi</option>
+                        <option value="Gardu Cantol Khusus">Gardu Cantol Khusus</option>
+                        <option value="Gardu Portal Distribusi">Gardu Portal Distribusi</option>
+                        <option value="Gardu Portal Khusus">Gardu Portal Khusus</option>
+                        <option value="Gardu Portal RMU">Gardu Portal RMU</option>
+                      </select>
                     </div>
 
-                    {/* Baris 28: Kapasitas Trafo */}
+                    {/* Baris 28: Kapasitas Trafo (Dropdown) */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <label className="block font-bold text-slate-800 text-xs mb-1.5">
                         Kapasitas Trafo
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={kapasitasTrafo}
                         onChange={(e) => setKapasitasTrafo(e.target.value)}
-                        placeholder="Contoh: 250 kVA"
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono"
-                      />
+                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono"
+                      >
+                        <option value="">— Kosongkan / Tidak Ada —</option>
+                        <option value="25 kVA">25 kVA</option>
+                        <option value="50 kVA">50 kVA</option>
+                        <option value="100 kVA">100 kVA</option>
+                        <option value="160 kVA">160 kVA</option>
+                        <option value="200 kVA">200 kVA</option>
+                        <option value="250 kVA">250 kVA</option>
+                        <option value="400 kVA">400 kVA</option>
+                        <option value="630 kVA">630 kVA</option>
+                      </select>
                     </div>
 
-                    {/* Baris 29: Jumlah Kabel Naik */}
+                    {/* Baris 29: Jumlah Kabel Naik (Dropdown) */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <label className="block font-bold text-slate-800 text-xs mb-1.5">
                         Jumlah Kabel Naik
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={jumlahKabelNaik}
                         onChange={(e) => setJumlahKabelNaik(e.target.value)}
-                        placeholder="Contoh: 2 Jurusan"
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                      />
+                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono"
+                      >
+                        <option value="">— Kosongkan / Tidak Ada —</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                      </select>
                     </div>
 
-                    {/* Baris 30: Perluasan JTR */}
+                    {/* Baris 30: Perluasan JTR (Dropdown) */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl sm:col-span-2">
                       <label className="block font-bold text-slate-800 text-xs mb-1.5">
                         Perluasan JTR
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={perluasanJTR}
                         onChange={(e) => setPerluasanJTR(e.target.value)}
-                        placeholder="Kosongkan jika tidak ada"
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                      />
+                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="">— Kosongkan / Tidak Ada —</option>
+                        <option value="SUTR">SUTR</option>
+                        <option value="SKUTR">SKUTR</option>
+                        <option value="SKTR">SKTR</option>
+                      </select>
                     </div>
 
                     {/* Baris 32: Mutasi Trafo Distribusi Header */}
@@ -925,32 +1117,48 @@ export const SurveyView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Baris 33: Trafo Lama */}
+                    {/* Baris 33: Trafo Lama (Dropdown - Sama dengan Kapasitas Trafo) */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <label className="block font-bold text-slate-800 text-xs mb-1.5">
-                        Trafo Lama
+                        Mutasi: Trafo Lama
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={trafoLama}
                         onChange={(e) => setTrafoLama(e.target.value)}
-                        placeholder="Kosongkan jika tidak ada mutasi"
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono"
-                      />
+                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono"
+                      >
+                        <option value="">— Kosongkan jika tidak ada mutasi —</option>
+                        <option value="25 kVA">25 kVA</option>
+                        <option value="50 kVA">50 kVA</option>
+                        <option value="100 kVA">100 kVA</option>
+                        <option value="160 kVA">160 kVA</option>
+                        <option value="200 kVA">200 kVA</option>
+                        <option value="250 kVA">250 kVA</option>
+                        <option value="400 kVA">400 kVA</option>
+                        <option value="630 kVA">630 kVA</option>
+                      </select>
                     </div>
 
-                    {/* Baris 34: Trafo Baru */}
+                    {/* Baris 34: Trafo Baru (Dropdown - Sama dengan Kapasitas Trafo) */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <label className="block font-bold text-slate-800 text-xs mb-1.5">
-                        Trafo Baru
+                        Mutasi: Trafo Baru
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={trafoBaru}
                         onChange={(e) => setTrafoBaru(e.target.value)}
-                        placeholder="Kosongkan jika tidak ada mutasi"
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono"
-                      />
+                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono"
+                      >
+                        <option value="">— Kosongkan jika tidak ada mutasi —</option>
+                        <option value="25 kVA">25 kVA</option>
+                        <option value="50 kVA">50 kVA</option>
+                        <option value="100 kVA">100 kVA</option>
+                        <option value="160 kVA">160 kVA</option>
+                        <option value="200 kVA">200 kVA</option>
+                        <option value="250 kVA">250 kVA</option>
+                        <option value="400 kVA">400 kVA</option>
+                        <option value="630 kVA">630 kVA</option>
+                      </select>
                     </div>
 
                     {/* Baris 36: Gardu Beton Distribusi Header */}
@@ -961,32 +1169,38 @@ export const SurveyView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Baris 37: Jenis Pekerjaan */}
+                    {/* Baris 37: Jenis Pekerjaan (Dropdown) */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <label className="block font-bold text-slate-800 text-xs mb-1.5">
-                        Jenis Pekerjaan
+                        Gardu Beton: Jenis Pekerjaan
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={jenisPekerjaanGardu}
                         onChange={(e) => setJenisPekerjaanGardu(e.target.value)}
-                        placeholder="Contoh: Pemasangan Baru / Sipil Gardu Beton"
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                      />
+                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="">— Kosongkan jika tidak ada —</option>
+                        <option value="Pemasangan Instalasi Gardu">Pemasangan Instalasi Gardu</option>
+                        <option value="Bongkar Pasang CT TM Gardu">Bongkar Pasang CT TM Gardu</option>
+                      </select>
                     </div>
 
-                    {/* Baris 38: Jumlah Kubikel LBS */}
+                    {/* Baris 38: Jumlah Kubikel LBS (Dropdown) */}
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <label className="block font-bold text-slate-800 text-xs mb-1.5">
                         Jumlah Kubikel LBS
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={jumlahKubikelLBS}
                         onChange={(e) => setJumlahKubikelLBS(e.target.value)}
-                        placeholder="Contoh: 2 Unit LBS"
-                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono"
-                      />
+                        className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono"
+                      >
+                        <option value="">— Kosongkan jika tidak ada —</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -1133,16 +1347,16 @@ export const SurveyView: React.FC = () => {
                                 <th className="py-3.5 px-3 w-[26%]">Tiang</th>
                                 {networkTab === 'JTM' ? (
                                   <>
-                                    <th className="py-3.5 px-3 w-[20%]">Konstruksi TM</th>
-                                    <th className="py-3.5 px-3 w-[16%]">A3CS</th>
+                                    <th className="py-3.5 px-3 w-[28%]">Konstruksi TM (Standar)</th>
+                                    <th className="py-3.5 px-3 w-[16%] text-center">A3CS (m)</th>
                                   </>
                                 ) : (
                                   <>
-                                    <th className="py-3.5 px-3 w-[20%]">Konstruksi TR</th>
-                                    <th className="py-3.5 px-3 w-[16%]">JTR 70</th>
+                                    <th className="py-3.5 px-3 w-[28%]">Konstruksi TR (Standar)</th>
+                                    <th className="py-3.5 px-3 w-[16%] text-center">JTR 70 (m)</th>
                                   </>
                                 )}
-                                <th className="py-3.5 px-3 w-[24%]">Koordinat GPS (Lat, Long)</th>
+                                <th className="py-3.5 px-3 w-[16%]">Koordinat GPS (Lat, Long)</th>
                                 <th className="py-3.5 px-2 w-[6%] text-center">Aksi</th>
                               </tr>
                             </thead>
@@ -1161,7 +1375,7 @@ export const SurveyView: React.FC = () => {
                                   {/* 1. Input Tiang */}
                                   <td className="py-3 px-3">
                                     <select
-                                      value={p.poleType || (networkTab === 'JTM' ? 'Tiang Beton 11m / 200 daN' : 'Tiang Beton 9m / 200 daN')}
+                                      value={p.poleType || (networkTab === 'JTM' ? '12/200' : '9/200')}
                                       onChange={(e) => {
                                         if (networkTab === 'JTM') {
                                           const updated = [...tmPoles];
@@ -1178,22 +1392,24 @@ export const SurveyView: React.FC = () => {
                                       <option value="">Pilih Tiang</option>
                                       {networkTab === 'JTM' ? (
                                         <>
-                                          <option>Tiang Beton 11m / 200 daN</option>
-                                          <option>Tiang Beton 11m / 350 daN</option>
-                                          <option>Tiang Beton 11m / 500 daN</option>
-                                          <option>Tiang Beton 12m / 350 daN</option>
-                                          <option>Tiang Beton 13m / 350 daN</option>
-                                          <option>Tiang Beton 14m / 350 daN</option>
-                                          <option>Tiang Besi 11m</option>
-                                          <option>Tiang Besi 12m</option>
+                                          <option value="12/200">12/200</option>
+                                          <option value="12/350">12/350</option>
+                                          <option value="12/350 (GARDU)">12/350 (GARDU)</option>
+                                          <option value="11/200">11/200</option>
+                                          <option value="11/350">11/350</option>
+                                          <option value="11/500">11/500</option>
+                                          <option value="13/350">13/350</option>
+                                          <option value="14/350">14/350</option>
+                                          <option value="Tiang Besi 11m">Tiang Besi 11m</option>
+                                          <option value="Tiang Besi 12m">Tiang Besi 12m</option>
                                         </>
                                       ) : (
                                         <>
-                                          <option>Tiang Beton 9m / 200 daN</option>
-                                          <option>Tiang Beton 9m / 350 daN</option>
-                                          <option>Tiang Beton 11m / 200 daN</option>
-                                          <option>Tiang Besi 9m</option>
-                                          <option>Tiang Besi 11m</option>
+                                          <option value="9/200">9/200</option>
+                                          <option value="9/350">9/350</option>
+                                          <option value="11/200">11/200</option>
+                                          <option value="Tiang Besi 9m">Tiang Besi 9m</option>
+                                          <option value="Tiang Besi 11m">Tiang Besi 11m</option>
                                         </>
                                       )}
                                     </select>
@@ -1205,7 +1421,7 @@ export const SurveyView: React.FC = () => {
                                       {/* Input Konstruksi TM */}
                                       <td className="py-3 px-3">
                                         <select
-                                          value={p.tmConstruction || '1B'}
+                                          value={p.tmConstruction || 'TM - 1B'}
                                           onChange={(e) => {
                                             const updated = [...tmPoles];
                                             updated[idx].tmConstruction = e.target.value;
@@ -1214,49 +1430,51 @@ export const SurveyView: React.FC = () => {
                                           className="w-full p-2 border border-slate-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-medium"
                                         >
                                           <option value="">Pilih Konstruksi TM</option>
-                                          <option value="1B">1B (Tumpu)</option>
-                                          <option value="2B">2B (Sudut Kecil)</option>
-                                          <option value="3B">3B (Sudut Besar)</option>
-                                          <option value="4B">4B (Tegang Akhir)</option>
-                                          <option value="5B">5B (Awal / Akhir)</option>
-                                          <option value="6B">6B (Cabang)</option>
-                                          <option value="7B">7B (Double Arm)</option>
-                                          <option value="8B">8B (Transposisi)</option>
-                                          <option value="9B">9B (Portal TM)</option>
-                                          <option value="10B">10B (Section)</option>
-                                          <option value="11B">11B (+ LA 3)</option>
-                                          <option value="12B">12B (+ LA 3)</option>
-                                          <option value="13B">13B</option>
-                                          <option value="14B">14B</option>
-                                          <option value="GARDU CANTOL">GARDU CANTOL</option>
-                                          <option value="GARDU PORTAL">GARDU PORTAL</option>
+                                          <option value="TM - 1B">TM - 1B (Tumpu)</option>
+                                          <option value="TM - 2B">TM - 2B (Sudut Kecil)</option>
+                                          <option value="TM - 3B">TM - 3B (Sudut Sedang)</option>
+                                          <option value="TM - 4B">TM - 4B (Sudut Besar)</option>
+                                          <option value="TM - 5B">TM - 5B (Awal / Akhir)</option>
+                                          <option value="TM - 6B">TM - 6B (Cabang)</option>
+                                          <option value="TM - 7B">TM - 7B (Double Arm)</option>
+                                          <option value="TM - 8B">TM - 8B (Transposisi)</option>
+                                          <option value="TM - 9B">TM - 9B (Portal TM)</option>
+                                          <option value="TM - 10B">TM - 10B (Section)</option>
+                                          <option value="TM - 11B">TM - 11B (+ LA 3)</option>
+                                          <option value="TM - 12B">TM - 12B (+ LA 3)</option>
+                                          <option value="TM - 13B">TM - 13B</option>
+                                          <option value="TM - 14B">TM - 14B</option>
+                                          <option value="GARDU CANTOL DISTRIBUSI">GARDU CANTOL DISTRIBUSI</option>
+                                          <option value="GARDU CANTOL KHUSUS">GARDU CANTOL KHUSUS</option>
+                                          <option value="GARDU PORTAL DISTRIBUSI">GARDU PORTAL DISTRIBUSI</option>
+                                          <option value="GARDU PORTAL KHUSUS">GARDU PORTAL KHUSUS</option>
                                           <option value="GARDU PORTAL RMU">GARDU PORTAL RMU</option>
                                           <option value="GARDU BETON">GARDU BETON</option>
                                           <option value="STAYSET">STAYSET</option>
+                                          <option value="KONTRAMASK">KONTRAMASK</option>
                                           <option value="CO AFTAK">CO AFTAK</option>
                                         </select>
                                       </td>
 
-                                      {/* Input A3CS */}
+                                      {/* Input A3CS (meter) - Kolom D Baris 41 Master Excel */}
                                       <td className="py-3 px-3">
-                                        <select
-                                          value={p.a3cs || '3x150 mm²'}
-                                          onChange={(e) => {
-                                            const updated = [...tmPoles];
-                                            updated[idx].a3cs = e.target.value;
-                                            setTmPoles(updated);
-                                          }}
-                                          className="w-full p-2 border border-slate-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-medium"
-                                        >
-                                          <option value="">Pilih A3CS</option>
-                                          <option>3x150 mm² (Span Standar)</option>
-                                          <option>3x240 mm² (Span Standar)</option>
-                                          <option>1x150 mm²</option>
-                                          <option>1x240 mm²</option>
-                                          <option>3x70 mm²</option>
-                                          <option>A3C 150 mm² (Non-Insulated)</option>
-                                          <option>Tanpa Tarikan Kabel</option>
-                                        </select>
+                                        <div className="relative flex items-center">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            value={p.conductorLength ?? (p.a3cs ? parseFloat(p.a3cs) : 50)}
+                                            onChange={(e) => {
+                                              const val = parseFloat(e.target.value) || 0;
+                                              const updated = [...tmPoles];
+                                              updated[idx].conductorLength = val;
+                                              updated[idx].a3cs = `${val} m`;
+                                              setTmPoles(updated);
+                                            }}
+                                            className="w-full p-2 pr-7 border border-slate-200 rounded-xl text-xs text-center font-mono font-bold text-blue-700 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                                            placeholder="50"
+                                          />
+                                          <span className="absolute right-2.5 text-[11px] font-bold text-slate-400 pointer-events-none">m</span>
+                                        </div>
                                       </td>
                                     </>
                                   ) : (
@@ -1264,7 +1482,7 @@ export const SurveyView: React.FC = () => {
                                       {/* Input Konstruksi TR */}
                                       <td className="py-3 px-3">
                                         <select
-                                          value={p.trConstruction || '1B'}
+                                          value={p.trConstruction || 'TR - 1B'}
                                           onChange={(e) => {
                                             const updated = [...trPoles];
                                             updated[idx].trConstruction = e.target.value;
@@ -1273,42 +1491,42 @@ export const SurveyView: React.FC = () => {
                                           className="w-full p-2 border border-slate-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-medium"
                                         >
                                           <option value="">Pilih Konstruksi TR</option>
-                                          <option value="1B">1B (Tumpu TR)</option>
-                                          <option value="2B">2B (Sudut Kecil TR)</option>
-                                          <option value="3B">3B</option>
-                                          <option value="4B">4B</option>
-                                          <option value="5B">5B</option>
-                                          <option value="6B">6B</option>
-                                          <option value="7B">7B</option>
-                                          <option value="8B">8B</option>
-                                          <option value="9B">9B</option>
-                                          <option value="10B AWAL">10B AWAL (Tegang Awal TR)</option>
-                                          <option value="10B AKHIR">10B AKHIR (Tegang Akhir TR)</option>
-                                          <option value="11B">11B</option>
-                                          <option value="PEMBUMIAN">PEMBUMIAN</option>
+                                          <option value="TR - 1B">TR - 1B (Tumpu TR)</option>
+                                          <option value="TR - 2B">TR - 2B (Sudut Kecil TR)</option>
+                                          <option value="TR - 3B">TR - 3B (Sudut Sedang TR)</option>
+                                          <option value="TR - 4B">TR - 4B</option>
+                                          <option value="TR - 5B">TR - 5B</option>
+                                          <option value="TR - 6B">TR - 6B</option>
+                                          <option value="TR - 7B">TR - 7B</option>
+                                          <option value="TR - 8B">TR - 8B</option>
+                                          <option value="TR - 9B">TR - 9B</option>
+                                          <option value="TR - 10B AWAL">TR - 10B AWAL (Tegang Awal TR)</option>
+                                          <option value="TR - 10 B AKHIR">TR - 10 B AKHIR (Tegang Akhir TR)</option>
+                                          <option value="TR - 11B">TR - 11B (Tiang Akhir Kabel TR)</option>
+                                          <option value="PEMBUMIAN TR">PEMBUMIAN TR</option>
                                           <option value="STAY SET TR">STAY SET TR</option>
                                         </select>
                                       </td>
 
-                                      {/* Input JTR 70 (Kabel TR) */}
+                                      {/* Input JTR 70 (meter) - Kolom D Baris 121 Master Excel */}
                                       <td className="py-3 px-3">
-                                        <select
-                                          value={p.lvTwisted || 'JTR 70'}
-                                          onChange={(e) => {
-                                            const updated = [...trPoles];
-                                            updated[idx].lvTwisted = e.target.value;
-                                            setTrPoles(updated);
-                                          }}
-                                          className="w-full p-2 border border-slate-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-medium"
-                                        >
-                                          <option value="">Pilih JTR</option>
-                                          <option value="JTR 70">JTR 70 (3x70 + 1x50 mm²)</option>
-                                          <option value="JTR 35">JTR 35 (3x35 + 1x25 mm²)</option>
-                                          <option value="JTR 50">JTR 50 (3x50 + 1x35 mm²)</option>
-                                          <option value="JTR 25">JTR 25 (3x25 + 1x25 mm²)</option>
-                                          <option value="2x16 mm²">2x16 mm² (Sambungan Rumah)</option>
-                                          <option value="Tanpa JTR">Tanpa JTR</option>
-                                        </select>
+                                        <div className="relative flex items-center">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            value={p.conductorLength ?? (p.lvTwisted ? parseFloat(p.lvTwisted) : 45)}
+                                            onChange={(e) => {
+                                              const val = parseFloat(e.target.value) || 0;
+                                              const updated = [...trPoles];
+                                              updated[idx].conductorLength = val;
+                                              updated[idx].lvTwisted = `${val} m`;
+                                              setTrPoles(updated);
+                                            }}
+                                            className="w-full p-2 pr-7 border border-slate-200 rounded-xl text-xs text-center font-mono font-bold text-emerald-700 bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
+                                            placeholder="45"
+                                          />
+                                          <span className="absolute right-2.5 text-[11px] font-bold text-slate-400 pointer-events-none">m</span>
+                                        </div>
                                       </td>
                                     </>
                                   )}
@@ -1409,7 +1627,7 @@ export const SurveyView: React.FC = () => {
                   {/* Customer summary */}
                   <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                     <div className="sm:col-span-2">
-                      <span className="text-[10px] text-slate-400 block font-semibold">Nama Pelanggan:</span>
+                      <span className="text-[10px] text-slate-400 block font-semibold">Nama Pekerjaan:</span>
                       <b className="text-slate-900 text-xs">{name || computedCustomerName || '-'}</b>
                     </div>
                     <div>
@@ -1470,97 +1688,128 @@ export const SurveyView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Table review */}
-                  <div className="border border-slate-200 rounded-xl overflow-hidden">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead className="bg-slate-50 text-slate-700 font-semibold text-[11px] border-b border-slate-200">
-                        <tr className="divide-x divide-slate-200">
-                          <th className="p-2.5">No</th>
-                          <th className="p-2.5">Jaringan & Tiang</th>
-                          <th className="p-2.5">Konstruksi</th>
-                          <th className="p-2.5">Kabel Konduktor</th>
-                          <th className="p-2.5">Koordinat (GPS)</th>
-                          <th className="p-2.5">Keterangan</th>
-                          <th className="p-2.5 text-center">Foto</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200">
-                        {allPoles.map((p, idx) => (
-                          <tr key={idx} className="divide-x divide-slate-200">
-                            <td className="p-2.5 font-bold text-slate-800">{p.id}</td>
-                            <td className="p-2.5">
-                              <div className="font-semibold text-slate-800">{p.poleType || 'Tiang Beton 11m'}</div>
-                              <span className={`inline-block mt-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                                ((p.networkType || 'JTM') === 'JTM' || p.networkType === 'SUTM') ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
-                              }`}>
-                                {((p.networkType || 'JTM') === 'JTM' || p.networkType === 'SUTM') ? 'JTM' : 'JTR'}
-                              </span>
-                            </td>
-                            <td className="p-2.5">
-                              {((p.networkType || 'JTM') === 'JTM' || p.networkType === 'SUTM') ? (
-                                <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-800 font-bold border border-purple-200 text-[10px]">
-                                  TM: {p.tmConstruction || '1B'}
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold border border-emerald-200 text-[10px]">
-                                  TR: {p.trConstruction || '1B'}
-                                </span>
-                              )}
-                            </td>
-                            <td className="p-2.5 text-slate-700">
-                              {((p.networkType || 'JTM') === 'JTM' || p.networkType === 'SUTM') ? (p.a3cs || '3x150 mm²') : (p.lvTwisted || 'JTR 70')}
-                            </td>
-                            <td className="p-2.5 font-mono text-[11px]">
-                              {p.lat && p.lng ? (
-                                <span className="text-blue-700 font-bold">{p.lat.toFixed(6)}, {p.lng.toFixed(6)}</span>
-                              ) : (
-                                <span className="text-amber-600">Belum ada GPS</span>
-                              )}
-                            </td>
-                            <td className="p-2.5 text-slate-600">{p.note || '—'}</td>
-                            <td className="p-2.5">
-                              {p.photo ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewPhoto({ url: p.photo!, title: `Foto ${p.name}`, caption: p.note || p.std })}
-                                  className="text-blue-600 font-semibold hover:underline flex items-center gap-1 text-[11px]"
-                                >
-                                  <Camera className="w-3 h-3" /> Lihat Foto
-                                </button>
-                              ) : (
-                                <span className="text-slate-400 text-[11px]">—</span>
-                              )}
-                            </td>
+                  {/* Peta Jalur & Hasil Geotagging Tiang */}
+                  <div className="space-y-3 p-4 bg-white border border-slate-200 rounded-xl shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-blue-600" />
+                        <span className="font-bold text-slate-800 text-xs">
+                          Peta Jalur & Geotagging Titik Tiang ({allPoles.length} Titik Tiang)
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 font-medium">
+                        Peta Satelit Hybrid & Koordinat GPS
+                      </span>
+                    </div>
+
+                    {/* Leaflet Geotag Map */}
+                    <div className="rounded-xl overflow-hidden border border-slate-200">
+                      <GeotagMap
+                        poles={allPoles}
+                        onViewPhoto={(url, title, caption) => setPreviewPhoto({ url, title, caption })}
+                      />
+                    </div>
+
+                    {/* Tabel Rincian Titik Tiang */}
+                    <div className="border border-slate-200 rounded-xl overflow-hidden mt-3">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead className="bg-slate-50 text-slate-700 font-semibold text-[11px] border-b border-slate-200">
+                          <tr className="divide-x divide-slate-200">
+                            <th className="p-2.5">No</th>
+                            <th className="p-2.5">Jaringan & Tiang</th>
+                            <th className="p-2.5">Konstruksi</th>
+                            <th className="p-2.5">A3CS / JTR 70 (m)</th>
+                            <th className="p-2.5">Koordinat (GPS)</th>
+                            <th className="p-2.5">Keterangan</th>
+                            <th className="p-2.5 text-center">Foto</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {allPoles.map((p, idx) => (
+                            <tr key={idx} className="divide-x divide-slate-200 hover:bg-slate-50/60 transition">
+                              <td className="p-2.5 font-bold text-slate-800">{p.id}</td>
+                              <td className="p-2.5">
+                                <div className="font-semibold text-slate-800">{p.poleType || 'Tiang Beton 11m'}</div>
+                                <span className={`inline-block mt-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                  ((p.networkType || 'JTM') === 'JTM' || p.networkType === 'SUTM') ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                                }`}>
+                                  {((p.networkType || 'JTM') === 'JTM' || p.networkType === 'SUTM') ? 'JTM' : 'JTR'}
+                                </span>
+                              </td>
+                              <td className="p-2.5">
+                                {((p.networkType || 'JTM') === 'JTM' || p.networkType === 'SUTM') ? (
+                                  <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-800 font-bold border border-purple-200 text-[10px]">
+                                    TM: {p.tmConstruction || 'TM - 1B'}
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold border border-emerald-200 text-[10px]">
+                                    TR: {p.trConstruction || 'TR - 1B'}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2.5 font-mono font-bold text-slate-800">
+                                {((p.networkType || 'JTM') === 'JTM' || p.networkType === 'SUTM') ? (
+                                  <span className="text-blue-700">{p.conductorLength !== undefined ? `${p.conductorLength} m` : (p.a3cs || '50 m')}</span>
+                                ) : (
+                                  <span className="text-emerald-700">{p.conductorLength !== undefined ? `${p.conductorLength} m` : (p.lvTwisted || '45 m')}</span>
+                                )}
+                              </td>
+                              <td className="p-2.5 font-mono text-[11px]">
+                                {p.lat && p.lng ? (
+                                  <span className="text-blue-700 font-bold">{p.lat.toFixed(6)}, {p.lng.toFixed(6)}</span>
+                                ) : (
+                                  <span className="text-amber-600">Belum ada GPS</span>
+                                )}
+                              </td>
+                              <td className="p-2.5 text-slate-600">{p.note || '—'}</td>
+                              <td className="p-2.5 text-center">
+                                {p.photo ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewPhoto({ url: p.photo!, title: `Foto ${p.name}`, caption: p.note || p.std })}
+                                    className="text-blue-600 font-semibold hover:underline inline-flex items-center gap-1 text-[11px]"
+                                  >
+                                    <Camera className="w-3 h-3" /> Lihat Foto
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-400 text-[11px]">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
 
-                  {/* Foto Dokumentasi Lokasi Review */}
-                  {locationPhotos.length > 0 && (
-                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-                            <Camera className="w-3.5 h-3.5 text-purple-600" /> Foto Dokumentasi Lokasi ({locationPhotos.length} Foto)
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                          {locationPhotos.map((lp, idx) => (
-                            <div
-                              key={lp.id || idx}
-                              onClick={() => setPreviewPhoto({ url: lp.url, title: lp.caption || `Foto Lokasi #${idx + 1}`, caption: lp.date })}
-                              className="group relative aspect-4/3 rounded-lg overflow-hidden border border-slate-200 bg-white cursor-pointer shadow-2xs hover:shadow-md transition"
-                            >
-                              <img src={lp.url} alt={lp.caption} className="w-full h-full object-cover group-hover:scale-105 transition" />
-                              <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[9px] font-bold">
-                                Perbesar
-                              </div>
+                  {/* Foto Dokumentasi Lokasi */}
+                  <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                        <Camera className="w-4 h-4 text-purple-600" /> Foto Dokumentasi Lokasi ({locationPhotos.length} Foto)
+                      </span>
+                    </div>
+                    {locationPhotos.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                        {locationPhotos.map((lp, idx) => (
+                          <div
+                            key={lp.id || idx}
+                            onClick={() => setPreviewPhoto({ url: lp.url, title: lp.caption || `Foto Lokasi #${idx + 1}`, caption: lp.date })}
+                            className="group relative aspect-4/3 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer shadow-2xs hover:shadow-md transition"
+                          >
+                            <img src={lp.url} alt={lp.caption} className="w-full h-full object-cover group-hover:scale-105 transition" />
+                            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[10px] font-bold">
+                              Perbesar
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 text-xs text-slate-400 italic bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                        Belum ada foto dokumentasi lokasi tambahan yang diupload
                       </div>
                     )}
+                  </div>
                   </div>
               )}
             </div>
@@ -1572,9 +1821,17 @@ export const SurveyView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setStep((step - 1) as any)}
-                  className="px-4 py-2 border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5"
+                  className="px-4 py-2 border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" /> Sebelumnya
+                </button>
+              ) : isDetailMode ? (
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" /> Tutup
                 </button>
               ) : (
                 <div />
@@ -1584,15 +1841,23 @@ export const SurveyView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setStep((step + 1) as any)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   Lanjut Tahap Berikutnya <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              ) : isDetailMode ? (
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-md cursor-pointer"
+                >
+                  <X className="w-4 h-4" /> Tutup Detail
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={handleSaveSurvey}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-md"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-md cursor-pointer"
                 >
                   <Check className="w-4 h-4" /> Simpan Survey Lapangan
                 </button>
@@ -1630,6 +1895,17 @@ export const SurveyView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Dokumen Resmi Output RAB Paket 1 (JTM) & Paket 2 (JTR) */}
+      {selectedRabDoc && (
+        <RabDocumentModal
+          isOpen={!!selectedRabDoc}
+          onClose={() => setSelectedRabDoc(null)}
+          survey={selectedRabDoc.survey}
+          initialPaket={selectedRabDoc.paket}
+          mode="rab"
+        />
       )}
     </div>
   );
