@@ -28,14 +28,21 @@ import { PengaturanView } from '@/components/PengaturanView';
 export default function Home() {
   const { currentPage } = usePromotorStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Mode rail desktop: sidebar ditutup jadi lajur ikon. Tidak effect drawer mobile.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-100 flex">
       {/* Sidebar Navigation */}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={() => setSidebarCollapsed((prev) => !prev)}
+      />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col lg:pl-64 min-w-0 print:pl-0">
+      <div className={`flex-1 flex flex-col min-w-0 print:pl-0 ${sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
         <Navbar onToggleSidebar={() => setSidebarOpen(true)} />
 
         <main className="flex-1 p-4 lg:p-8 max-w-7xl w-full mx-auto print:p-0 print:m-0 print:max-w-none">

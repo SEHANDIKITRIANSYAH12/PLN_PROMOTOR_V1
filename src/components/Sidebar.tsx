@@ -28,11 +28,16 @@ import {
   ClipboardList,
   FileClock,
   ClipboardCheck,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Mode rail (hanya berlaku di layar besar): ikon saja tanpa teks. */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }
 
   interface NavItem {
@@ -48,7 +53,7 @@ interface NavGroup {
   items: NavItem[];
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed, onToggleCollapsed }) => {
   const { currentPage, setCurrentPage, currentRole } = usePromotorStore();
 
   // Collapsible Groups state (default all open)
@@ -138,18 +143,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       )}
 
       <aside className={`
-        fixed top-0 bottom-0 left-0 z-40 w-64 bg-white text-slate-800 border-r border-slate-200/90 flex flex-col transition-transform duration-200 font-sans shadow-xs print:hidden
+        fixed top-0 bottom-0 left-0 z-40 bg-white text-slate-800 border-r border-slate-200/90 flex flex-col transition-all duration-200 font-sans shadow-xs print:hidden
+        w-64 ${collapsed ? 'lg:w-20' : 'lg:w-64'}
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         {/* Brand Header */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100 bg-white">
-          <div className="flex items-center gap-2.5">
+        <div className={`h-16 flex items-center justify-between px-4 border-b border-slate-100 bg-white ${collapsed ? 'lg:h-auto lg:flex-col lg:items-center lg:justify-center lg:gap-1.5 lg:py-2.5 lg:px-2' : ''}`}>
+          <div className={`flex items-center gap-2.5 min-w-0 ${collapsed ? 'lg:flex-col lg:items-center lg:gap-1.5' : ''}`}>
             <img
               src="/Logo_PLN.png"
               alt="Logo PLN"
-              className="h-9 w-auto object-contain shrink-0"
+              className={`w-auto object-contain shrink-0 ${collapsed ? 'h-9 lg:h-7' : 'h-9'}`}
             />
-            <div>
+            <div className={collapsed ? 'lg:hidden' : ''}>
               <div className="flex items-center gap-1.5 font-black text-sm text-[#0c3c60] tracking-tight">
                 PLN <span className="text-[10px] text-slate-400 font-semibold">UP3 BANTEN SELATAN</span>
               </div>
@@ -158,18 +164,37 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="lg:hidden text-slate-400 hover:text-slate-600 p-1">
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onClose}
+              aria-label="Tutup menu"
+              className="lg:hidden text-slate-400 hover:text-slate-600 p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Close / unclose sidebar (desktop) */}
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              aria-label={collapsed ? 'Buka sidebar' : 'Tutup sidebar'}
+              aria-expanded={!collapsed}
+              title={collapsed ? 'Unclose sidebar (buka)' : 'Close sidebar (tutup jadi ikon)'}
+              className="hidden lg:flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition cursor-pointer"
+            >
+              {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
         {/* Current Active User Profile Card */}
         <div className="p-3.5 pb-2">
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center gap-3">
+          <div className={`p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center gap-3 ${collapsed ? 'lg:justify-center lg:gap-0 lg:p-2' : ''}`}>
             <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center text-xs shrink-0 shadow-2xs">
               👨‍💼
             </div>
-            <div className="min-w-0 flex-1">
+            <div className={`min-w-0 flex-1 ${collapsed ? 'lg:hidden' : ''}`}>
               <div className="text-xs font-bold text-slate-800 truncate">Budi Santoso, S.T.</div>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
@@ -180,23 +205,35 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         </div>
 
         {/* Navigation Menu with Exact Collapsible Groups */}
-        <div className="flex-1 overflow-y-auto px-3.5 py-2 space-y-3 scrollbar-thin">
+        <div className={`flex-1 overflow-y-auto px-3.5 py-2 space-y-3 scrollbar-thin ${collapsed ? 'lg:px-2' : ''}`}>
           {navGroups.map((group) => {
             const isGroupOpen = !!openGroups[group.id];
 
             return (
               <div key={group.id} className="space-y-1">
-                {/* Collapsible Header [-] / [+] */}
+                {/* Collapsible Header [-] / [+] — teks di lebar penuh, ikon saja di rail */}
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.id)}
-                  className="w-full flex items-center justify-between py-1 px-1 text-[10.5px] font-bold tracking-wider text-slate-400 hover:text-slate-700 transition-colors uppercase"
+                  className={`w-full flex items-center justify-between py-1 px-1 text-[10.5px] font-bold tracking-wider text-slate-400 hover:text-slate-700 transition-colors uppercase ${collapsed ? 'lg:hidden' : ''}`}
                 >
                   <span>{group.title}</span>
                   <span className="text-slate-400 hover:text-slate-600 p-0.5">
                     {isGroupOpen ? <Minus className="w-3.5 h-3.5 stroke-[2.5]" /> : <Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
                   </span>
                 </button>
+
+                {collapsed && (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.id)}
+                    title={group.title}
+                    aria-label={`${group.title} — ${isGroupOpen ? 'tutup grup' : 'buka grup'}`}
+                    className="hidden lg:flex w-full items-center justify-center py-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    {isGroupOpen ? <Minus className="w-3.5 h-3.5 stroke-[2.5]" /> : <Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
+                  </button>
+                )}
 
                 {/* Submenu Items with RBAC Filter */}
                 {isGroupOpen && (
@@ -214,15 +251,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                               setCurrentPage(item.id);
                               onClose();
                             }}
+                            title={item.label}
                             className={`
                               w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all text-left cursor-pointer
+                              ${collapsed ? 'lg:justify-center lg:px-0' : ''}
                               ${isActive 
                                 ? 'bg-[#0066cc] text-white font-bold shadow-md shadow-blue-500/20' 
                                 : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}
                             `}
                           >
                             <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} />
-                            <span className="truncate">{item.label}</span>
+                            <span className={`truncate ${collapsed ? 'lg:hidden' : ''}`}>{item.label}</span>
                           </button>
                         );
                       })}
@@ -234,8 +273,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-3.5 border-t border-slate-100 bg-slate-50/60 space-y-2">
-          <div className="flex items-center justify-between text-[10px] text-slate-500 px-1 font-medium">
+        <div className={`p-3.5 border-t border-slate-100 bg-slate-50/60 space-y-2 ${collapsed ? 'lg:p-2' : ''}`}>
+          <div className={`flex items-center justify-between text-[10px] text-slate-500 px-1 font-medium ${collapsed ? 'lg:hidden' : ''}`}>
             <span>RBAC Aktif</span>
             <span className="flex items-center gap-1 text-emerald-600 font-semibold">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Role Protected
@@ -244,9 +283,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
           <button
             onClick={() => alert('Simulasi Sesi: Keluar Akun')}
-            className="w-full py-1.5 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs transition"
+            title="Keluar (Logout)"
+            className={`w-full py-1.5 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs transition ${collapsed ? 'lg:px-0 lg:gap-0' : ''}`}
           >
-            <LogOut className="w-3.5 h-3.5 text-slate-500" /> Keluar (Logout)
+            <LogOut className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className={collapsed ? 'lg:hidden' : ''}> Keluar (Logout)</span>
           </button>
         </div>
       </aside>
