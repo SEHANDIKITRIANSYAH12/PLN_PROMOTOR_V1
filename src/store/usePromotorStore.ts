@@ -62,10 +62,11 @@ interface PromotorState {
     customerName: string,
     customParams?: Omit<ApplyWoInputParams, 'daftungId' | 'idpel' | 'customerName'>
   ) => void;
+  /** `false` berarti sistem menolak persetujuan (WO hilang / pagu tidak cukup). */
   approveWorkOrder: (
     id: string,
     approverData?: { name?: string; role?: string; signature?: string; catatan?: string }
-  ) => void;
+  ) => boolean;
   rejectWorkOrder: (id: string, reason: string) => void;
   resubmitWorkOrder: (id: string, updates?: Partial<WorkOrderRecord>) => void;
   updateWorkOrderFields: (id: string, updates: Partial<WorkOrderRecord>) => void;
@@ -310,6 +311,153 @@ export const deriveVendorOptions = (
   }
 
   return Array.from(byName.values());
+};
+
+/* ==========================================================================
+   REALISASI PAGU KONTRAK
+   Angka tidak pernah ditambah/dikurangi secara manual. Selalu dihitung ulang
+   dari Work Order saat dibaca, sehingga tidak mungkin melayang karena approve
+   ganda, delete, atau perpindahan kontrak.
+   ========================================================================== */
+
+/** Nilai kelompok Jasa suatu WO (Rp) dari volume rencana x harga satuan KHS. */
+export const getWoJasaValue = (wo: WorkOrderRecord): number =>
+  (wo.jasaItems || []).reduce(
+    (total, item) => total + ((item.qtyTarget || 0) * (item.hargaSatuan || 0)),
+    0
+  );
+
+/** Nilai kelompok Material suatu WO (Rp) dari volume rencana x harga satuan. */
+export const getWoMaterialValue = (wo: WorkOrderRecord): number =>
+  (wo.materials || []).reduce((total, m) => {
+    const qty = m.qtyReksis || m.qtyAllocated || 0;
+    return total + qty * (m.hargaSatuan || 0);
+  }, 0);
+
+/** Status WO yang sudah mengikat anggaran kontrak. */
+const WO_COMMITTED_STATUSES: WorkOrderRecord['status'][] = ['Konstruksi', 'Verifikasi SJ', 'Selesai'];
+
+export const isWoCommittingPagu = (wo: WorkOrderRecord): boolean =>
+  wo.approvalStatus === 'APPROVED' || WO_COMMITTED_STATUSES.includes(wo.status);
+
+/**
+ * Pencocokan WO ke kontrak. `contractId` dipakai lebih dahulu; `spkNumber` hanya
+ * jadi fallback untuk WO seed yang terbit sebelum tautan kontrak tersedia.
+ */
+export const woBelongsToContract = (wo: WorkOrderRecord, contract: ContractRecord): boolean => {
+  if (wo.contractId) return wo.contractId === contract.id;
+  return Boolean(wo.spkNumber) && wo.spkNumber === contract.spkNumber;
+};
+
+/** Beban WO ke kontrak mengikuti jenis pengadaan kontrak (jasa / material / keduanya). */
+export const getWoContractValue = (wo: WorkOrderRecord, contract: ContractRecord): number => {
+  switch (contract.tipePengadaan) {
+    case 'MATERIAL':
+      return getWoMaterialValue(wo);
+    case 'JASA & MATERIAL':
+      return getWoJasaValue(wo) + getWoMaterialValue(wo);
+    case 'JASA':
+    default:
+      return getWoJasaValue(wo);
+  }
+};
+
+export interface ContractRealization {
+  nilaiPagu: number;
+  terpakai: number;
+  sisa: number;
+  persen: number;
+  woList: WorkOrderRecord[];
+}
+
+/** Realisasi sebuah kontrak, diturunkan dari WO yang tertaut dan sudah disetujui. */
+export const getContractRealization = (
+  contract: ContractRecord,
+  workOrders: WorkOrderRecord[]
+): ContractRealization => {
+  const woList = (workOrders || []).filter(
+    (w) => woBelongsToContract(w, contract) && isWoCommittingPagu(w)
+  );
+  const nilaiPagu = contract.nilaiKontrak || contract.totalPagu || 0;
+  const terpakai = woList.reduce((sum, w) => sum + getWoContractValue(w, contract), 0);
+  return {
+    nilaiPagu,
+    terpakai,
+    sisa: nilaiPagu - terpakai,
+    persen: nilaiPagu > 0 ? Math.round((terpakai / nilaiPagu) * 1000) / 10 : 0,
+    woList,
+  };
+};
+
+/** Realisasi seluruh kontrak dalam satu kali jalan (untuk kartu KPI). */
+export const sumContractRealization = (
+  contracts: ContractRecord[],
+  workOrders: WorkOrderRecord[]
+): { totalPagu: number; terpakai: number; sisa: number; persen: number } => {
+  const rows = (contracts || []).map((c) => getContractRealization(c, workOrders));
+  const totalPagu = rows.reduce((s, r) => s + r.nilaiPagu, 0);
+  const terpakai = rows.reduce((s, r) => s + r.terpakai, 0);
+  return {
+    totalPagu,
+    terpakai,
+    sisa: totalPagu - terpakai,
+    persen: totalPagu > 0 ? Math.round((terpakai / totalPagu) * 1000) / 10 : 0,
+  };
+};
+
+export interface WoPaguCheck {
+  /** OK = muat, LEBIH = melewati sisa pagu, TANPA_KONTRAK = WO tidak tertaut SPK mana pun. */
+  status: 'OK' | 'LEBIH' | 'TANPA_KONTRAK';
+  contract?: ContractRecord;
+  beban: number;
+  sisa: number;
+  nilaiPagu: number;
+}
+
+/** Cek apakah beban pagu suatu WO masih muat pada sisa pagu kontraknya. */
+export const checkWoPagu = (
+  wo: WorkOrderRecord,
+  contracts: ContractRecord[],
+  workOrders: WorkOrderRecord[]
+): WoPaguCheck => {
+  const contract = (contracts || []).find((c) => woBelongsToContract(wo, c));
+  if (!contract) return { status: 'TANPA_KONTRAK', beban: 0, sisa: 0, nilaiPagu: 0 };
+  const realisasi = getContractRealization(contract, workOrders);
+  const beban = getWoContractValue(wo, contract);
+  return {
+    status: beban > realisasi.sisa ? 'LEBIH' : 'OK',
+    contract,
+    beban,
+    sisa: realisasi.sisa,
+    nilaiPagu: realisasi.nilaiPagu,
+  };
+};
+
+/** Rp 1.234.567 — dipakai pada pesan validasi agar angka audit presisi. */
+const formatRpPresisi = (num: number) => 'Rp' + Math.round(num).toLocaleString('id-ID');
+
+/** Nomor WO standar: [URUT].[BULAN].WO.[KODE].[TAHUN] — harus sama dengan Menu Work Order. */
+export const buildWoNumber = (urut: number, bulan: string, kode: string, tahun: string): string =>
+  `${String(urut).padStart(3, '0')}.${String(bulan).padStart(2, '0')}.WO.${kode}.${tahun}`;
+
+/**
+ * No. urut dasar pertama yang ketiga nomornya (P1, P2, TB) masih bebas.
+ * Dijaga agar WO baru tidak pernah berbagi id dengan WO yang sudah ada —
+ * satu id untuk dua dokumen akan membuat persetujuan & pagu salahhitung.
+ */
+export const nextFreeWoBase = (
+  existingIds: string[],
+  bulan: string,
+  tahun: string
+): number => {
+  const taken = new Set(existingIds || []);
+  for (let base = 1; base <= 999; base++) {
+    const bebas = ['P1', 'P2', 'TB'].every(
+      (kode, i) => !taken.has(buildWoNumber(base + i, bulan, kode, tahun))
+    );
+    if (bebas) return base;
+  }
+  return 1;
 };
 
 export const usePromotorStore = create<PromotorState>((set, get) => ({
@@ -1387,6 +1535,28 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
     let newWos: WorkOrderRecord[] = [];
     const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 
+    // Nomor WO dipakai sebagai id record. Bila nomor yang sama dipakai dua dokumen,
+    // satu persetujuan akan mengubah dua WO sekaligus dan realisasi pagu salahhitung.
+    const nomorDiajukan = [
+      customParams?.paket1?.enabled ? customParams.paket1.noWorkOrder?.trim() : '',
+      customParams?.paket2?.enabled ? customParams.paket2.noWorkOrder?.trim() : '',
+      customParams?.woTiang?.enabled ? customParams.woTiang.noWorkOrder?.trim() : '',
+    ].filter(Boolean) as string[];
+    const bentrok = nomorDiajukan.filter((no) =>
+      get().workOrders.some((w) => w.id === no && w.daftungId !== daftungId)
+    );
+    if (bentrok.length > 0) {
+      get().addAudit(
+        `Penerbitan WO untuk ${customerName} DITOLAK sistem: nomor ${bentrok.join(', ')} sudah dipakai WO lain.`,
+        daftungId,
+        'Work Order'
+      );
+      get().showToast(
+        `⚠ Nomor WO ${bentrok.join(', ')} sudah dipakai. Ubah No. Urut WO lalu ajukan lagi.`
+      );
+      return;
+    }
+
     // Temukan survey terkait dari daftungId / idpel / customerName
     const currentState = get();
     const targetDaftung = currentState.daftungs.find((d) => d.id === daftungId || d.idpel === idpel);
@@ -1718,6 +1888,34 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
     const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
     let targetDaftungId: string | undefined;
 
+    // Penjaga pagu. Hanya dijalankan untuk WO yang belum memotong pagu, supaya
+    // persetujuan ulang tidak dihitung dua kali terhadap sisa pagu yang sama.
+    const woSemula = get().workOrders.find((w) => w.id === id);
+    if (!woSemula) {
+      get().showToast(`✗ Work Order ${id} tidak ditemukan — persetujuan dibatalkan`);
+      return false;
+    }
+    if (!isWoCommittingPagu(woSemula)) {
+      const cekPagu = checkWoPagu(woSemula, get().contracts, get().workOrders);
+      if (cekPagu.status === 'LEBIH') {
+        const pesan =
+          `beban pagu ${formatRpPresisi(cekPagu.beban)} melebihi sisa pagu SPK ` +
+          `${cekPagu.contract?.spkNumber} sebesar ${formatRpPresisi(cekPagu.sisa)}`;
+        get().addAudit(`Persetujuan WO ${id} DIBATALKAN SISTEM: ${pesan}.`, id, 'Work Order');
+        get().showToast(
+          `⚠ Persetujuan WO ${id} dibatalkan — ${pesan}. Sesuaikan RAB atau tambah pagu kontrak.`
+        );
+        return false;
+      }
+      if (cekPagu.status === 'TANPA_KONTRAK') {
+        get().addAudit(
+          `Persetujuan WO ${id}: validasi pagu dilewati karena WO tidak tertaut SPK di Master Kontrak.`,
+          id,
+          'Work Order'
+        );
+      }
+    }
+
     set((state) => {
       const targetWo = state.workOrders.find((w) => w.id === id);
       targetDaftungId = targetWo?.daftungId;
@@ -1784,6 +1982,7 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
 
     get().addAudit(`Asman menyetujui Work Order ${id}: resmi berstatus Konstruksi (WO Terbit)`, id, 'Work Order');
     get().showToast(`✓ Work Order ${id} resmi disetujui oleh Asman Konstruksi dan berstatus Terbit`);
+    return true;
   },
 
   rejectWorkOrder: (id, reason) => {

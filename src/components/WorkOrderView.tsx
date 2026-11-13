@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { usePromotorStore, deriveVendorOptions } from '@/store/usePromotorStore';
+import { usePromotorStore, deriveVendorOptions, nextFreeWoBase } from '@/store/usePromotorStore';
 import { WorkOrderRecord } from '@/types';
 import { 
   HardHat, 
@@ -274,7 +274,7 @@ export const WorkOrderView: React.FC = () => {
 
     const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
     const currentYear = String(new Date().getFullYear());
-    const seqNum = workOrders.length + 1;
+    const seqNum = nextFreeWoBase(workOrders.map((w) => w.id), currentMonth, currentYear);
     const u1 = String(seqNum).padStart(3, '0');
     const u2 = String(seqNum + 1).padStart(3, '0');
     const u3 = String(seqNum + 2).padStart(3, '0');
@@ -489,13 +489,14 @@ export const WorkOrderView: React.FC = () => {
   // Asman Menyetujui WO
   const handleConfirmApprove = () => {
     if (!approvalModalWo) return;
-    approveWorkOrder(approvalModalWo.id, {
+    const disetujui = approveWorkOrder(approvalModalWo.id, {
       name: asmanName.trim(),
       role: asmanRole.trim(),
       signature: asmanSig,
       catatan: asmanNote.trim(),
     });
-    setApprovalModalWo(null);
+    // Modal dibiarkan terbuka bila sistem menolak (mis. beban pagu melebihi sisa).
+    if (disetujui) setApprovalModalWo(null);
   };
 
   // Asman Menolak / Mengembalikan WO

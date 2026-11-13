@@ -16,17 +16,24 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
   const titles: Record<string, { title: string; sub: string }> = {
     dashboard: { title: 'SURVEY PELANGGAN', sub: 'Proses survey lapangan & kalkulasi material otomatis' },
     survey: { title: 'SURVEY PELANGGAN', sub: 'Proses survey lapangan & kalkulasi material otomatis' },
+    pradaftung: { title: 'POTENSI DAFTUNG', sub: 'Verifikasi data AP2T & prakiraan potensi calon pelanggan sebelum masuk daftar tunggu' },
     daftung: { title: 'DAFTAR TUNGGU (DAFTUNG)', sub: 'Monitoring SLA & verifikasi data pelanggan AP2T' },
     wo: { title: 'WORK ORDER (WO)', sub: 'Penerbitan perintah kerja & alokasi kontrak vendor' },
+    'persetujuan-wo': { title: 'PERSETUJUAN WORK ORDER', sub: 'Approval Asman atas WO, penerbitan nomor WO, & beban pagu kontrak rekanan' },
     'reservasi-material': { title: 'RESERVASI MATERIAL GUDANG', sub: 'Alokasi stok gudang PLN, nomor reservasi ERP/SAP, substitusi & penahanan material' },
     'verifikasi-pengawas': { title: 'VERIFIKASI & PROGRES LAPANGAN', sub: 'Verifikasi fisik Surat Jalan, monitoring progres fisik (%), dan opname realisasi/retur' },
+    'vendor-ambil': { title: 'MENU VENDOR PELAKSANA', sub: 'Pengambilan material di gudang, penerimaan Surat Jalan, & laporan progres pekerjaan' },
     'stok-gudang': { title: 'GUDANG & LOGISTIK', sub: 'Stok fisik gudang & sinkronisasi SAP' },
     'mutasi-material': { title: 'MUTASI MATERIAL (GI SAP)', sub: 'Pergerakan material gudang ke GI/SAP: nomor reservasi, surat jalan, dan posting GI Sistem/Non-Sistem' },
     'sweeping-material': { title: 'SWEEPING MATERIAL', sub: 'Rekonsiliasi material pengambilan (TUG-9) vs terpasang vs pengembalian/bongkaran (TUG-10)' },
     'analisis-material': { title: 'ANALISIS KEBUTUHAN MATERIAL', sub: 'Neraca ketersediaan material: Potensi Daftung, Reservasi vs Stok Fisik Gudang' },
+    kontrak: { title: 'MASTER KONTRAK (KHS)', sub: 'SPK rekanan, pagu anggaran, tautan pengawas, dan realisasi terpakai dari Work Order' },
+    'master-material': { title: 'KONTRAK PENGADAAN MATERIAL', sub: 'SPK pabrikan, HPS/RAB Nodin, masa kontrak, & rincian pasokan material ke gudang UP3' },
+    pengawas: { title: 'MASTER PENGAWAS', sub: 'Data pengawas teknik 1 & 2, unit kerja, dan cakupan wilayah pengawasan' },
     khs: { title: 'MASTER HS WO PAKET 1 & 2', sub: 'Katalog harga satuan material dan jasa distribusi UP3 Banten Selatan' },
     audit: { title: 'AUDIT LOG AKTIVITAS', sub: 'Jejak rekam historis setiap aktivitas sistem' },
     std: { title: 'STANDAR KONSTRUKSI', sub: 'Master matriks konstruksi TM/TR & BOM' },
+    pengaturan: { title: 'PENGATURAN SISTEM', sub: 'Manajemen akun pengguna dan konfigurasi sistem' },
   };
 
   const headerInfo = titles[currentPage] || { title: 'PROMOTOR PLN', sub: 'Sistem Monitoring & Material Kontrol' };

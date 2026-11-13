@@ -1,7 +1,14 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { usePromotorStore } from '@/store/usePromotorStore';
+import {
+  usePromotorStore,
+  getContractRealization,
+  sumContractRealization,
+  getWoContractValue,
+  woBelongsToContract,
+  isWoCommittingPagu,
+} from '@/store/usePromotorStore';
 import { ContractRecord } from '@/types';
 import {
   FileCheck2,
@@ -100,6 +107,8 @@ export const ContractView: React.FC = () => {
 
   // Modal State untuk Tambah / Edit Kontrak KHS
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
+  // Kontrak yang sedang dibuka rincian Work Order tertautnya
+  const [expandedContractId, setExpandedContractId] = useState<string | null>(null);
   const [editingContract, setEditingContract] = useState<ContractRecord | null>(null);
   const [contractForm, setContractForm] = useState({
     spkNumber: '',
@@ -112,34 +121,28 @@ export const ContractView: React.FC = () => {
     validTo: '31 Des 2026',
     nomorAmandemen: '',
     amandemenWaktu: '',
+    supervisorId: '',
     supervisorName: '',
     supervisorRole: '',
     status: 'AKTIF' as 'AKTIF' | 'HABIS' | 'KEDALUWARSA',
   });
 
-  // Perhitungan KPI Ringkas
+  // Perhitungan KPI Ringkas. Realisasi selalu diturunkan dari Work Order tertaut,
+  // bukan dari angka usedPagu tersimpan yang sebelumnya hanya isian contoh.
   const kpi = useMemo(() => {
-    let totalPagu = 0;
-    let usedPagu = 0;
-
-    contracts.forEach((c) => {
-      const nilai = c.nilaiKontrak || c.totalPagu || 0;
-      const used = c.usedPagu || 0;
-      totalPagu += nilai;
-      usedPagu += used;
-    });
-
-    const sisaPaguTotal = totalPagu - usedPagu;
-    const usagePercent = totalPagu > 0 ? (usedPagu / totalPagu) * 100 : 0;
-
+    const realisasi = sumContractRealization(contracts, workOrders);
     return {
       totalContracts: contracts.length,
-      totalPagu,
-      usedPagu,
-      sisaPaguTotal,
-      usagePercent,
+      totalWoTertaut: contracts.reduce(
+        (s, c) => s + getContractRealization(c, workOrders).woList.length,
+        0
+      ),
+      totalPagu: realisasi.totalPagu,
+      usedPagu: realisasi.terpakai,
+      sisaPaguTotal: realisasi.sisa,
+      usagePercent: realisasi.persen,
     };
-  }, [contracts]);
+  }, [contracts, workOrders]);
 
   // Filter Data
   const filteredContracts = useMemo(() => {
@@ -157,6 +160,15 @@ export const ContractView: React.FC = () => {
     });
   }, [contracts, searchTerm, jenisPekerjaanFilter, statusFilter]);
 
+  // Nilai pilihan pengawas pada form: utamakan ID. Bila pengawas yang tersimpan
+  // di kontrak lama sudah tidak ada di Master Pengawas, nama lamanya tetap
+  // ditampilkan supaya tidak hilang saat kontrak disimpan ulang.
+  const supervisorOptionValue = supervisors.some((s) => s.id === contractForm.supervisorId)
+    ? contractForm.supervisorId
+    : contractForm.supervisorName
+    ? '__UNMATCHED__'
+    : '';
+
   // Form Handlers
   const handleOpenAddContract = () => {
     setEditingContract(null);
@@ -172,6 +184,7 @@ export const ContractView: React.FC = () => {
       validTo: '31 Des 2026',
       nomorAmandemen: '',
       amandemenWaktu: '',
+      supervisorId: defaultSup ? defaultSup.id : '',
       supervisorName: defaultSup ? `${defaultSup.name} (${defaultSup.role})` : '',
       supervisorRole: defaultSup ? defaultSup.role : '',
       status: 'AKTIF',
@@ -192,6 +205,10 @@ export const ContractView: React.FC = () => {
       validTo: c.validTo || '31 Des 2026',
       nomorAmandemen: c.nomorAmandemen || '',
       amandemenWaktu: c.amandemenWaktu || '',
+      // Kontrak lama hanya menyimpan nama: jodohkan ke Master Pengawas agar
+      // tautan ID-nya pulih begitu kontrak ini disimpan ulang.
+      supervisorId:
+        c.supervisorId || supervisors.find((s) => (c.supervisorName || '').startsWith(s.name))?.id || '',
       supervisorName: c.supervisorName || '',
       supervisorRole: c.supervisorRole || '',
       status: c.status,
@@ -214,6 +231,7 @@ export const ContractView: React.FC = () => {
         validTo: contractForm.validTo,
         nomorAmandemen: contractForm.nomorAmandemen.trim() || undefined,
         amandemenWaktu: contractForm.amandemenWaktu.trim() || undefined,
+        supervisorId: contractForm.supervisorId.trim() || undefined,
         supervisorName: contractForm.supervisorName.trim() || undefined,
         supervisorRole: contractForm.supervisorRole.trim() || undefined,
         status: contractForm.status,
@@ -234,6 +252,7 @@ export const ContractView: React.FC = () => {
         validTo: contractForm.validTo,
         nomorAmandemen: contractForm.nomorAmandemen.trim() || undefined,
         amandemenWaktu: contractForm.amandemenWaktu.trim() || undefined,
+        supervisorId: contractForm.supervisorId.trim() || undefined,
         supervisorName: contractForm.supervisorName.trim() || undefined,
         supervisorRole: contractForm.supervisorRole.trim() || undefined,
         status: contractForm.status,
@@ -301,7 +320,7 @@ export const ContractView: React.FC = () => {
             <Coins className="w-4 h-4 text-purple-600" />
           </div>
           <div className="text-xl font-bold text-purple-700">
-            Rp {(kpi.totalPagu / 1e9).toFixed(1).replace('.', ',')} M
+            {formatRpCompact(kpi.totalPagu)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">Akumulasi pagu KHS rekanan</div>
         </div>
@@ -312,10 +331,10 @@ export const ContractView: React.FC = () => {
             <TrendingUp className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-xl font-bold text-blue-700">
-            Rp {(kpi.usedPagu / 1e9).toFixed(1).replace('.', ',')} M
+            {formatRpCompact(kpi.usedPagu)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">
-            Terpakai: <span className="font-semibold text-slate-700">{kpi.usagePercent.toFixed(0)}%</span>
+            Terpakai: <span className="font-semibold text-slate-700">{kpi.usagePercent.toFixed(1).replace('.', ',')}%</span>
           </div>
         </div>
 
@@ -325,7 +344,7 @@ export const ContractView: React.FC = () => {
             <Clock className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-xl font-bold text-emerald-600">
-            Rp {(kpi.sisaPaguTotal / 1e9).toFixed(1).replace('.', ',')} M
+            {formatRpCompact(kpi.sisaPaguTotal)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">Sedia untuk alokasi WO berikutnya</div>
         </div>
@@ -399,14 +418,18 @@ export const ContractView: React.FC = () => {
                 </tr>
               ) : (
                 filteredContracts.map((c) => {
-                  const nilai = c.nilaiKontrak || c.totalPagu || 0;
-                  const used = c.usedPagu || 0;
-                  const sisa = c.sisaPagu !== undefined ? c.sisaPagu : (nilai - used);
-                  const isWarning = sisa <= nilai * 0.25 || c.status === 'HABIS';
+                  const realisasi = getContractRealization(c, workOrders);
+                  const nilai = realisasi.nilaiPagu;
+                  const used = realisasi.terpakai;
+                  const sisa = realisasi.sisa;
+                  const isWarning = sisa < 0 || sisa <= nilai * 0.25 || c.status === 'HABIS';
                   const statusLabel = isWarning ? 'Perhatian' : (c.status === 'KEDALUWARSA' ? 'Kedaluwarsa' : 'Aktif');
+                  const semuaWoTertaut = workOrders.filter((w) => woBelongsToContract(w, c));
+                  const isExpanded = expandedContractId === c.id;
 
                   return (
-                    <tr key={c.id} className="hover:bg-slate-50/70 transition-colors divide-x divide-slate-200">
+                    <React.Fragment key={c.id}>
+                    <tr className="hover:bg-slate-50/70 transition-colors divide-x divide-slate-200">
                       {/* NO. SPK */}
                       <td className="py-4 px-4">
                         <div className="font-semibold text-slate-900 text-xs tracking-tight">{c.spkNumber}</div>
@@ -563,6 +586,16 @@ export const ContractView: React.FC = () => {
                         <div className="flex items-center justify-center gap-1">
                           <button
                             type="button"
+                            onClick={() => setExpandedContractId(isExpanded ? null : c.id)}
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-[10.5px] font-bold border transition-colors cursor-pointer bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                            title="Lihat Work Order yang tertaut ke kontrak ini"
+                          >
+                            <Boxes className="w-3.5 h-3.5" />
+                            {semuaWoTertaut.length} WO
+                            <span className="text-[9px] text-slate-400">{isExpanded ? '▲' : '▼'}</span>
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleOpenEditContract(c)}
                             className="p-1.5 rounded-md text-amber-700 hover:bg-amber-100 transition-colors cursor-pointer"
                             title="Edit Kontrak"
@@ -584,6 +617,66 @@ export const ContractView: React.FC = () => {
                         </div>
                       </td>
                     </tr>
+
+                    {isExpanded && (
+                      <tr className="bg-slate-50/70">
+                        <td colSpan={12} className="px-6 py-4">
+                          <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-2">
+                            Work Order Tertaut &amp; Pemakaian Pagu
+                          </div>
+                          {semuaWoTertaut.length === 0 ? (
+                            <div className="text-xs text-slate-500">
+                              Belum ada Work Order yang memakai kontrak ini.
+                            </div>
+                          ) : (
+                            <table className="w-full text-[11px] bg-white border border-slate-200 rounded-lg overflow-hidden">
+                              <thead className="bg-slate-100/80 text-slate-600">
+                                <tr>
+                                  <th className="text-left px-3 py-2 font-semibold">No. WO</th>
+                                  <th className="text-left px-3 py-2 font-semibold">Pelanggan</th>
+                                  <th className="text-left px-3 py-2 font-semibold">Kategori</th>
+                                  <th className="text-left px-3 py-2 font-semibold">Status</th>
+                                  <th className="text-right px-3 py-2 font-semibold">Beban Pagu</th>
+                                  <th className="text-center px-3 py-2 font-semibold">Progres</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {semuaWoTertaut.map((w) => {
+                                  const memotong = isWoCommittingPagu(w);
+                                  return (
+                                    <tr key={w.id}>
+                                      <td className="px-3 py-2 font-semibold text-slate-800">{w.noWorkOrder || w.id}</td>
+                                      <td className="px-3 py-2 text-slate-700">{w.customerName}</td>
+                                      <td className="px-3 py-2 text-slate-600">{w.category}</td>
+                                      <td className="px-3 py-2">
+                                        <span className={memotong ? 'text-emerald-700 font-semibold' : 'text-slate-500'}>
+                                          {w.status}
+                                          {!memotong && ' (belum memotong pagu)'}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-semibold text-slate-800">
+                                        {memotong ? formatRpCompact(getWoContractValue(w, c)) : '—'}
+                                      </td>
+                                      <td className="px-3 py-2 text-center text-slate-700">{w.progress}%</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                              <tfoot className="bg-slate-50">
+                                <tr>
+                                  <td colSpan={4} className="px-3 py-2 text-right font-bold text-slate-700">
+                                    Total dibebankan ke kontrak ini
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-bold text-slate-900">{formatRpCompact(used)}</td>
+                                  <td className="px-3 py-2 text-center font-bold text-slate-700">{realisasi.persen}%</td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })
               )}
@@ -662,23 +755,37 @@ export const ContractView: React.FC = () => {
                   Nama Pengawas Lapangan <span className="text-rose-500">*</span>
                 </label>
                 <select
-                  value={contractForm.supervisorName}
+                  value={supervisorOptionValue}
                   onChange={(e) => {
                     const val = e.target.value;
-                    const matched = supervisors.find(
-                      (s) => `${s.name} (${s.role})` === val || s.name === val
-                    );
-                    setContractForm({
-                      ...contractForm,
-                      supervisorName: val,
-                      supervisorRole: matched ? matched.role : contractForm.supervisorRole,
-                    });
+                    const matched = supervisors.find((s) => s.id === val);
+                    if (matched) {
+                      setContractForm({
+                        ...contractForm,
+                        supervisorId: matched.id,
+                        supervisorName: `${matched.name} (${matched.role})`,
+                        supervisorRole: matched.role,
+                      });
+                    } else if (val === '') {
+                      setContractForm({
+                        ...contractForm,
+                        supervisorId: '',
+                        supervisorName: '',
+                        supervisorRole: '',
+                      });
+                    }
+                    // val === '__UNMATCHED__': pertahankan nama lama apa adanya.
                   }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 bg-white focus:outline-hidden focus:border-amber-500 focus:ring-1 focus:ring-amber-500 cursor-pointer"
                 >
                   <option value="">-- Pilih Pengawas Lapangan --</option>
+                  {supervisorOptionValue === '__UNMATCHED__' && (
+                    <option value="__UNMATCHED__">
+                      {contractForm.supervisorName} — tidak ada di Master Pengawas
+                    </option>
+                  )}
                   {supervisors.map((s) => (
-                    <option key={s.id} value={`${s.name} (${s.role})`}>
+                    <option key={s.id} value={s.id}>
                       {s.name} — {s.role} ({s.unit})
                     </option>
                   ))}

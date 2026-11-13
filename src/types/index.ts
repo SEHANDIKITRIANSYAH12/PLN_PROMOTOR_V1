@@ -231,6 +231,7 @@ export interface ContractRecord {
   validTo: string; // Masa berlaku
   nomorAmandemen?: string; // Entry-an Nomor Amandemen (Addendum)
   amandemenWaktu?: string; // Inputan Amandemen Waktu (Batas akhir baru perpanjangan kontrak)
+  supervisorId?: string; // Tautan ke SupervisorRecord.id (Master Pengawas)
   supervisorName?: string; // Nama Pengawas Lapangan
   supervisorRole?: string; // Jabatan Pengawas Lapangan
   status: 'AKTIF' | 'HABIS' | 'KEDALUWARSA';

@@ -83,14 +83,15 @@ export const PersetujuanWoView: React.FC = () => {
       return;
     }
 
-    approveWorkOrder(approvingWo.id, {
+    const disetujui = approveWorkOrder(approvingWo.id, {
       name: approverNameInput.trim(),
       role: approverRoleInput.trim(),
       signature: signatureData || undefined,
       catatan: approverCatatanInput.trim(),
     });
 
-    setApprovingWo(null);
+    // Modal dibiarkan terbuka bila sistem menolak (mis. beban pagu melebihi sisa).
+    if (disetujui) setApprovingWo(null);
   };
 
   const handleOpenReject = (id: string) => {
