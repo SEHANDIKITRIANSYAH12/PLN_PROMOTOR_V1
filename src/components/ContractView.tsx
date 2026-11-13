@@ -262,22 +262,9 @@ export const ContractView: React.FC = () => {
     setIsContractModalOpen(false);
   };
 
-  const formatRpCompact = (num: number) => {
-    if (!num || num === 0) return 'Rp0';
-    if (Math.abs(num) >= 1_000_000_000) {
-      const val = (num / 1_000_000_000).toFixed(1).replace('.', ',');
-      return `Rp${val.endsWith(',0') ? val.slice(0, -2) : val} M`;
-    }
-    if (Math.abs(num) >= 1_000_000) {
-      const val = Math.round(num / 1_000_000);
-      return `Rp${val} jt`;
-    }
-    if (Math.abs(num) >= 1_000) {
-      const val = Math.round(num / 1_000);
-      return `Rp${val} rb`;
-    }
-    return 'Rp' + num.toLocaleString('id-ID');
-  };
+  // Nilai uang selalu tampil angka penuh (Rp 3.500.000.000), bukan singkatan
+  // huruf, agar bisa dicocokkan langsung dengan angka di SPK/dokumen RAB.
+  const formatRp = (num: number) => `Rp ${Math.round(num || 0).toLocaleString('id-ID')}`;
 
   return (
     <div className="space-y-6">
@@ -320,7 +307,7 @@ export const ContractView: React.FC = () => {
             <Coins className="w-4 h-4 text-purple-600" />
           </div>
           <div className="text-xl font-bold text-purple-700">
-            {formatRpCompact(kpi.totalPagu)}
+            {formatRp(kpi.totalPagu)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">Akumulasi pagu KHS rekanan</div>
         </div>
@@ -331,7 +318,7 @@ export const ContractView: React.FC = () => {
             <TrendingUp className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-xl font-bold text-blue-700">
-            {formatRpCompact(kpi.usedPagu)}
+            {formatRp(kpi.usedPagu)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">
             Terpakai: <span className="font-semibold text-slate-700">{kpi.usagePercent.toFixed(1).replace('.', ',')}%</span>
@@ -344,7 +331,7 @@ export const ContractView: React.FC = () => {
             <Clock className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-xl font-bold text-emerald-600">
-            {formatRpCompact(kpi.sisaPaguTotal)}
+            {formatRp(kpi.sisaPaguTotal)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">Sedia untuk alokasi WO berikutnya</div>
         </div>
@@ -521,12 +508,12 @@ export const ContractView: React.FC = () => {
 
                       {/* NILAI KONTRAK */}
                       <td className="py-4 px-4 text-slate-800 font-medium text-xs whitespace-nowrap" title={`Rp ${nilai.toLocaleString('id-ID')}`}>
-                        {formatRpCompact(nilai)}
+                        {formatRp(nilai)}
                       </td>
 
                       {/* TERPAKAI WO */}
                       <td className="py-4 px-4 text-slate-800 font-medium text-xs whitespace-nowrap" title={`Rp ${used.toLocaleString('id-ID')}`}>
-                        {formatRpCompact(used)}
+                        {formatRp(used)}
                       </td>
 
                       {/* PERSENTASE ANTARA WO DENGAN NILAI KONTRAK */}
@@ -565,7 +552,7 @@ export const ContractView: React.FC = () => {
 
                       {/* SISA */}
                       <td className="py-4 px-4 text-slate-800 font-medium text-xs whitespace-nowrap" title={`Rp ${sisa.toLocaleString('id-ID')}`}>
-                        {formatRpCompact(sisa)}
+                        {formatRp(sisa)}
                       </td>
 
                       {/* STATUS */}
@@ -655,7 +642,7 @@ export const ContractView: React.FC = () => {
                                         </span>
                                       </td>
                                       <td className="px-3 py-2 text-right font-semibold text-slate-800">
-                                        {memotong ? formatRpCompact(getWoContractValue(w, c)) : '—'}
+                                        {memotong ? formatRp(getWoContractValue(w, c)) : '—'}
                                       </td>
                                       <td className="px-3 py-2 text-center text-slate-700">{w.progress}%</td>
                                     </tr>
@@ -667,7 +654,7 @@ export const ContractView: React.FC = () => {
                                   <td colSpan={4} className="px-3 py-2 text-right font-bold text-slate-700">
                                     Total dibebankan ke kontrak ini
                                   </td>
-                                  <td className="px-3 py-2 text-right font-bold text-slate-900">{formatRpCompact(used)}</td>
+                                  <td className="px-3 py-2 text-right font-bold text-slate-900">{formatRp(used)}</td>
                                   <td className="px-3 py-2 text-center font-bold text-slate-700">{realisasi.persen}%</td>
                                 </tr>
                               </tfoot>

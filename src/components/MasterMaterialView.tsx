@@ -105,26 +105,9 @@ export const MasterMaterialView: React.FC = () => {
     ],
   });
 
-  // Helper Format Rupiah
+  // Helper Format Rupiah — angka penuh, tanpa singkatan huruf (jt/rb/M)
   const formatRp = (num: number) => {
-    return 'Rp ' + (num || 0).toLocaleString('id-ID');
-  };
-
-  const formatRpCompact = (num: number) => {
-    if (!num || num === 0) return 'Rp0';
-    if (Math.abs(num) >= 1_000_000_000) {
-      const val = (num / 1_000_000_000).toFixed(2).replace('.', ',');
-      return `Rp${val.endsWith(',00') ? val.slice(0, -3) : val} M`;
-    }
-    if (Math.abs(num) >= 1_000_000) {
-      const val = Math.round(num / 1_000_000);
-      return `Rp${val} jt`;
-    }
-    if (Math.abs(num) >= 1_000) {
-      const val = Math.round(num / 1_000);
-      return `Rp${val} rb`;
-    }
-    return 'Rp' + num.toLocaleString('id-ID');
+    return 'Rp ' + Math.round(num || 0).toLocaleString('id-ID');
   };
 
   // KPI Ringkas
@@ -395,7 +378,7 @@ export const MasterMaterialView: React.FC = () => {
             <Coins className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-xl font-bold text-emerald-700">
-            {formatRpCompact(kpi.totalSpk)}
+            {formatRp(kpi.totalSpk)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">Nilai kontrak yang disepakati</div>
         </div>
@@ -406,7 +389,7 @@ export const MasterMaterialView: React.FC = () => {
             <FileText className="w-4 h-4 text-purple-600" />
           </div>
           <div className="text-xl font-bold text-purple-700">
-            {formatRpCompact(kpi.totalRab)}
+            {formatRp(kpi.totalRab)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">Pagu HPS Nota Dinas usulan</div>
         </div>
@@ -417,7 +400,7 @@ export const MasterMaterialView: React.FC = () => {
             <TrendingDown className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-xl font-bold text-blue-700">
-            {kpi.efisiensi >= 0 ? `+${formatRpCompact(kpi.efisiensi)}` : formatRpCompact(kpi.efisiensi)}
+            {kpi.efisiensi >= 0 ? `+${formatRp(kpi.efisiensi)}` : formatRp(kpi.efisiensi)}
           </div>
           <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">
             Hemat {kpi.efisiensiPersen.toFixed(1)}% terhadap RAB Nodin
@@ -503,7 +486,7 @@ export const MasterMaterialView: React.FC = () => {
 
                       {/* NILAI RAB NODIN */}
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-purple-700 whitespace-nowrap" title={formatRp(c.nilaiRabNodin)}>
-                        <div>{formatRpCompact(c.nilaiRabNodin)}</div>
+                        <div>{formatRp(c.nilaiRabNodin)}</div>
                         <div className="text-[10px] text-slate-400 font-normal mt-0.5">Pagu HPS</div>
                       </td>
 
@@ -527,7 +510,7 @@ export const MasterMaterialView: React.FC = () => {
 
                       {/* NILAI SPK */}
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-700 whitespace-nowrap" title={formatRp(c.nilaiSpk)}>
-                        <div>{formatRpCompact(c.nilaiSpk)}</div>
+                        <div>{formatRp(c.nilaiSpk)}</div>
                         <div className="text-[10px] text-slate-400 font-normal mt-0.5">Disepakati</div>
                       </td>
 
