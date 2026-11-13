@@ -176,10 +176,9 @@ interface PromotorState {
   deleteWorkOrder: (id: string) => void;
 
   // Master Vendors & Kontrak
+  // Vendor tidak punya layar CRUD tersendiri: identitasnya diturunkan dari
+  // Master Kontrak / WO / Kontrak Material lewat deriveVendorOptions().
   vendors: VendorRecord[];
-  addVendor: (vendor: Omit<VendorRecord, 'id'>) => void;
-  updateVendor: (id: string, updates: Partial<VendorRecord>) => void;
-  deleteVendor: (id: string) => void;
 
   contracts: ContractRecord[];
   addContract: (contract: Omit<ContractRecord, 'id' | 'usedPagu' | 'createdAt'>) => void;
@@ -262,6 +261,56 @@ interface PromotorState {
   pengawasApproveProgress: (woId: string, verifierName: string, catatan?: string, verifiedJasaItems?: WoJasaItem[]) => void;
   pengawasRejectProgress: (woId: string, verifierName: string, alasan: string) => void;
 }
+
+/**
+ * Sumber identitas vendor tunggal untuk pilihan (dropdown/datalist) di modul hilir.
+ *
+ * Rekanan vendor tidak lagi memiliki layar master tersendiri — namanya cukup lahir
+ * dari Master Kontrak (SPK), Work Order, atau Kontrak Material. Fungsi ini
+ * menggabungkan daftar vendor seed dengan nama-nama yang muncul pada dokumen-dokumen
+ * tersebut, sekaligus melengkapi jenis pekerjaan bila belum terdaftar.
+ */
+export const deriveVendorOptions = (
+  base: VendorRecord[],
+  sources: { vendorName?: string; jenisPekerjaan?: string }[]
+): VendorRecord[] => {
+  const byName = new Map<string, VendorRecord>();
+  for (const v of base || []) {
+    const name = (v?.name || '').trim();
+    if (name) byName.set(name.toLowerCase(), v);
+  }
+
+  for (const s of sources || []) {
+    const name = (s?.vendorName || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const jenis = s.jenisPekerjaan as VendorRecord['jenisPekerjaan'][number] | undefined;
+    const existing = byName.get(key);
+
+    if (existing) {
+      const currentJenis = existing.jenisPekerjaan || [];
+      if (jenis && !currentJenis.includes(jenis)) {
+        byName.set(key, { ...existing, jenisPekerjaan: [...currentJenis, jenis] });
+      }
+      continue;
+    }
+
+    byName.set(key, {
+      id: `VND-${key.replace(/[^a-z0-9]+/g, '-')}`,
+      name,
+      director: '—',
+      address: '—',
+      phone: '—',
+      email: '—',
+      jenisPekerjaan: jenis ? [jenis] : [],
+      validFrom: '—',
+      validTo: '—',
+      status: 'AKTIF',
+    });
+  }
+
+  return Array.from(byName.values());
+};
 
 export const usePromotorStore = create<PromotorState>((set, get) => ({
   // Aturan Master Standar Konstruksi (Sinkron ke Menu Survey)
@@ -2753,32 +2802,6 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
       paketType: 'BOTH',
     },
   ],
-
-  addVendor: (vendor) => {
-    const newId = `v-${Date.now().toString().slice(-4)}`;
-    set((state) => ({
-      vendors: [{ ...vendor, id: newId }, ...state.vendors],
-    }));
-    get().addAudit(`Tambah Master Rekanan Vendor ${vendor.name}`, newId, 'Master Vendor');
-    get().showToast(`✓ Rekanan ${vendor.name} berhasil ditambahkan`);
-  },
-
-  updateVendor: (id, updates) => {
-    set((state) => ({
-      vendors: state.vendors.map((v) => (v.id === id ? { ...v, ...updates } : v)),
-    }));
-    get().addAudit(`Perbarui Master Rekanan Vendor ${id}`, id, 'Master Vendor');
-    get().showToast(`✓ Data vendor berhasil diperbarui`);
-  },
-
-  deleteVendor: (id) => {
-    const v = get().vendors.find((item) => item.id === id);
-    set((state) => ({
-      vendors: state.vendors.filter((item) => item.id !== id),
-    }));
-    get().addAudit(`Hapus Master Rekanan Vendor ${v?.name || id}`, id, 'Master Vendor');
-    get().showToast(`✓ Rekanan vendor berhasil dihapus`);
-  },
 
   contracts: [
     {

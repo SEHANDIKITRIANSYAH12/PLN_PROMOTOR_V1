@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { usePromotorStore } from '@/store/usePromotorStore';
+import { usePromotorStore, deriveVendorOptions } from '@/store/usePromotorStore';
 import { MaterialContractRecord, MaterialContractItem } from '@/types';
 import {
   Boxes,
@@ -37,6 +37,17 @@ export const MasterMaterialView: React.FC = () => {
     vendors,
     showToast,
   } = usePromotorStore();
+
+  // Saran nama rekanan: seed master + vendor yang sudah pernah tercatat pada
+  // kontrak material di layar ini.
+  const vendorOptions = useMemo(
+    () =>
+      deriveVendorOptions(
+        vendors,
+        materialContracts.map((mc) => ({ vendorName: mc.namaVendor }))
+      ),
+    [vendors, materialContracts]
+  );
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'AKTIF' | 'SELESAI' | 'KEDALUWARSA'>('ALL');
@@ -849,7 +860,7 @@ export const MasterMaterialView: React.FC = () => {
                       <option value="PT. SUPREME CABLE MANUFACTURING & COMMERCE Tbk" />
                       <option value="PT. SCHNEIDER INDONESIA" />
                       <option value="PT. SUTRADO KABEL MANDIRI" />
-                      {vendors.map((v) => (
+                      {vendorOptions.map((v) => (
                         <option key={v.id} value={v.name} />
                       ))}
                     </datalist>

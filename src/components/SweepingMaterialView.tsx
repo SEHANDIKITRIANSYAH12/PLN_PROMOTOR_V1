@@ -24,7 +24,7 @@ import {
   Edit,
   RotateCcw
 } from 'lucide-react';
-import { usePromotorStore } from '@/store/usePromotorStore';
+import { usePromotorStore, deriveVendorOptions } from '@/store/usePromotorStore';
 import { SweepingRecord, SweepingMaterialItem, WorkOrderRecord } from '@/types';
 import { generateWorkTitlePln } from '@/data/surveyRabCalculator';
 
@@ -37,6 +37,13 @@ export const SweepingMaterialView: React.FC = () => {
     updateSweeping, 
     deleteSweeping 
   } = usePromotorStore();
+
+  // Daftar rekanan: seed master + vendor yang benar-benar punya WO, karena
+  // pilihan ini dipakai untuk menyaring WO yang masuk sweeping.
+  const vendorOptions = useMemo(
+    () => deriveVendorOptions(vendors, workOrders.map((w) => ({ vendorName: w.vendor }))),
+    [vendors, workOrders]
+  );
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -614,7 +621,7 @@ export const SweepingMaterialView: React.FC = () => {
                       }}
                       className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                     >
-                      {vendors.map((v) => (
+                      {vendorOptions.map((v) => (
                         <option key={v.id} value={v.name}>{v.name}</option>
                       ))}
                     </select>

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { usePromotorStore } from '@/store/usePromotorStore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { usePromotorStore, deriveVendorOptions } from '@/store/usePromotorStore';
 import { WorkOrderRecord } from '@/types';
 import { 
   HardHat, 
@@ -71,6 +71,17 @@ export const WorkOrderView: React.FC = () => {
     setCurrentPage, 
     showToast 
   } = usePromotorStore();
+
+  // Sumber tunggal daftar rekanan: seed master + vendor yang lahir dari Master
+  // Kontrak (SPK), sehingga vendor baru cukup dibuat di menu Kontrak.
+  const vendorOptions = useMemo(
+    () =>
+      deriveVendorOptions(
+        vendors,
+        contracts.map((c) => ({ vendorName: c.vendorName, jenisPekerjaan: c.jenisPekerjaan }))
+      ),
+    [vendors, contracts]
+  );
 
   const [selectedDocWo, setSelectedDocWo] = useState<WorkOrderRecord | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1179,12 +1190,12 @@ export const WorkOrderView: React.FC = () => {
                           required={p1Enabled}
                         >
                           <option value="" disabled>-- Pilih Vendor Pelaksana --</option>
-                          {vendors.map((v) => (
+                          {vendorOptions.map((v) => (
                             <option key={v.id} value={v.name}>
-                              {v.name} {v.jenisPekerjaan ? `(${v.jenisPekerjaan.join(', ')})` : ''}
+                              {v.name} {v.jenisPekerjaan?.length ? `(${v.jenisPekerjaan.join(', ')})` : ''}
                             </option>
                           ))}
-                          {!vendors.some((v) => v.name === p1Vendor) && p1Vendor && (
+                          {!vendorOptions.some((v) => v.name === p1Vendor) && p1Vendor && (
                             <option value={p1Vendor}>{p1Vendor}</option>
                           )}
                         </select>
@@ -1323,12 +1334,12 @@ export const WorkOrderView: React.FC = () => {
                           required={p2Enabled}
                         >
                           <option value="" disabled>-- Pilih Vendor Pelaksana --</option>
-                          {vendors.map((v) => (
+                          {vendorOptions.map((v) => (
                             <option key={v.id} value={v.name}>
-                              {v.name} {v.jenisPekerjaan ? `(${v.jenisPekerjaan.join(', ')})` : ''}
+                              {v.name} {v.jenisPekerjaan?.length ? `(${v.jenisPekerjaan.join(', ')})` : ''}
                             </option>
                           ))}
-                          {!vendors.some((v) => v.name === p2Vendor) && p2Vendor && (
+                          {!vendorOptions.some((v) => v.name === p2Vendor) && p2Vendor && (
                             <option value={p2Vendor}>{p2Vendor}</option>
                           )}
                         </select>
@@ -1467,12 +1478,12 @@ export const WorkOrderView: React.FC = () => {
                           required={tbEnabled}
                         >
                           <option value="" disabled>-- Pilih Vendor Pelaksana Tiang --</option>
-                          {vendors.map((v) => (
+                          {vendorOptions.map((v) => (
                             <option key={v.id} value={v.name}>
-                              {v.name} {v.jenisPekerjaan ? `(${v.jenisPekerjaan.join(', ')})` : ''}
+                              {v.name} {v.jenisPekerjaan?.length ? `(${v.jenisPekerjaan.join(', ')})` : ''}
                             </option>
                           ))}
-                          {!vendors.some((v) => v.name === tbVendor) && tbVendor && (
+                          {!vendorOptions.some((v) => v.name === tbVendor) && tbVendor && (
                             <option value={tbVendor}>{tbVendor}</option>
                           )}
                         </select>
