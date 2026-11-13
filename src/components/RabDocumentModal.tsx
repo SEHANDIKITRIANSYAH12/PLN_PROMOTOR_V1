@@ -551,10 +551,12 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
           <td style="border:none;padding:0;vertical-align:top;width:68%;">
             <table style="border:none;width:100%;font-size:6.8pt;line-height:1.4;">
               <tr><td style="border:none;padding:0.5px 0;width:80px;white-space:nowrap;">Nama Pekerjaan</td><td style="border:none;padding:0.5px 4px;width:8px;">:</td><td style="border:none;padding:0.5px 0;font-weight:bold;">${workTitle}</td></tr>
+              ${isWoMode ? `
               <tr><td style="border:none;padding:0.5px 0;">Nomor SPK</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${noSpk !== '—' ? noSpk : '-'}</td></tr>
               <tr><td style="border:none;padding:0.5px 0;">No Work Order</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${noWo !== '—' ? noWo : '-'}</td></tr>
               <tr><td style="border:none;padding:0.5px 0;">Tanggal Awal *)</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${tglAwal !== '—' ? tglAwal : '-'}</td></tr>
               <tr><td style="border:none;padding:0.5px 0;">Tanggal Akhir *)</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${tglAkhir !== '—' ? tglAkhir : '-'}</td></tr>
+              ` : ''}
               <tr><td style="border:none;padding:0.5px 0;vertical-align:top;">Pengawas</td><td style="border:none;padding:0.5px 4px;vertical-align:top;">:</td><td style="border:none;padding:0.5px 0;">${pengawas1 !== '—' ? pengawas1 : '-'}${pengawas2 && pengawas2 !== '—' ? '<br/>' + pengawas2 : ''}</td></tr>
               <tr><td style="border:none;padding:0.5px 0;">Alamat</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${survey?.location || '-'}</td></tr>
               <tr><td style="border:none;padding:0.5px 0;">Titik Koordinat</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${coordVal}</td></tr>
@@ -912,34 +914,40 @@ ${signatureBlock}
                   <span className="w-3 text-center">:</span>
                   <span className="font-semibold flex-1 text-slate-900">{workTitle}</span>
                 </div>
-                <div className="flex items-start">
-                  <span className="w-24 shrink-0 font-normal">Nomor SPK</span>
-                  <span className="w-3 text-center">:</span>
-                  <span className="font-normal flex-1">
-                    {noSpk !== '—' ? noSpk : '0050.SPK /DAN.01.01/F30020000/2026'}
-                  </span>
-                </div>
-                <div className="flex items-start">
-                  <span className="w-24 shrink-0 font-normal">No Work Order</span>
-                  <span className="w-3 text-center">:</span>
-                  <span className="font-normal flex-1">
-                    {noWo !== '—' ? noWo : '253.06.WO.2026'}
-                  </span>
-                </div>
-                <div className="flex items-start">
-                  <span className="w-24 shrink-0 font-normal">Tanggal Awal *)</span>
-                  <span className="w-3 text-center">:</span>
-                  <span className="font-normal flex-1">
-                    {tglAwal !== '—' ? tglAwal : '18 Juni 2026'}
-                  </span>
-                </div>
-                <div className="flex items-start">
-                  <span className="w-24 shrink-0 font-normal">Tanggal Akhir *)</span>
-                  <span className="w-3 text-center">:</span>
-                  <span className="font-normal flex-1">
-                    {tglAkhir !== '—' ? tglAkhir : '12 Juli 2026'}
-                  </span>
-                </div>
+                {/* Nomor SPK / WO / Tanggal baru ada setelah WO di-apply, jadi
+                    tidak ditampilkan pada dokumen RAB hasil survey. */}
+                {isWoMode && (
+                  <>
+                    <div className="flex items-start">
+                      <span className="w-24 shrink-0 font-normal">Nomor SPK</span>
+                      <span className="w-3 text-center">:</span>
+                      <span className="font-normal flex-1">
+                        {noSpk !== '—' ? noSpk : '0050.SPK /DAN.01.01/F30020000/2026'}
+                      </span>
+                    </div>
+                    <div className="flex items-start">
+                      <span className="w-24 shrink-0 font-normal">No Work Order</span>
+                      <span className="w-3 text-center">:</span>
+                      <span className="font-normal flex-1">
+                        {noWo !== '—' ? noWo : '253.06.WO.2026'}
+                      </span>
+                    </div>
+                    <div className="flex items-start">
+                      <span className="w-24 shrink-0 font-normal">Tanggal Awal *)</span>
+                      <span className="w-3 text-center">:</span>
+                      <span className="font-normal flex-1">
+                        {tglAwal !== '—' ? tglAwal : '18 Juni 2026'}
+                      </span>
+                    </div>
+                    <div className="flex items-start">
+                      <span className="w-24 shrink-0 font-normal">Tanggal Akhir *)</span>
+                      <span className="w-3 text-center">:</span>
+                      <span className="font-normal flex-1">
+                        {tglAkhir !== '—' ? tglAkhir : '12 Juli 2026'}
+                      </span>
+                    </div>
+                  </>
+                )}
                 <div className="flex items-start">
                   <span className="w-24 shrink-0 font-normal">Pengawas</span>
                   <span className="w-3 text-center">:</span>
