@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
+import { startDbSync, cancelPendingSync } from '@/lib/clientSync';
 import { Sidebar } from '@/components/Sidebar';
 import { Navbar } from '@/components/Navbar';
 import { DashboardView } from '@/components/DashboardView';
@@ -30,6 +31,14 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Mode rail desktop: sidebar ditutup jadi lajur ikon. Tidak effect drawer mobile.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Ambil data dari PostgreSQL sekali per sesi. Setelah ini tiap perubahan
+  // store ikut tertulis ke database (mekanismenya di src/lib/clientSync.ts).
+  // Tanpa langkah ini, refresh browser selalu mengembalikan aplikasi ke seed.
+  useEffect(() => {
+    void startDbSync();
+    return () => cancelPendingSync();
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-100 flex">

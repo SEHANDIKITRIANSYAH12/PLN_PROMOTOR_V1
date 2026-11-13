@@ -126,13 +126,16 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
     return null;
   }, [woData, targetCategory, workOrders, survey]);
 
-  const vendorName = matchedWo?.vendor || (activePaket === 'paket1' ? 'PT. HILMAN PRIMA PERKASA' : 'PT. TAWAKAL KARYA TEKNIK');
-  const noSpk = matchedWo?.spkNumber || (activePaket === 'paket1' ? '0021.PJ/DAN.02.03/UP3-BTS/2026' : '0022.PJ/DAN.02.03/UP3-BTS/2026');
-  const noWo = matchedWo?.noWorkOrder || matchedWo?.id || (activePaket === 'paket1' ? '537.10.WO.2026' : '538.10.WO.2026');
-  const tglAwal = matchedWo?.validFrom || '02 Jan 2026';
-  const tglAkhir = matchedWo?.validTo || '31 Des 2026';
-  const pengawas1 = matchedWo?.supervisor1 || matchedWo?.supervisor || (activePaket === 'paket1' ? 'Hasian Sitorus (TC Lola Konstruksi)' : 'Winnetou Chandra Sadli (Officer Kinerja Konstruksi)');
-  const pengawas2 = matchedWo?.supervisor2 !== undefined ? matchedWo.supervisor2 : (activePaket === 'paket1' ? 'Daud Febrizer (TL Teknik ULP Rangkasbitung)' : '');
+  // Penyedia B/J, SPK, nomor WO, masa berlaku, dan pengawas baru ditetapkan
+  // saat WO di-apply. Kalau WO-nya belum punya nilai itu, jangan dikarang:
+  // pakai penanda '—' yang sudah ditangani blok cetak sebagai strip kosong.
+  const vendorName = matchedWo?.vendor || '—';
+  const noSpk = matchedWo?.spkNumber || '—';
+  const noWo = matchedWo?.noWorkOrder || matchedWo?.id || '—';
+  const tglAwal = matchedWo?.validFrom || '—';
+  const tglAkhir = matchedWo?.validTo || '—';
+  const pengawas1 = matchedWo?.supervisor1 || matchedWo?.supervisor || '—';
+  const pengawas2 = matchedWo?.supervisor2 || '—';
 
   // Nama Pekerjaan Otomatis Sesuai Rumus Excel (PROJECT MASTER WO KHS 2026.xlsx -> ISIAN PEKERJAAN B478/C478)
   const workTitle = useMemo(() => {
@@ -539,7 +542,7 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
       <div style="font-weight:bold;font-size:9pt;text-transform:uppercase;">${docTitle}</div>
       ${isWoMode ? `
       <div style="font-size:7.5pt;font-weight:600;margin-top:2px;">KEPADA PENYEDIA B/J :</div>
-      <div style="font-weight:900;font-size:8.5pt;text-transform:uppercase;text-decoration:underline;margin-top:1px;">${vendorName}</div>
+      <div style="font-weight:900;font-size:8.5pt;text-transform:uppercase;text-decoration:underline;margin-top:1px;">${vendorName !== '—' ? vendorName : '-'}</div>
       ` : ''}
     </td>
   </tr>
@@ -901,7 +904,7 @@ ${signatureBlock}
                     KEPADA PENYEDIA B/J :
                   </div>
                   <div className="text-[11px] print:text-[7.2pt] font-black uppercase underline">
-                    {vendorName !== '—' ? vendorName : (activePaket === 'paket1' ? 'PT. HAFIZ PUTRA PERKASA' : 'PT. TAWAKAL KARYA TEKNIK')}
+                    {vendorName !== '—' ? vendorName : '-'}
                   </div>
                 </>
               )}
@@ -925,28 +928,28 @@ ${signatureBlock}
                       <span className="w-24 shrink-0 font-normal">Nomor SPK</span>
                       <span className="w-3 text-center">:</span>
                       <span className="font-normal flex-1">
-                        {noSpk !== '—' ? noSpk : '0050.SPK /DAN.01.01/F30020000/2026'}
+                        {noSpk !== '—' ? noSpk : '-'}
                       </span>
                     </div>
                     <div className="flex items-start">
                       <span className="w-24 shrink-0 font-normal">No Work Order</span>
                       <span className="w-3 text-center">:</span>
                       <span className="font-normal flex-1">
-                        {noWo !== '—' ? noWo : '253.06.WO.2026'}
+                        {noWo !== '—' ? noWo : '-'}
                       </span>
                     </div>
                     <div className="flex items-start">
                       <span className="w-24 shrink-0 font-normal">Tanggal Awal *)</span>
                       <span className="w-3 text-center">:</span>
                       <span className="font-normal flex-1">
-                        {tglAwal !== '—' ? tglAwal : '18 Juni 2026'}
+                        {tglAwal !== '—' ? tglAwal : '-'}
                       </span>
                     </div>
                     <div className="flex items-start">
                       <span className="w-24 shrink-0 font-normal">Tanggal Akhir *)</span>
                       <span className="w-3 text-center">:</span>
                       <span className="font-normal flex-1">
-                        {tglAkhir !== '—' ? tglAkhir : '12 Juli 2026'}
+                        {tglAkhir !== '—' ? tglAkhir : '-'}
                       </span>
                     </div>
                   </>
@@ -957,11 +960,11 @@ ${signatureBlock}
                     <span className="w-24 shrink-0 font-normal">Pengawas</span>
                     <span className="w-3 text-center">:</span>
                     <span className="font-normal flex-1">
-                      {pengawas1 !== '—' ? pengawas1 : 'Fikry Budi Hasbillah (TL Teknik ULP Labuan)'}
+                      {pengawas1 !== '—' ? pengawas1 : '-'}
                       {pengawas2 !== '—' && (
                         <>
                           <br />
-                          {pengawas2 || 'Rizki Wahyu (OF KIN)'}
+                          {pengawas2}
                         </>
                       )}
                     </span>
