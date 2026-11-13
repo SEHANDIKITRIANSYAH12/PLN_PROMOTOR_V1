@@ -77,9 +77,9 @@ export const AuditView: React.FC = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-blue-100/80 border-b border-blue-200 text-slate-900 uppercase font-bold text-[11px] tracking-wider">
-              <tr>
+              <tr className="divide-x divide-blue-200">
                 <th className="p-3 px-4">Waktu</th>
                 <th className="p-3 px-4">Pengguna / Peran</th>
                 <th className="p-3 px-4">Aktivitas</th>
@@ -96,7 +96,7 @@ export const AuditView: React.FC = () => {
                 </tr>
               ) : (
                 paginatedAudits.map((a, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/80">
+                  <tr key={idx} className="hover:bg-slate-50/80 divide-x divide-slate-200">
                     <td className="p-3 px-4 text-slate-500 font-mono text-[11px]">{a.time}</td>
                     <td className="p-3 px-4 font-bold text-slate-800">{a.user}</td>
                     <td className="p-3 px-4 text-slate-700">{a.activity}</td>

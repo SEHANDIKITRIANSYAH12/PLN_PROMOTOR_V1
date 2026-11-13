@@ -273,7 +273,7 @@ export const RabView: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-bold text-[11px] tracking-wider">
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-bold text-[11px] tracking-wider divide-x divide-slate-200">
                 <th className="py-3 px-4">No. Survey / IDPEL</th>
                 <th className="py-3 px-4">Nama Pelanggan</th>
                 <th className="py-3 px-4">Lokasi & ULP</th>
@@ -297,7 +297,7 @@ export const RabView: React.FC = () => {
                 paginatedList.map((item, idx) => {
                   const s = item.survey;
                   return (
-                    <tr key={s.id} className="hover:bg-blue-50/30 transition-colors">
+                    <tr key={s.id} className="hover:bg-blue-50/30 transition-colors divide-x divide-slate-200">
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         <div className="font-bold text-slate-900">{s.id}</div>
                         <div className="font-mono text-[11px] text-slate-500 font-semibold">{s.idpel || '—'}</div>

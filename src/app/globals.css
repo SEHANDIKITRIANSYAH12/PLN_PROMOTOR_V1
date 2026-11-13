@@ -54,6 +54,30 @@ body {
   background: #94a3b8;
 }
 
+/* ========================================================================= */
+/* PEMBATAS GARIS ANTAR KOLOM TABEL (VERTICAL COLUMN DIVIDERS)               */
+/* Memastikan seluruh tabel dalam aplikasi memiliki garis pembatas vertikal  */
+/* ========================================================================= */
+table th,
+table td {
+  border-right: 1px solid #e2e8f0 !important;
+}
+
+table thead th {
+  border-right: 1px solid #cbd5e1 !important;
+}
+
+table th:last-child,
+table td:last-child,
+table tr > td[colspan] {
+  border-right: none !important;
+}
+
+table.no-col-border th,
+table.no-col-border td {
+  border-right: none !important;
+}
+
 /* Standar Format Cetak Dokumen Resmi PLN */
 @media print {
   @page {

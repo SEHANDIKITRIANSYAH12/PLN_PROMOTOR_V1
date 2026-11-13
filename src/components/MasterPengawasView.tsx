@@ -300,7 +300,7 @@ export const MasterPengawasView: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 uppercase font-bold text-[11px] tracking-wider">
-              <tr>
+              <tr className="divide-x divide-slate-200">
                 <th className="py-3 px-4 w-12 text-center">NO</th>
                 <th className="py-3 px-4">NAMA LENGKAP & GELAR</th>
                 <th className="py-3 px-4">JABATAN TEKNIS</th>
@@ -323,7 +323,7 @@ export const MasterPengawasView: React.FC = () => {
                 paginatedSupervisors.map((s, idx) => {
                   const rowNumber = (currentPage - 1) * pageSize + idx + 1;
                   return (
-                    <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={s.id} className="hover:bg-slate-50/80 transition-colors divide-x divide-slate-200">
                       <td className="py-3.5 px-4 text-center font-mono text-slate-400 font-semibold">
                         {rowNumber}
                       </td>

@@ -2,14 +2,16 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { PoleData } from '@/types';
+import { Download, Loader2 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
 interface GeotagMapProps {
   poles: PoleData[];
+  customerName?: string;
   onViewPhoto?: (photoUrl: string, title: string, caption: string) => void;
 }
 
-export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, onViewPhoto }) => {
+export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onViewPhoto }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
@@ -18,6 +20,85 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, onViewPhoto }) => {
 
   const [mapType, setMapType] = useState<'googleHybrid' | 'googleStreets' | 'esriSatellite' | 'osm'>('googleHybrid');
   const [showDistances, setShowDistances] = useState<boolean>(true);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+
+  const handleDownloadMap = async () => {
+    if (!mapContainerRef.current) return;
+    setIsExporting(true);
+
+    try {
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default || html2canvasModule;
+
+      const container = mapContainerRef.current;
+      const canvas = await html2canvas(container, {
+        useCORS: true,
+        allowTaint: false,
+        logging: false,
+        scale: 2, // Kualitas High-Definition (Retina)
+        backgroundColor: '#0f172a',
+      });
+
+      // Tambahkan Kop Informasi PLN di bagian bawah gambar (seperti format Gambar Rencana PLN UP3)
+      const exportCanvas = document.createElement('canvas');
+      const bannerHeight = 84;
+      exportCanvas.width = canvas.width;
+      exportCanvas.height = canvas.height + bannerHeight;
+
+      const ctx = exportCanvas.getContext('2d');
+      if (ctx) {
+        // 1. Gambar peta utama
+        ctx.drawImage(canvas, 0, 0);
+
+        // 2. Gambar banner kop PLN di bawah
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, canvas.height, canvas.width, bannerHeight);
+
+        // Garis batas pemisah atas kop
+        ctx.fillStyle = '#0284c7';
+        ctx.fillRect(0, canvas.height, canvas.width, 3);
+
+        // Header / Logo PLN text
+        ctx.font = 'bold 24px system-ui, sans-serif';
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillText('⚡ PT PLN (PERSERO) UP3 BANTEN SELATAN', 28, canvas.height + 34);
+
+        // Subtitle Nama Pelanggan & Lokasi
+        ctx.font = '18px system-ui, sans-serif';
+        ctx.fillStyle = '#f8fafc';
+        const titleText = customerName ? `GAMBAR RENCANA GEOTAGGING TIANG: ${customerName.toUpperCase()}` : 'GAMBAR RENCANA GEOTAGGING TIANG & TRACE JARINGAN';
+        ctx.fillText(titleText, 28, canvas.height + 62);
+
+        // Rincian Teknis di sebelah kanan
+        ctx.font = 'bold 16px monospace';
+        ctx.fillStyle = '#cbd5e1';
+        ctx.textAlign = 'right';
+        const jtmInfo = jtmPoles.length > 0 ? `JTM: ${totalJtmMeters}m (${jtmPoles.length} Tiang) | ` : '';
+        const jtrInfo = jtrPoles.length > 0 ? `JTR: ${totalJtrMeters}m (${jtrPoles.length} Tiang) | ` : '';
+        const totalPolesInfo = `Total: ${validPoles.length} Titik Tiang`;
+        ctx.fillText(`${jtmInfo}${jtrInfo}${totalPolesInfo}`, canvas.width - 28, canvas.height + 38);
+
+        ctx.font = '14px system-ui, sans-serif';
+        ctx.fillStyle = '#94a3b8';
+        const dateStr = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+        ctx.fillText(`Diunduh dari Sistem Promotor PLN • ${dateStr}`, canvas.width - 28, canvas.height + 62);
+      }
+
+      // Trigger download file PNG
+      const link = document.createElement('a');
+      const safeCustomer = (customerName || 'PLN_Geotagging').replace(/[^a-zA-Z0-9_-]/g, '_');
+      link.download = `Geotagging_Map_${safeCustomer}_${new Date().toISOString().slice(0, 10)}.png`;
+      link.href = exportCanvas.toDataURL('image/png', 0.95);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      console.error('Gagal mengunduh peta:', err);
+      alert('Maaf, gagal memproses unduhan gambar peta. Pastikan koneksi satelit termuat dengan baik.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const validPoles = poles.filter((p) => p.lat !== null && p.lng !== null);
 
@@ -43,16 +124,19 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, onViewPhoto }) => {
       return L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
         subdomains: ['0', '1', '2', '3'],
         maxZoom: 21,
+        crossOrigin: true,
         attribution: '© Google Maps',
       });
     } else if (type === 'esriSatellite') {
       return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
+        crossOrigin: true,
         attribution: '© Esri Satellite',
       });
     } else if (type === 'osm') {
       return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
+        crossOrigin: true,
         attribution: '© OpenStreetMap',
       });
     } else {
@@ -60,6 +144,7 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, onViewPhoto }) => {
       return L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
         subdomains: ['0', '1', '2', '3'],
         maxZoom: 21,
+        crossOrigin: true,
         attribution: '© Google Maps Satellite',
       });
     }
@@ -125,13 +210,51 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, onViewPhoto }) => {
 
           const isTM = p.networkType === 'JTM' || p.networkType === 'SUTM' || !p.networkType || p.id.startsWith('TM');
           const isTrafo = (p.tmConstruction || '').includes('GARDU') || (p.trConstruction || '').includes('GARDU');
+          const isExisting = p.poleStatus === 'EXISTING' || (p.name || '').toLowerCase().includes('existing') || (p.note || '').toLowerCase().includes('eksisting') || (p.note || '').toLowerCase().includes('existing');
 
           const labelText = p.id;
           const specText = isTM ? (p.tmConstruction || 'TM1') : (p.trConstruction || 'TR1');
 
           let markerHtml = '';
 
-          if (isTrafo) {
+          if (isExisting) {
+            // Simbol Tiang Existing Standar PLN: Berwarna Hitam Pekat berbingkai putih/abu-abu
+            markerHtml = `
+              <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translate(-50%,-50%);">
+                <div style="
+                  width: ${isTM ? '14px' : '12px'};
+                  height: ${isTM ? '14px' : '12px'};
+                  background: #0f172a;
+                  border: 2px solid #ffffff;
+                  box-shadow: 0 0 0 1.5px #000000, 0 0 8px rgba(0,0,0,0.8);
+                  border-radius: 50%;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  flex-shrink: 0;
+                ">
+                  <div style="width: 4px; height: 4px; background: #94a3b8; border-radius: 50%;"></div>
+                </div>
+
+                <div style="
+                  margin-top: 2px;
+                  font-family: 'Consolas', 'Courier New', monospace;
+                  font-size: 9px;
+                  font-weight: 900;
+                  color: #e2e8f0;
+                  background: rgba(15,23,42,0.85);
+                  padding: 1px 4px;
+                  border-radius: 3px;
+                  border: 0.5px solid #475569;
+                  white-space: nowrap;
+                  line-height: 1;
+                  letter-spacing: -0.2px;
+                ">
+                  ${labelText} (EX)
+                </div>
+              </div>
+            `;
+          } else if (isTrafo) {
             // Simbol Rencana Trafo: Node kompak dan terpusat (tidak melebar ke samping)
             markerHtml = `
               <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translate(-50%,-50%);">
@@ -165,7 +288,7 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, onViewPhoto }) => {
               </div>
             `;
           } else {
-            // Node Tiang Kompak Terpusat: Tidak memakan ruang horizontal sehingga garis jalur antar tiang terlihat jelas & tidak dempet
+            // Node Tiang Rencana Baru: Warna Merah (TM) atau Biru (TR) menyala
             markerHtml = `
               <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translate(-50%,-50%);">
                 <div style="
@@ -433,18 +556,22 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, onViewPhoto }) => {
             </p>
           </div>
 
-          {/* Legend Badges with Total Length */}
+          {/* Legend Badges with Total Length & Status */}
           <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-slate-200">
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10.5px] font-bold bg-slate-900 text-slate-100 border border-slate-700 shadow-2xs font-mono">
+              <span className="w-2.5 h-2.5 bg-slate-900 border-2 border-white rounded-full shadow-xs"></span>
+              <span>Existing (Hitam)</span>
+            </span>
             {jtmPoles.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white text-rose-700 border border-rose-200 shadow-2xs font-mono">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10.5px] font-bold bg-white text-rose-700 border border-rose-200 shadow-2xs font-mono">
                 <span className="w-2.5 h-2.5 bg-rose-600 border border-cyan-400 rounded-[2px] shadow-xs"></span>
-                <span>JTM: {totalJtmMeters} m</span>
+                <span>Rencana JTM ({totalJtmMeters} m)</span>
               </span>
             )}
             {jtrPoles.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white text-sky-700 border border-sky-200 shadow-2xs font-mono">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10.5px] font-bold bg-white text-sky-700 border border-sky-200 shadow-2xs font-mono">
                 <span className="w-2.5 h-2.5 bg-sky-600 border border-emerald-400 rounded-[2px] shadow-xs"></span>
-                <span>JTR: {totalJtrMeters} m</span>
+                <span>Rencana JTR ({totalJtrMeters} m)</span>
               </span>
             )}
           </div>

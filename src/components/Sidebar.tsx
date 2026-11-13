@@ -5,26 +5,29 @@ import { usePromotorStore } from '@/store/usePromotorStore';
 import { 
   LayoutGrid, 
   Crosshair, 
-  FileText, 
-  Calculator,
-  FileCode,
-  ArrowLeftRight, 
-  Radio, 
-  FileCheck, 
-  Server, 
-  SplitSquareVertical, 
-  Sigma, 
+  FileText,
   Layers, 
-  FileCheck2, 
-  Clock,
   Minus,
   Plus,
-  Zap,
   LogOut,
   X,
   Building2,
   HardHat,
-  UserCheck
+  UserCheck,
+  ShieldCheck,
+  ArrowLeftRight,
+  HardDrive,
+  FileCheck2,
+  Warehouse,
+  Boxes,
+  Sigma,
+  Settings,
+  FileSpreadsheet,
+  History,
+  Calculator,
+  ClipboardList,
+  FileClock,
+  ClipboardCheck,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -32,11 +35,12 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-interface NavItem {
-  id: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
+  interface NavItem {
+    id: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    allowedRoles?: string[];
+  }
 
 interface NavGroup {
   id: string;
@@ -50,6 +54,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   // Collapsible Groups state (default all open)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     workspace: true,
+    pelaksanaan: true,
+    pengawasan: true,
+    vendor: true,
+    persediaan: true,
     master: true,
   });
 
@@ -63,21 +71,58 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const navGroups: NavGroup[] = [
     {
       id: 'workspace',
-      title: 'ALUR KERJA & EKSEKUSI',
+      title: 'WORKSPACE',
       items: [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
-        { id: 'survey', label: 'Survey Pelanggan', icon: Crosshair },
-        { id: 'daftung', label: 'Daftung (Daftar Tunggu)', icon: FileText },
-        { id: 'wo', label: 'Work Order (WO)', icon: HardHat },
+        { id: 'dashboard',  label: 'Dashboard',         icon: LayoutGrid, allowedRoles: ['Admin Daftung', 'Admin WO', 'Pengawas', 'Admin Gudang'] },
+        { id: 'survey',     label: 'Survey Pelanggan',  icon: Crosshair, allowedRoles: ['Admin Daftung', 'Pengawas', 'Admin WO'] },
+        { id: 'pradaftung', label: 'Potensi Daftung',   icon: FileCheck2, allowedRoles: ['Admin Daftung', 'Admin WO'] },
+      ],
+    },
+    {
+      id: 'pelaksanaan',
+      title: 'PELAKSANAAN',
+      items: [
+        { id: 'wo',             label: 'Work Order',                 icon: HardHat, allowedRoles: ['Admin Daftung', 'Admin WO'] },
+        { id: 'persetujuan-wo', label: 'Persetujuan WO',             icon: ShieldCheck, allowedRoles: ['Admin Daftung', 'Admin WO'] },
+        { id: 'daftung',        label: 'Daftar Tunggu (Daftung)',    icon: FileText, allowedRoles: ['Admin Daftung', 'Admin WO'] },
+      ],
+    },
+    {
+      id: 'pengawasan',
+      title: 'PENGAWASAN',
+      items: [
+        { id: 'reservasi-material',  label: 'Reservasi Material (Gudang)',      icon: Boxes, allowedRoles: ['Admin Daftung', 'Pengawas', 'Admin WO', 'Admin Gudang'] },
+        { id: 'verifikasi-pengawas', label: 'Verifikasi & Progres Lapangan',    icon: UserCheck, allowedRoles: ['Admin Daftung', 'Pengawas', 'Admin WO'] },
+      ],
+    },
+    {
+      id: 'vendor',
+      title: 'VENDOR',
+      items: [
+        { id: 'vendor-ambil',        label: 'Menu Vendor (Pelaksanaan & SJ)',   icon: HardDrive, allowedRoles: ['Admin Daftung', 'Pengawas', 'Admin WO'] },
+        { id: 'sweeping-material',   label: 'Sweeping Material',                icon: ClipboardCheck, allowedRoles: ['Admin Daftung', 'Pengawas', 'Admin WO', 'Admin Gudang'] },
+      ],
+    },
+    {
+      id: 'persediaan',
+      title: 'PERSEDIAAN',
+      items: [
+        { id: 'stok-gudang', label: 'Stok Gudang', icon: Warehouse, allowedRoles: ['Admin Daftung', 'Admin Gudang', 'Admin WO'] },
+        { id: 'mutasi-material', label: 'Mutasi Material (GI SAP)', icon: ArrowLeftRight, allowedRoles: ['Admin Daftung', 'Admin Gudang', 'Admin WO'] },
+        { id: 'analisis-material', label: 'Analisis Kebutuhan Material', icon: Calculator, allowedRoles: ['Admin Daftung', 'Admin Gudang', 'Admin WO', 'Pengawas'] },
+
       ],
     },
     {
       id: 'master',
       title: 'MASTER DATA & STANDAR',
       items: [
-        { id: 'vendor', label: 'Master Rekanan Vendor', icon: Building2 },
-        { id: 'pengawas', label: 'Master Pengawas', icon: UserCheck },
-        { id: 'std', label: 'Standar Konstruksi (STD)', icon: Layers },
+        { id: 'kontrak',         label: 'Master Kontrak (KHS)',        icon: FileSpreadsheet, allowedRoles: ['Admin Daftung', 'Admin WO'] },
+        { id: 'master-material', label: 'Kontrak Pengadaan Material',  icon: Boxes, allowedRoles: ['Admin Daftung', 'Admin WO', 'Admin Gudang'] },
+        { id: 'pengawas',        label: 'Master Pengawas',             icon: UserCheck, allowedRoles: ['Admin Daftung', 'Admin WO'] },
+        { id: 'std',             label: 'Standar Konstruksi',   icon: Layers, allowedRoles: ['Admin Daftung', 'Admin WO', 'Pengawas'] },
+        { id: 'audit',           label: 'Audit Log Aktivitas',  icon: History, allowedRoles: ['Admin Daftung', 'Admin WO'] },
+        { id: 'pengaturan',      label: 'Pengaturan',           icon: Settings, allowedRoles: ['Admin Daftung'] },
       ],
     },
   ];
@@ -153,32 +198,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                   </span>
                 </button>
 
-                {/* Submenu Items */}
+                {/* Submenu Items with RBAC Filter */}
                 {isGroupOpen && (
                   <div className="space-y-0.5 animate-in fade-in duration-150">
-                    {group.items.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = currentPage === item.id;
+                    {group.items
+                      .filter((item) => !item.allowedRoles || item.allowedRoles.includes(currentRole))
+                      .map((item) => {
+                        const Icon = item.icon;
+                        const isActive = currentPage === item.id;
 
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => {
-                            setCurrentPage(item.id);
-                            onClose();
-                          }}
-                          className={`
-                            w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all text-left
-                            ${isActive 
-                              ? 'bg-[#0066cc] text-white font-bold shadow-md shadow-blue-500/20' 
-                              : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}
-                          `}
-                        >
-                          <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} />
-                          <span className="truncate">{item.label}</span>
-                        </button>
-                      );
-                    })}
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => {
+                              setCurrentPage(item.id);
+                              onClose();
+                            }}
+                            className={`
+                              w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all text-left cursor-pointer
+                              ${isActive 
+                                ? 'bg-[#0066cc] text-white font-bold shadow-md shadow-blue-500/20' 
+                                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}
+                            `}
+                          >
+                            <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} />
+                            <span className="truncate">{item.label}</span>
+                          </button>
+                        );
+                      })}
                   </div>
                 )}
               </div>

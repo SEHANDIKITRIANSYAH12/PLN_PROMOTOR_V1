@@ -2,9 +2,110 @@ import { SurveyRecord } from '@/types';
 import { RabRowItem, PAKET_1_TEMPLATE_RAW, PAKET_2_TEMPLATE_RAW } from './rabMasterData';
 
 /**
- * MATRIKS STANDAR KONSTRUKSI JTM (SUTM & GARDU)
- * Sumber: PROJECT MASTER WO KHS 2026.xlsx -> Sheet 'ISIAN PEKERJAAN' Tabel $A$393:$AO$415
+ * Generator Judul / Nama Pekerjaan Otomatis Standar PLN KHS 2026
+ * Sumber: PROJECT MASTER WO KHS 2026.xlsx -> Sheet 'ISIAN PEKERJAAN' Baris 378 s/d 388 & Baris 478
+ * Contoh Hasil:
+ * "Pembangunan Jaringan SUTM Dan Pemasangan Instalasi Gardu (PKN240) Untuk PB POKTAN TANI BERKAH"
  */
+export function generateWorkTitlePln(
+  survey: SurveyRecord | any,
+  paket: 'paket1' | 'paket2' | string = 'paket1'
+): string {
+  if (!survey) return '-';
+
+  // 1. Ekstrak Nama Pelanggan Bersih
+  const rawCust = survey.customerName || survey.namaDasar || '';
+  let cleanCust = rawCust;
+  const cutWords = [
+    '(Pasang Baru', '(Perubahan Daya', '(PB', '(PD',
+    'Pasang Baru', 'Perubahan Daya',
+  ];
+  for (const w of cutWords) {
+    if (cleanCust.includes(w)) {
+      cleanCust = cleanCust.split(w)[0].trim();
+    }
+  }
+  cleanCust = cleanCust.replace(/^[-\s]+|[-\s]+$/g, '').trim();
+
+  // 2. Tentukan Jenis Transaksi (Baris 479: PB atau PD)
+  const jobType = (survey.jobType || '').toUpperCase();
+  const dayaLama = parseDayaVA(survey.dayaLama);
+  const isPD = jobType.includes('PERUBAHAN') || jobType.includes('PD') || dayaLama > 0;
+  const prefixJob = isPD ? 'PD ' : 'PB ';
+
+  // 3. Data Teknis Terkait
+  const poles = Array.isArray(survey.poles) ? survey.poles : [];
+  const hasJtm = (survey.perluasanJTM && survey.perluasanJTM !== '0 m' && survey.perluasanJTM !== '0') ||
+    poles.some((p: any) => p.networkType === 'JTM' || p.networkType === 'SUTM' || (p.id || '').startsWith('TM') || (p.a3cs && parseFloat(p.a3cs) > 0));
+  
+  const hasJtr = (survey.perluasanJTR && survey.perluasanJTR !== '0 m' && survey.perluasanJTR !== '0') ||
+    poles.some((p: any) => p.networkType === 'JTR' || p.networkType === 'SUTR' || (p.id || '').startsWith('TR') || (p.lvTwisted && parseFloat(p.lvTwisted) > 0));
+
+  const jtmType = (survey.perluasanJTM && survey.perluasanJTM.toUpperCase().includes('SKTM'))
+    ? 'SKTM'
+    : (survey.perluasanJTM && survey.perluasanJTM.toUpperCase().includes('SKUTM'))
+    ? 'SKUTM (MVTIC)'
+    : 'SUTM';
+
+  const jtrType = (survey.perluasanJTR && survey.perluasanJTR.toUpperCase().includes('SKUTR'))
+    ? 'SKUTR'
+    : (survey.perluasanJTR && survey.perluasanJTR.toUpperCase().includes('SKTR'))
+    ? 'SKTR'
+    : 'SUTR';
+
+  // Info Gardu & Trafo
+  let garduName = (survey.gardu || survey.penyulang || '').trim();
+  const garduStr = garduName && garduName !== '-' && garduName !== '0' ? `(${garduName}) ` : '';
+
+  let tipeGardu = (survey.tipePembangunanGardu || survey.tipeGardu || '').trim();
+  if (!tipeGardu && poles.length > 0) {
+    const hasGardu = poles.some((p: any) => (p.tmConstruction || '').toUpperCase().includes('GARDU'));
+    if (hasGardu) tipeGardu = 'Gardu Portal Distribusi';
+  }
+
+  const kapTrafo = (survey.kapasitasTrafo || '').trim();
+  const trafoStr = kapTrafo ? `${kapTrafo} ` : '';
+
+  const dayaBaruVA = parseDayaVA(survey.dayaBaru || survey.daya || survey.dayaPerUnit);
+  const normalizedPaket = String(paket).toLowerCase();
+
+  // 4. Perumusan sesuai Sheet 'ISIAN PEKERJAAN' Baris 478
+  if (normalizedPaket === 'paket1' || normalizedPaket.includes('p1')) {
+    // Baris 378 - 388 (Paket 1 JTM & Gardu: B478)
+    const hasGardu = Boolean(tipeGardu);
+    const part1 = (hasJtm || hasGardu) ? 'Pembangunan ' : '';
+    const part2 = hasJtm ? 'Jaringan ' : '';
+    const part3 = hasJtm ? `${jtmType} ` : '';
+    const part4 = (hasJtm && hasGardu) ? 'Dan ' : '';
+    let part5 = '';
+    if (hasGardu) {
+      if (tipeGardu.toLowerCase().includes('gardu')) {
+        part5 = `Pemasangan Instalasi ${tipeGardu} `;
+      } else {
+        part5 = `Pemasangan Instalasi Gardu ${tipeGardu} `;
+      }
+    }
+
+    const fullTitle = `${part1}${part2}${part3}${part4}${part5}${trafoStr}${garduStr}Untuk ${prefixJob}${cleanCust}`;
+    return fullTitle.replace(/\s+/g, ' ').trim();
+  } else {
+    // Baris 378 - 388 (Paket 2 JTR & Box APP: C478)
+    const hasBoxApp = dayaBaruVA >= 53000;
+    const part1 = hasJtr ? 'Pembangunan ' : '';
+    const part2 = hasJtr ? `${jtrType} ` : '';
+    const part3 = (hasJtr && hasBoxApp) ? 'Dan ' : '';
+    const part4 = hasBoxApp ? 'Pemasangan Box APP ' : '';
+
+    let base = `${part1}${part2}${part3}${part4}`;
+    if (!hasJtr && !hasBoxApp) {
+      base = 'Pemasangan Sambungan Tenaga Listrik ';
+    }
+
+    const fullTitle = `${base}Untuk ${prefixJob}${cleanCust}`;
+    return fullTitle.replace(/\s+/g, ' ').trim();
+  }
+}
+
 export const JTM_CONSTRUCTION_MATRIX: Record<string, Record<string, number>> = {
   "TM - 1B": {
     "TRAVES TUMPU": 1,
@@ -456,12 +557,15 @@ export function calculateRabFromSurvey(
       const len = p.conductorLength ?? (p.lvTwisted ? parseFloat(p.lvTwisted) || 0 : 0);
       sumC341_TIC += len;
 
-      // Tiang
+      // Tiang (jika 'Tanpa Tiang' atau 'Terusan TM', jangan hitung penambahan tiang baru)
       const pType = (p.poleType || p.std || '').toUpperCase();
-      if (pType.includes('350')) {
-        countTiang9_350 += 1;
-      } else {
-        countTiang9_200 += 1;
+      const isNoPole = pType.includes('TANPA') || pType.includes('EKSISTING') || pType.includes('TERUSAN') || pType.includes('UNDERBUILT') || pType === 'NONE' || pType === '';
+      if (!isNoPole) {
+        if (pType.includes('350')) {
+          countTiang9_350 += 1;
+        } else {
+          countTiang9_200 += 1;
+        }
       }
 
       // Konstruksi TR
@@ -601,10 +705,13 @@ export function calculateRabFromSurvey(
     sumC111_AAACS += len;
 
     const pType = (p.poleType || p.std || '').toUpperCase();
-    if (pType.includes('200')) {
-      countTiang12_200 += 1;
-    } else {
-      countTiang12_350 += 1;
+    const isNoPole = pType.includes('TANPA') || pType.includes('EKSISTING') || pType.includes('TERUSAN') || pType.includes('UNDERBUILT') || pType === 'NONE' || pType === '';
+    if (!isNoPole) {
+      if (pType.includes('200')) {
+        countTiang12_200 += 1;
+      } else {
+        countTiang12_350 += 1;
+      }
     }
 
     const tmKey = (p.tmConstruction || 'TM - 1B').trim();

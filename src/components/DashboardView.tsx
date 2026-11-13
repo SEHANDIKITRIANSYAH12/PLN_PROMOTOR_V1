@@ -31,11 +31,11 @@ export const DashboardView: React.FC = () => {
   const ap2tQueueCount = surveys.filter(s => s.status === 'Masuk Antrean AP2T').length || 2;
 
   const steps = [
-    { id: 'survey', label: '1. Survey Pelanggan', sub: 'Geotag & Output RAB', tab: null },
-    { id: 'daftung', label: '2. Verifikasi AP2T', sub: 'Pencocokan & Validasi', tab: 'ap2t' as const },
-    { id: 'daftung', label: '3. Daftar Tunggu', sub: 'Terverifikasi Siap WO', tab: 'daftung' as const },
-    { id: 'wo', label: '4. Work Order (WO)', sub: 'Alokasi & SPK Vendor', tab: null },
-    { id: 'khs', label: '5. Master HS WO', sub: 'Paket 1 & Paket 2', tab: null },
+    { id: 'survey',              label: '1. Survey Pelanggan',        sub: 'Geotagging & Tiang Lapangan', tab: null },
+    { id: 'pradaftung',          label: '2. Potensi Daftung',         sub: 'Cek AP2T & Penerbitan RAB',   tab: null },
+    { id: 'wo',                  label: '3. Work Order (WO)',         sub: 'Alokasi Vendor & Approval',   tab: null },
+    { id: 'reservasi-material',  label: '4. Reservasi Material',      sub: 'Alokasi Stok Gudang & Hold',  tab: null },
+    { id: 'verifikasi-pengawas', label: '5. Verifikasi & Progres',    sub: 'Surat Jalan, Progres & Retur', tab: null },
   ];
 
   return (
@@ -279,12 +279,11 @@ export const DashboardView: React.FC = () => {
                 </div>
                 <button 
                   onClick={() => {
-                    setActiveDaftungTab('ap2t');
-                    setCurrentPage('daftung');
+                    setCurrentPage('pradaftung');
                   }}
                   className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[10.5px] font-bold shrink-0 transition cursor-pointer"
                 >
-                  Verifikasi AP2T
+                  Buka Potensi Daftung →
                 </button>
               </div>
 

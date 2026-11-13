@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { SurveyRecord, WorkOrderRecord } from '@/types';
 import { calculateRabFromSurvey, RabRowItem } from '@/data/rabMasterData';
+import { generateWorkTitlePln } from '@/data/surveyRabCalculator';
 import { usePromotorStore } from '@/store/usePromotorStore';
 import { 
   X, 
@@ -42,9 +43,31 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
 }) => {
   const { workOrders, surveys, customKhsPrices } = usePromotorStore();
   const isWoMode = mode ? mode === 'wo' : Boolean(woData);
+
+  const resolvePaket = (wo?: WorkOrderRecord | null, initPkt: 'paket1' | 'paket2' = 'paket2'): 'paket1' | 'paket2' => {
+    if (!wo) return initPkt;
+    const cat = (wo.category || '').toLowerCase();
+    const no = (wo.noWorkOrder || wo.id || '').toLowerCase();
+    if (cat.includes('paket 1') || cat.includes('jtm') || no.includes('.p1.')) {
+      return 'paket1';
+    }
+    if (cat.includes('paket 2') || cat.includes('jtr') || no.includes('.p2.')) {
+      return 'paket2';
+    }
+    return initPkt;
+  };
+
   const [activePaket, setActivePaket] = useState<'paket1' | 'paket2'>(
-    woData?.category === 'WO Paket 1' ? 'paket1' : initialPaket
+    resolvePaket(woData, initialPaket)
   );
+
+  useEffect(() => {
+    if (woData) {
+      setActivePaket(resolvePaket(woData, initialPaket));
+    } else {
+      setActivePaket(initialPaket);
+    }
+  }, [woData, initialPaket]);
   const [realisasiOverrides, setRealisasiOverrides] = useState<Record<string, number>>({});
 
   // Resolve survey
@@ -110,6 +133,14 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
   const tglAkhir = matchedWo?.validTo || '31 Des 2026';
   const pengawas1 = matchedWo?.supervisor1 || matchedWo?.supervisor || (activePaket === 'paket1' ? 'Hasian Sitorus (TC Lola Konstruksi)' : 'Winnetou Chandra Sadli (Officer Kinerja Konstruksi)');
   const pengawas2 = matchedWo?.supervisor2 !== undefined ? matchedWo.supervisor2 : (activePaket === 'paket1' ? 'Daud Febrizer (TL Teknik ULP Rangkasbitung)' : '');
+
+  // Nama Pekerjaan Otomatis Sesuai Rumus Excel (PROJECT MASTER WO KHS 2026.xlsx -> ISIAN PEKERJAAN B478/C478)
+  const workTitle = useMemo(() => {
+    const dataSource = survey || matchedWo || woData;
+    const generated = generateWorkTitlePln(dataSource, activePaket);
+    if (generated && generated !== '-') return generated;
+    return survey?.customerName || matchedWo?.customerName || '-';
+  }, [survey, matchedWo, woData, activePaket]);
 
   // State Penandatangan (Dapat diubah dan diberi tanda tangan digital)
   const [approverName, setApproverName] = useState(matchedWo?.approverName || 'WEGIG DIDIK KURNIAWAN');
@@ -198,8 +229,24 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
     }
 
     return baseItems.map((item) => {
+      // 1. Prioritaskan Realisasi Fisik yang diinput Pengawas dari WO jika ada
+      const activeWo = woData || matchedWo;
+      let rVol = 0;
+      if (activeWo?.jasaItems && item.section === 'JASA') {
+        const foundJasa = activeWo.jasaItems.find(
+          (j) => (j.id && j.id === item.id) || (j.kode && j.kode === item.kode) || (j.deskripsi && j.deskripsi.trim().toLowerCase() === (item.desc || '').trim().toLowerCase())
+        );
+        if (foundJasa && foundJasa.qtyRealisasi !== undefined) {
+          rVol = foundJasa.qtyRealisasi;
+        }
+      }
+
+      // 2. Override manual lokal di modal jika ada
       if (realisasiOverrides[item.id] !== undefined) {
-        const rVol = realisasiOverrides[item.id];
+        rVol = realisasiOverrides[item.id];
+      }
+
+      if (rVol > 0) {
         return {
           ...item,
           realisasiVol: rVol,
@@ -362,21 +409,22 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
       if (item.isHeader) {
         const isMainGroup = item.no === 'I' || item.no === 'II';
         return `<tr style="background:#fff;">
-          <td style="border:1px solid #000;padding:2px 3px;text-align:center;font-weight:bold;">${item.no}</td>
-          <td colspan="7" style="border:1px solid #000;padding:2px 4px;font-weight:bold;text-transform:uppercase;${isMainGroup ? 'font-size:6.8pt;' : ''}">${item.desc}</td>
-          <td style="border:1px solid #000;"></td>
+          <td style="border:1px solid #000;padding:2.5px 2px;text-align:center;font-weight:bold;vertical-align:middle;width:28px;">${item.no}</td>
+          <td colspan="8" style="border:1px solid #000;padding:2.5px 5px;font-weight:bold;text-transform:uppercase;vertical-align:middle;${isMainGroup ? 'font-size:7pt;' : ''}">${item.desc}</td>
+          <td style="border:1px solid #000;vertical-align:middle;"></td>
         </tr>`;
       }
       return `<tr>
-        <td style="border:1px solid #000;padding:1.5px 2px;text-align:center;">${item.no || ''}</td>
-        <td style="border:1px solid #000;padding:1.5px 3px;">${item.desc}</td>
-        <td style="border:1px solid #000;padding:1.5px 2px;text-align:center;">${item.sat || ''}</td>
-        <td style="border:1px solid #000;padding:1.5px 3px;text-align:right;white-space:nowrap;">${fmtRpLeft(item.hargaSatuan)}</td>
-        <td style="border:1px solid #000;padding:1.5px 2px;text-align:center;">${item.rencanaVol > 0 ? item.rencanaVol : ''}</td>
-        <td style="border:1px solid #000;padding:1.5px 3px;text-align:right;white-space:nowrap;">${fmtRpLeft(item.rencanaTotal)}</td>
-        <td style="border:1px solid #000;padding:1.5px 2px;text-align:center;">${item.realisasiVol > 0 ? item.realisasiVol : ''}</td>
-        <td style="border:1px solid #000;padding:1.5px 3px;text-align:right;white-space:nowrap;">${fmtRpLeft(item.realisasiTotal)}</td>
-        <td style="border:1px solid #000;padding:1.5px 3px;text-align:center;white-space:nowrap;font-size:5.8pt;">${item.keterangan || (item.section === 'MATERIAL' ? 'LOG UP3 BTS' : '')}</td>
+        <td style="border:1px solid #000;padding:2px 2px;text-align:center;vertical-align:middle;">${item.no || ''}</td>
+        <td style="border:1px solid #000;padding:2px 3px;text-align:center;font-family:monospace;font-weight:600;font-size:6.3pt;white-space:nowrap;vertical-align:middle;">${item.kode || ''}</td>
+        <td style="border:1px solid #000;padding:2px 5px;vertical-align:middle;text-transform:uppercase;">${item.desc}</td>
+        <td style="border:1px solid #000;padding:2px 2px;text-align:center;vertical-align:middle;">${item.sat || ''}</td>
+        <td style="border:1px solid #000;padding:2px 4px;text-align:right;white-space:nowrap;vertical-align:middle;">${item.hargaSatuan > 0 ? fmtRpLeft(item.hargaSatuan) : ''}</td>
+        <td style="border:1px solid #000;padding:2px 2px;text-align:center;vertical-align:middle;">${item.rencanaVol > 0 ? item.rencanaVol : ''}</td>
+        <td style="border:1px solid #000;padding:2px 4px;text-align:right;white-space:nowrap;vertical-align:middle;">${item.rencanaTotal > 0 ? fmtRpLeft(item.rencanaTotal) : ''}</td>
+        <td style="border:1px solid #000;padding:2px 2px;text-align:center;vertical-align:middle;">${item.realisasiVol > 0 ? item.realisasiVol : ''}</td>
+        <td style="border:1px solid #000;padding:2px 4px;text-align:right;white-space:nowrap;vertical-align:middle;">${item.realisasiTotal > 0 ? fmtRpLeft(item.realisasiTotal) : ''}</td>
+        <td style="border:1px solid #000;padding:2px 4px;text-align:center;white-space:nowrap;font-size:6.2pt;vertical-align:middle;">${item.keterangan || (item.section === 'MATERIAL' ? 'LOG UP3 BTS' : '')}</td>
       </tr>`;
     }).join('');
 
@@ -384,28 +432,28 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
     const hasJasa = totals.jasRencana > 0 || totals.jasRealisasi > 0;
     const summaryRows = hasJasa ? `
       <tr>
-        <td colspan="4" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:bold;text-transform:uppercase;">SUBTOTAL MATERIAL</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:bold;white-space:nowrap;">${fmtRpLeft(totals.matRencana)}</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:bold;white-space:nowrap;">${totals.matRealisasi > 0 ? fmtRpLeft(totals.matRealisasi) : ''}</td>
-        <td style="border:1px solid #000;"></td>
+        <td colspan="5" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:bold;text-transform:uppercase;vertical-align:middle;">SUBTOTAL MATERIAL</td>
+        <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:bold;white-space:nowrap;vertical-align:middle;">${totals.matRencana > 0 ? fmtRpLeft(totals.matRencana) : '-'}</td>
+        <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:bold;white-space:nowrap;vertical-align:middle;">${totals.matRealisasi > 0 ? fmtRpLeft(totals.matRealisasi) : ''}</td>
+        <td style="border:1px solid #000;vertical-align:middle;"></td>
       </tr>
       <tr>
-        <td colspan="4" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:bold;text-transform:uppercase;">SUBTOTAL JASA</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:bold;white-space:nowrap;">${fmtRpLeft(totals.jasRencana)}</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:bold;white-space:nowrap;">${totals.jasRealisasi > 0 ? fmtRpLeft(totals.jasRealisasi) : ''}</td>
-        <td style="border:1px solid #000;"></td>
+        <td colspan="5" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:bold;text-transform:uppercase;vertical-align:middle;">SUBTOTAL JASA</td>
+        <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:bold;white-space:nowrap;vertical-align:middle;">${fmtRpLeft(totals.jasRencana)}</td>
+        <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:bold;white-space:nowrap;vertical-align:middle;">${totals.jasRealisasi > 0 ? fmtRpLeft(totals.jasRealisasi) : ''}</td>
+        <td style="border:1px solid #000;vertical-align:middle;"></td>
       </tr>
       <tr>
-        <td colspan="4" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:900;text-transform:uppercase;">JUMLAH</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:900;white-space:nowrap;">${fmtRpLeft(totals.totRencana)}</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:900;white-space:nowrap;">${totals.totRealisasi > 0 ? fmtRpLeft(totals.totRealisasi) : ''}</td>
-        <td style="border:1px solid #000;"></td>
+        <td colspan="5" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:900;text-transform:uppercase;vertical-align:middle;">JUMLAH</td>
+        <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:900;white-space:nowrap;vertical-align:middle;">${fmtRpLeft(totals.totRencana)}</td>
+        <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:900;white-space:nowrap;vertical-align:middle;">${totals.totRealisasi > 0 ? fmtRpLeft(totals.totRealisasi) : ''}</td>
+        <td style="border:1px solid #000;vertical-align:middle;"></td>
       </tr>` : `
       <tr>
-        <td colspan="4" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:900;text-transform:uppercase;">JUMLAH MATERIAL</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:900;white-space:nowrap;">${fmtRpLeft(totals.matRencana)}</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:900;white-space:nowrap;">${totals.matRealisasi > 0 ? fmtRpLeft(totals.matRealisasi) : ''}</td>
-        <td style="border:1px solid #000;"></td>
+        <td colspan="5" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:900;text-transform:uppercase;vertical-align:middle;">JUMLAH MATERIAL</td>
+        <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:900;white-space:nowrap;vertical-align:middle;">${totals.matRencana > 0 ? fmtRpLeft(totals.matRencana) : '-'}</td>
+        <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:900;white-space:nowrap;vertical-align:middle;">${totals.matRealisasi > 0 ? fmtRpLeft(totals.matRealisasi) : ''}</td>
+        <td style="border:1px solid #000;vertical-align:middle;"></td>
       </tr>`;
 
     const penyulangVal = survey?.penyulang || 'GI Menes ; P. Cigeulis ; Gardu : PNBG033';
@@ -502,7 +550,7 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
         <tr>
           <td style="border:none;padding:0;vertical-align:top;width:68%;">
             <table style="border:none;width:100%;font-size:6.8pt;line-height:1.4;">
-              <tr><td style="border:none;padding:0.5px 0;width:80px;white-space:nowrap;">Nama Pekerjaan</td><td style="border:none;padding:0.5px 4px;width:8px;">:</td><td style="border:none;padding:0.5px 0;">${survey?.customerName || '-'}</td></tr>
+              <tr><td style="border:none;padding:0.5px 0;width:80px;white-space:nowrap;">Nama Pekerjaan</td><td style="border:none;padding:0.5px 4px;width:8px;">:</td><td style="border:none;padding:0.5px 0;font-weight:bold;">${workTitle}</td></tr>
               <tr><td style="border:none;padding:0.5px 0;">Nomor SPK</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${noSpk !== '—' ? noSpk : '-'}</td></tr>
               <tr><td style="border:none;padding:0.5px 0;">No Work Order</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${noWo !== '—' ? noWo : '-'}</td></tr>
               <tr><td style="border:none;padding:0.5px 0;">Tanggal Awal *)</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${tglAwal !== '—' ? tglAwal : '-'}</td></tr>
@@ -527,46 +575,47 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
 </table>
 
 <!-- TABEL MATERIAL & JASA -->
-<table style="border:1.5px solid #000;border-collapse:collapse;width:100%;font-size:6.5pt;">
+<table style="border:1.5px solid #000;border-collapse:collapse;width:100%;font-size:6.8pt;font-family:Arial,Helvetica,sans-serif;">
   <thead>
     <tr style="background:#fff;font-weight:bold;">
-      <th rowspan="2" style="border:1px solid #000;padding:2px 3px;text-align:center;white-space:nowrap;">NO</th>
-      <th rowspan="2" style="border:1px solid #000;padding:2px 4px;text-align:center;">URAIAN MATERIAL &amp; JASA</th>
-      <th rowspan="2" style="border:1px solid #000;padding:2px 3px;text-align:center;white-space:nowrap;">SAT</th>
-      <th rowspan="2" style="border:1px solid #000;padding:2px 4px;text-align:center;white-space:nowrap;">HARGA SATUAN</th>
-      <th colspan="2" style="border:1px solid #000;padding:2px 3px;text-align:center;">RENCANA</th>
-      <th colspan="2" style="border:1px solid #000;padding:2px 3px;text-align:center;">REALISASI</th>
-      <th rowspan="2" style="border:1px solid #000;padding:2px 3px;text-align:center;white-space:nowrap;">KETERANGAN</th>
+      <th rowspan="2" style="border:1px solid #000;padding:3px 2px;text-align:center;vertical-align:middle;width:26px;">NO</th>
+      <th rowspan="2" style="border:1px solid #000;padding:3px 4px;text-align:center;vertical-align:middle;width:58px;white-space:nowrap;">NOMOR MATERIAL</th>
+      <th rowspan="2" style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:middle;">URAIAN MATERIAL &amp; JASA</th>
+      <th rowspan="2" style="border:1px solid #000;padding:3px 2px;text-align:center;vertical-align:middle;width:34px;white-space:nowrap;">SAT</th>
+      <th rowspan="2" style="border:1px solid #000;padding:3px 4px;text-align:center;vertical-align:middle;width:82px;white-space:nowrap;">HARGA SATUAN</th>
+      <th colspan="2" style="border:1px solid #000;padding:2px 3px;text-align:center;vertical-align:middle;">RENCANA</th>
+      <th colspan="2" style="border:1px solid #000;padding:2px 3px;text-align:center;vertical-align:middle;">REALISASI</th>
+      <th rowspan="2" style="border:1px solid #000;padding:3px 4px;text-align:center;vertical-align:middle;width:85px;white-space:nowrap;">KETERANGAN</th>
     </tr>
     <tr style="background:#fff;font-weight:bold;">
-      <th style="border:1px solid #000;padding:1.5px 3px;text-align:center;white-space:nowrap;">VOL</th>
-      <th style="border:1px solid #000;padding:1.5px 4px;text-align:center;white-space:nowrap;">TOTAL HARGA</th>
-      <th style="border:1px solid #000;padding:1.5px 3px;text-align:center;white-space:nowrap;">VOL</th>
-      <th style="border:1px solid #000;padding:1.5px 4px;text-align:center;white-space:nowrap;">TOTAL HARGA</th>
+      <th style="border:1px solid #000;padding:2px 2px;text-align:center;vertical-align:middle;width:34px;white-space:nowrap;">VOL</th>
+      <th style="border:1px solid #000;padding:2px 4px;text-align:center;vertical-align:middle;width:82px;white-space:nowrap;">TOTAL HARGA</th>
+      <th style="border:1px solid #000;padding:2px 2px;text-align:center;vertical-align:middle;width:34px;white-space:nowrap;">VOL</th>
+      <th style="border:1px solid #000;padding:2px 4px;text-align:center;vertical-align:middle;width:82px;white-space:nowrap;">TOTAL HARGA</th>
     </tr>
   </thead>
   <tbody>
     ${itemRows}
   </tbody>
-  <tfoot style="font-size:6.5pt;">
+  <tfoot style="font-size:6.8pt;">
     ${summaryRows}
     <tr>
-      <td colspan="4" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:bold;">PPN (11%)</td>
-      <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:bold;white-space:nowrap;">${fmtRpLeft(totals.ppnRencana)}</td>
-      <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:bold;white-space:nowrap;">${totals.ppnRealisasi > 0 ? fmtRpLeft(totals.ppnRealisasi) : ''}</td>
-      <td style="border:1px solid #000;"></td>
+      <td colspan="5" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:bold;vertical-align:middle;">PPN (11%)</td>
+      <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:bold;white-space:nowrap;vertical-align:middle;">${fmtRpLeft(totals.ppnRencana)}</td>
+      <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:bold;white-space:nowrap;vertical-align:middle;">${totals.ppnRealisasi > 0 ? fmtRpLeft(totals.ppnRealisasi) : ''}</td>
+      <td style="border:1px solid #000;vertical-align:middle;"></td>
     </tr>
     <tr>
-      <td colspan="4" style="border:1.5px solid #000;padding:2px 4px;text-align:right;font-weight:900;text-transform:uppercase;">TOTAL NILAI WO / RAB (${activePaket === 'paket1' ? 'PAKET 1 JTM' : 'PAKET 2 JTR'})</td>
-      <td colspan="2" style="border:1.5px solid #000;padding:2px 4px;text-align:right;font-weight:900;white-space:nowrap;">${fmtRpLeft(totals.grandRencana)}</td>
-      <td colspan="2" style="border:1.5px solid #000;padding:2px 4px;text-align:right;font-weight:900;white-space:nowrap;">${totals.grandRealisasi > 0 ? fmtRpLeft(totals.grandRealisasi) : ''}</td>
-      <td style="border:1.5px solid #000;"></td>
+      <td colspan="5" style="border:1.5px solid #000;padding:3px 5px;text-align:right;font-weight:900;text-transform:uppercase;vertical-align:middle;">TOTAL NILAI WO / RAB (${activePaket === 'paket1' ? 'PAKET 1 JTM' : 'PAKET 2 JTR'})</td>
+      <td colspan="2" style="border:1.5px solid #000;padding:3px 5px;text-align:right;font-weight:900;white-space:nowrap;vertical-align:middle;">${fmtRpLeft(totals.grandRencana)}</td>
+      <td colspan="2" style="border:1.5px solid #000;padding:3px 5px;text-align:right;font-weight:900;white-space:nowrap;vertical-align:middle;">${totals.grandRealisasi > 0 ? fmtRpLeft(totals.grandRealisasi) : ''}</td>
+      <td style="border:1.5px solid #000;vertical-align:middle;"></td>
     </tr>
     <tr>
-      <td colspan="4" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:900;text-transform:uppercase;">DIBULATKAN</td>
-      <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:900;white-space:nowrap;">${fmtRpLeft(totals.dibulatkanRencana)}</td>
-      <td colspan="2" style="border:1px solid #000;padding:2px 4px;text-align:right;font-weight:900;white-space:nowrap;">${totals.dibulatkanRealisasi > 0 ? fmtRpLeft(totals.dibulatkanRealisasi) : ''}</td>
-      <td style="border:1px solid #000;"></td>
+      <td colspan="5" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:900;text-transform:uppercase;vertical-align:middle;">DIBULATKAN</td>
+      <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:900;white-space:nowrap;vertical-align:middle;">${fmtRpLeft(totals.dibulatkanRencana)}</td>
+      <td colspan="2" style="border:1px solid #000;padding:2.5px 5px;text-align:right;font-weight:900;white-space:nowrap;vertical-align:middle;">${totals.dibulatkanRealisasi > 0 ? fmtRpLeft(totals.dibulatkanRealisasi) : ''}</td>
+      <td style="border:1px solid #000;vertical-align:middle;"></td>
     </tr>
   </tfoot>
 </table>
@@ -743,27 +792,42 @@ ${signatureBlock}
               </span>
             </div>
 
-            {/* Paket Toggle */}
-            <div className="flex items-center bg-slate-800 p-0.5 rounded-xl text-xs font-bold border border-slate-700">
-              <button
-                type="button"
-                onClick={() => setActivePaket('paket1')}
-                className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-                  activePaket === 'paket1' ? 'bg-purple-600 text-white shadow-xs font-black' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <span>RAB JTM (Paket 1)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActivePaket('paket2')}
-                className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-                  activePaket === 'paket2' ? 'bg-blue-600 text-white shadow-xs font-black' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <span>RAB JTR (Paket 2)</span>
-              </button>
-            </div>
+            {/* Paket Indicator: Jika mode Dokumen WO, kunci dan tampilkan paket yang dibuka saja (tanpa toggle switch) */}
+            {isWoMode ? (
+              <div className="flex items-center">
+                {activePaket === 'paket1' ? (
+                  <span className="px-3.5 py-1.5 rounded-xl bg-purple-600 text-white font-black text-xs border border-purple-400/50 shadow-xs tracking-wide">
+                    WO Paket 1 (JTM)
+                  </span>
+                ) : (
+                  <span className="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white font-black text-xs border border-blue-400/50 shadow-xs tracking-wide">
+                    WO Paket 2 (JTR)
+                  </span>
+                )}
+              </div>
+            ) : (
+              /* Mode RAB Survey Umum (Bisa pilih Paket 1 atau Paket 2) */
+              <div className="flex items-center bg-slate-800 p-0.5 rounded-xl text-xs font-bold border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setActivePaket('paket1')}
+                  className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                    activePaket === 'paket1' ? 'bg-purple-600 text-white shadow-xs font-black' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span>RAB JTM (Paket 1)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActivePaket('paket2')}
+                  className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                    activePaket === 'paket2' ? 'bg-blue-600 text-white shadow-xs font-black' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span>RAB JTR (Paket 2)</span>
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -789,12 +853,6 @@ ${signatureBlock}
               className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" /> Cetak / PDF
-            </button>
-            <button
-              onClick={handleExportCSV}
-              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" /> CSV
             </button>
             <button
               onClick={onClose}
@@ -852,7 +910,7 @@ ${signatureBlock}
                 <div className="flex items-start">
                   <span className="w-24 shrink-0 font-normal">Nama Pekerjaan</span>
                   <span className="w-3 text-center">:</span>
-                  <span className="font-normal flex-1">{survey.customerName}</span>
+                  <span className="font-semibold flex-1 text-slate-900">{workTitle}</span>
                 </div>
                 <div className="flex items-start">
                   <span className="w-24 shrink-0 font-normal">Nomor SPK</span>
@@ -952,6 +1010,9 @@ ${signatureBlock}
                   <th rowSpan={2} className="py-1 px-1.5 w-7 text-center border border-black">
                     NO
                   </th>
+                  <th rowSpan={2} className="py-1 px-2 w-24 text-center align-middle border border-black font-bold whitespace-nowrap font-mono text-[10px] print:text-[6.2pt]">
+                    NOMOR MATERIAL
+                  </th>
                   <th rowSpan={2} className="py-1 px-2 text-center border border-black">
                     URAIAN MATERIAL & JASA
                   </th>
@@ -988,7 +1049,7 @@ ${signatureBlock}
                         className="bg-white text-black font-bold border-b border-black text-[9.5px] print:text-[6.2pt]"
                       >
                         <td className="py-1 px-1.5 text-center border border-black font-bold">{item.no}</td>
-                        <td colSpan={7} className="py-1 px-2 border border-black font-bold uppercase tracking-tight">
+                        <td colSpan={8} className="py-1 px-2 border border-black font-bold uppercase tracking-tight">
                           {item.desc}
                         </td>
                         <td className="py-1 px-2 border border-black"></td>
@@ -1004,6 +1065,9 @@ ${signatureBlock}
                       className="text-black border-b border-black hover:bg-slate-50 transition-colors text-[9.5px] print:text-[6.1pt]"
                     >
                       <td className="py-0.5 px-1.5 text-center border border-black font-normal">{item.no || '-'}</td>
+                      <td className="py-0.5 px-2 text-center border border-black font-mono font-semibold text-slate-700 text-[10px] print:text-[6pt] whitespace-nowrap align-middle">
+                        {item.kode || '—'}
+                      </td>
                       <td className="py-0.5 px-2 border border-black">
                         <span className="font-normal text-black">
                           {item.desc}
@@ -1071,7 +1135,7 @@ ${signatureBlock}
                 {totals.jasRencana > 0 || totals.jasRealisasi > 0 ? (
                   <>
                     <tr>
-                      <td colSpan={4} className="py-1 px-3 text-right uppercase border border-black font-bold">
+                      <td colSpan={5} className="py-1 px-3 text-right uppercase border border-black font-bold">
                         SUBTOTAL MATERIAL
                       </td>
                       <td colSpan={2} className="py-1 px-2 text-right border border-black font-bold whitespace-nowrap tabular-nums">
@@ -1092,7 +1156,7 @@ ${signatureBlock}
                     </tr>
 
                     <tr>
-                      <td colSpan={4} className="py-1 px-3 text-right uppercase border border-black font-bold">
+                      <td colSpan={5} className="py-1 px-3 text-right uppercase border border-black font-bold">
                         SUBTOTAL JASA
                       </td>
                       <td colSpan={2} className="py-1 px-2 text-right border border-black font-bold whitespace-nowrap tabular-nums">
@@ -1113,7 +1177,7 @@ ${signatureBlock}
                     </tr>
 
                     <tr className="font-black bg-white">
-                      <td colSpan={4} className="py-1.5 px-3 text-right uppercase border border-black font-black">
+                      <td colSpan={5} className="py-1.5 px-3 text-right uppercase border border-black font-black">
                         JUMLAH
                       </td>
                       <td colSpan={2} className="py-1.5 px-2 text-right border border-black font-black whitespace-nowrap tabular-nums">
@@ -1135,7 +1199,7 @@ ${signatureBlock}
                   </>
                 ) : (
                   <tr className="font-black bg-white">
-                    <td colSpan={4} className="py-1.5 px-3 text-right uppercase border border-black font-black">
+                    <td colSpan={5} className="py-1.5 px-3 text-right uppercase border border-black font-black">
                       JUMLAH MATERIAL
                     </td>
                     <td colSpan={2} className="py-1.5 px-2 text-right border border-black font-black whitespace-nowrap tabular-nums">
@@ -1157,7 +1221,7 @@ ${signatureBlock}
                 )}
 
                 <tr className="bg-white">
-                  <td colSpan={4} className="py-1 px-3 text-right border border-black font-normal text-black">
+                  <td colSpan={5} className="py-1 px-3 text-right border border-black font-normal text-black">
                     PPN (11%)
                   </td>
                   <td colSpan={2} className="py-1 px-2 text-right border border-black font-bold text-black whitespace-nowrap tabular-nums">
@@ -1178,7 +1242,7 @@ ${signatureBlock}
                 </tr>
 
                 <tr className="bg-white font-black border-t-2 border-b-2 border-black">
-                  <td colSpan={4} className="py-1 px-3 text-right uppercase border border-black font-black">
+                  <td colSpan={5} className="py-1 px-3 text-right uppercase border border-black font-black">
                     TOTAL NILAI WO / RAB ({activePaket === 'paket1' ? 'PAKET 1 JTM' : 'PAKET 2 JTR'})
                   </td>
                   <td colSpan={2} className="py-1 px-2 text-right border border-black font-black whitespace-nowrap tabular-nums">
@@ -1199,7 +1263,7 @@ ${signatureBlock}
                 </tr>
 
                 <tr className="bg-white font-black">
-                  <td colSpan={4} className="py-1 px-3 text-right uppercase border border-black font-black text-black">
+                  <td colSpan={5} className="py-1 px-3 text-right uppercase border border-black font-black text-black">
                     DIBULATKAN
                   </td>
                   <td colSpan={2} className="py-1 px-2 text-right border border-black font-black whitespace-nowrap tabular-nums text-black">
