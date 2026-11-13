@@ -540,7 +540,7 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
       ${isWoMode ? `
       <div style="font-size:7.5pt;font-weight:600;margin-top:2px;">KEPADA PENYEDIA B/J :</div>
       <div style="font-weight:900;font-size:8.5pt;text-transform:uppercase;text-decoration:underline;margin-top:1px;">${vendorName}</div>
-      ` : `<div style="font-weight:900;font-size:8.5pt;text-transform:uppercase;text-decoration:underline;margin-top:1px;">${vendorName}</div>`}
+      ` : ''}
     </td>
   </tr>
   <!-- METADATA -->
@@ -557,7 +557,7 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
               <tr><td style="border:none;padding:0.5px 0;">Tanggal Awal *)</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${tglAwal !== '—' ? tglAwal : '-'}</td></tr>
               <tr><td style="border:none;padding:0.5px 0;">Tanggal Akhir *)</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${tglAkhir !== '—' ? tglAkhir : '-'}</td></tr>
               ` : ''}
-              <tr><td style="border:none;padding:0.5px 0;vertical-align:top;">Pengawas</td><td style="border:none;padding:0.5px 4px;vertical-align:top;">:</td><td style="border:none;padding:0.5px 0;">${pengawas1 !== '—' ? pengawas1 : '-'}${pengawas2 && pengawas2 !== '—' ? '<br/>' + pengawas2 : ''}</td></tr>
+              ${isWoMode ? `<tr><td style="border:none;padding:0.5px 0;vertical-align:top;">Pengawas</td><td style="border:none;padding:0.5px 4px;vertical-align:top;">:</td><td style="border:none;padding:0.5px 0;">${pengawas1 !== '—' ? pengawas1 : '-'}${pengawas2 && pengawas2 !== '—' ? '<br/>' + pengawas2 : ''}</td></tr>` : ''}
               <tr><td style="border:none;padding:0.5px 0;">Alamat</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${survey?.location || '-'}</td></tr>
               <tr><td style="border:none;padding:0.5px 0;">Titik Koordinat</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${coordVal}</td></tr>
               <tr><td style="border:none;padding:0.5px 0;">ULP</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${ulpVal}</td></tr>
@@ -894,14 +894,17 @@ ${signatureBlock}
                   ? `WORK ORDER JASA PEMASARAN ${activePaket === 'paket1' ? 'PAKET 1' : 'PAKET 2'} UP3 BANTEN SELATAN`
                   : `RENCANA ANGGARAN BIAYA (RAB) ${activePaket === 'paket1' ? 'JTM (PAKET 1)' : 'JTR (PAKET 2)'} UP3 BANTEN SELATAN`}
               </h2>
+              {/* Penyedia B/J baru ditetapkan saat WO di-apply, jadi tidak tampil di RAB */}
               {isWoMode && (
-                <div className="text-[10px] print:text-[6.5pt] font-semibold mt-0.5">
-                  KEPADA PENYEDIA B/J :
-                </div>
+                <>
+                  <div className="text-[10px] print:text-[6.5pt] font-semibold mt-0.5">
+                    KEPADA PENYEDIA B/J :
+                  </div>
+                  <div className="text-[11px] print:text-[7.2pt] font-black uppercase underline">
+                    {vendorName !== '—' ? vendorName : (activePaket === 'paket1' ? 'PT. HAFIZ PUTRA PERKASA' : 'PT. TAWAKAL KARYA TEKNIK')}
+                  </div>
+                </>
               )}
-              <div className="text-[11px] print:text-[7.2pt] font-black uppercase underline">
-                {vendorName !== '—' ? vendorName : (activePaket === 'paket1' ? 'PT. HAFIZ PUTRA PERKASA' : 'PT. TAWAKAL KARYA TEKNIK')}
-              </div>
             </div>
 
             {/* Metadata Grid Dua Kolom Persis Excel */}
@@ -948,19 +951,22 @@ ${signatureBlock}
                     </div>
                   </>
                 )}
-                <div className="flex items-start">
-                  <span className="w-24 shrink-0 font-normal">Pengawas</span>
-                  <span className="w-3 text-center">:</span>
-                  <span className="font-normal flex-1">
-                    {pengawas1 !== '—' ? pengawas1 : 'Fikry Budi Hasbillah (TL Teknik ULP Labuan)'}
-                    {pengawas2 !== '—' && (
-                      <>
-                        <br />
-                        {pengawas2 || 'Rizki Wahyu (OF KIN)'}
-                      </>
-                    )}
-                  </span>
-                </div>
+                {/* Pengawas pelaksanaan juga baru diisi pada saat apply WO */}
+                {isWoMode && (
+                  <div className="flex items-start">
+                    <span className="w-24 shrink-0 font-normal">Pengawas</span>
+                    <span className="w-3 text-center">:</span>
+                    <span className="font-normal flex-1">
+                      {pengawas1 !== '—' ? pengawas1 : 'Fikry Budi Hasbillah (TL Teknik ULP Labuan)'}
+                      {pengawas2 !== '—' && (
+                        <>
+                          <br />
+                          {pengawas2 || 'Rizki Wahyu (OF KIN)'}
+                        </>
+                      )}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-start">
                   <span className="w-24 shrink-0 font-normal">Alamat</span>
                   <span className="w-3 text-center">:</span>
