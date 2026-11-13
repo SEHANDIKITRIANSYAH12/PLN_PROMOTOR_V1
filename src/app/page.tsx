@@ -10,24 +10,18 @@ import { PraDaftungView } from '@/components/PraDaftungView';
 import { DaftungView } from '@/components/DaftungView';
 import { StandardConstructionView } from '@/components/StandardConstructionView';
 import { MasterKhsView } from '@/components/MasterKhsView';
-import { MasterVendorView } from '@/components/MasterVendorView';
 import { MasterPengawasView } from '@/components/MasterPengawasView';
 import { ContractView } from '@/components/ContractView';
 import { MasterMaterialView } from '@/components/MasterMaterialView';
 import { WorkOrderView } from '@/components/WorkOrderView';
 import { PersetujuanWoView } from '@/components/PersetujuanWoView';
 import { VendorPengambilanView } from '@/components/VendorPengambilanView';
-import { VerifikasiSuratJalanView } from '@/components/VerifikasiSuratJalanView';
-import { PengawasanView } from '@/components/PengawasanView';
 import { ReservasiMaterialView } from '@/components/ReservasiMaterialView';
 import { VerifikasiPengawasView } from '@/components/VerifikasiPengawasView';
 import { WarehouseView } from '@/components/WarehouseView';
 import { MutasiMaterialView } from '@/components/MutasiMaterialView';
 import { SweepingMaterialView } from '@/components/SweepingMaterialView';
 import { AnalisisKebutuhanMaterialView } from '@/components/AnalisisKebutuhanMaterialView';
-import { RincianPotensiDaftungView } from '@/components/RincianPotensiDaftungView';
-import { DaftungBelumReservasiView } from '@/components/DaftungBelumReservasiView';
-import { LaporanView } from '@/components/LaporanView';
 import { AuditView } from '@/components/AuditView';
 import { PengaturanView } from '@/components/PengaturanView';
 
@@ -60,22 +54,15 @@ export default function Home() {
           {/* 3. PENGAWASAN & RESERVASI */}
           {currentPage === 'reservasi-material'  && <ReservasiMaterialView />}
           {currentPage === 'verifikasi-pengawas' && <VerifikasiPengawasView />}
-          {currentPage === 'monitoring-pengawas' && <VerifikasiPengawasView />}
-          {currentPage === 'verifikasi-sj'       && <VerifikasiPengawasView />}
 
           {/* 4. PERSEDIAAN */}
           {currentPage === 'stok-gudang'              && <WarehouseView />}
           {currentPage === 'mutasi-material'          && <MutasiMaterialView />}
-          {currentPage === 'gudang'                   && <WarehouseView />}
           {currentPage === 'analisis-material'        && <AnalisisKebutuhanMaterialView />}
-          {currentPage === 'rincian-potensi-daftung'  && <RincianPotensiDaftungView />}
-          {currentPage === 'daftung-belum-reservasi'  && <DaftungBelumReservasiView />}
-          {currentPage === 'laporan'                  && <LaporanView />}
 
           {/* 5. MASTER DATA & STANDAR */}
           {currentPage === 'kontrak'         && <ContractView />}
           {currentPage === 'master-material' && <MasterMaterialView />}
-          {currentPage === 'vendor'          && <MasterVendorView />}
           {currentPage === 'pengawas'   && <MasterPengawasView />}
           {currentPage === 'khs'        && <MasterKhsView />}
           {currentPage === 'std'        && <StandardConstructionView />}
