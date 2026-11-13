@@ -39,6 +39,25 @@ function json(v: unknown): Prisma.InputJsonValue | undefined {
   return v === null || v === undefined ? undefined : (v as Prisma.InputJsonValue);
 }
 
+/**
+ * Baris hasil query Prisma -> bentuk record aplikasi.
+ *
+ * Kolom nullable yang kosong dikembalikan Prisma sebagai null, sedangkan field
+ * aplikasi bertipe opsional: tidak ada. Bedanya menentukan, karena logika UI
+ * menguji kelengkapan data dengan `!== undefined` (qtyReserved, qtyTaken,
+ * progressJasa, progressMaterial, dan belasan lainnya). null lolos uji itu lalu
+ * dianggap nilai, sehingga misalnya material yang belum direservasi
+ * (qtyReserved null) dihitung "tidak ada yang perlu diambil" = progres material
+ * 100%. Karena itu key bernilai null dilepas, bukan dipertahankan.
+ */
+function hydrate<T extends object>(row: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (value !== null) out[key] = value;
+  }
+  return out as T;
+}
+
 const SYS_KEYS = ['sysIdx', 'sysCreatedAt', 'sysUpdatedAt'] as const;
 
 // ---------------------------------------------------------------------------
@@ -77,8 +96,8 @@ async function readSurveys(tx: Tx) {
     orderBy: { sysIdx: 'asc' },
   });
   return rows.map((r) => ({
-    ...drop(r, [...SYS_KEYS, 'poles']),
-    poles: r.poles.map((p) => drop(p, ['surveyId', 'idx'])),
+    ...hydrate(drop(r, [...SYS_KEYS, 'poles'])),
+    poles: r.poles.map((p) => hydrate(drop(p, ['surveyId', 'idx']))),
   }));
 }
 
@@ -93,7 +112,7 @@ async function writeDaftungs(tx: Tx, rows: DaftungRecord[]) {
 }
 
 const readDaftungs = (tx: Tx) =>
-  tx.daftung.findMany({ orderBy: { sysIdx: 'asc' } }).then((r) => r.map((x) => drop(x, [...SYS_KEYS])));
+  tx.daftung.findMany({ orderBy: { sysIdx: 'asc' } }).then((r) => r.map((x) => hydrate(drop(x, [...SYS_KEYS]))));
 
 // ---------------------------------------------------------------------------
 //  WORK ORDER + MATERIAL + JASA
@@ -138,9 +157,9 @@ async function readWorkOrders(tx: Tx) {
     orderBy: { sysIdx: 'asc' },
   });
   return rows.map((r) => ({
-    ...drop(r, [...SYS_KEYS, 'materials', 'jasaItems']),
-    materials: r.materials.map((m) => drop(m, ['woId', 'idx'])),
-    jasaItems: r.jasaItems.map((j) => drop(j, ['woId', 'idx'])),
+    ...hydrate(drop(r, [...SYS_KEYS, 'materials', 'jasaItems'])),
+    materials: r.materials.map((m) => hydrate(drop(m, ['woId', 'idx']))),
+    jasaItems: r.jasaItems.map((j) => hydrate(drop(j, ['woId', 'idx']))),
   }));
 }
 
@@ -159,7 +178,7 @@ async function writeReservationTx(tx: Tx, rows: ReservationTransaction[]) {
 
 const readReservationTx = (tx: Tx) =>
   tx.reservationTransaction.findMany({ orderBy: { sysIdx: 'asc' } })
-    .then((r) => r.map((x) => drop(x, [...SYS_KEYS])));
+    .then((r) => r.map((x) => hydrate(drop(x, [...SYS_KEYS]))));
 
 async function writePickupTx(tx: Tx, rows: VendorPickupTransaction[]) {
   await tx.vendorPickupTransaction.deleteMany();
@@ -178,7 +197,7 @@ async function writePickupTx(tx: Tx, rows: VendorPickupTransaction[]) {
 
 const readPickupTx = (tx: Tx) =>
   tx.vendorPickupTransaction.findMany({ orderBy: { sysIdx: 'asc' } })
-    .then((r) => r.map((x) => drop(x, [...SYS_KEYS])));
+    .then((r) => r.map((x) => hydrate(drop(x, [...SYS_KEYS]))));
 
 // ---------------------------------------------------------------------------
 //  MASTER: VENDOR, KONTRAK, KONTRAK MATERIAL, PENGAWAS, STOK
@@ -194,7 +213,7 @@ async function writeVendors(tx: Tx, rows: VendorRecord[]) {
 }
 
 const readVendors = (tx: Tx) =>
-  tx.vendor.findMany({ orderBy: { sysIdx: 'asc' } }).then((r) => r.map((x) => drop(x, [...SYS_KEYS])));
+  tx.vendor.findMany({ orderBy: { sysIdx: 'asc' } }).then((r) => r.map((x) => hydrate(drop(x, [...SYS_KEYS]))));
 
 async function writeContracts(tx: Tx, rows: ContractRecord[]) {
   await tx.contract.deleteMany();
@@ -204,7 +223,7 @@ async function writeContracts(tx: Tx, rows: ContractRecord[]) {
 }
 
 const readContracts = (tx: Tx) =>
-  tx.contract.findMany({ orderBy: { sysIdx: 'asc' } }).then((r) => r.map((x) => drop(x, [...SYS_KEYS])));
+  tx.contract.findMany({ orderBy: { sysIdx: 'asc' } }).then((r) => r.map((x) => hydrate(drop(x, [...SYS_KEYS]))));
 
 async function writeMaterialContracts(tx: Tx, rows: MaterialContractRecord[]) {
   await tx.materialContract.deleteMany();
@@ -228,8 +247,8 @@ async function readMaterialContracts(tx: Tx) {
     orderBy: { sysIdx: 'asc' },
   });
   return rows.map((r) => ({
-    ...drop(r, [...SYS_KEYS, 'rincian']),
-    rincianMaterial: r.rincian.map((m) => drop(m, ['kontrakId', 'idx'])),
+    ...hydrate(drop(r, [...SYS_KEYS, 'rincian'])),
+    rincianMaterial: r.rincian.map((m) => hydrate(drop(m, ['kontrakId', 'idx']))),
   }));
 }
 
@@ -241,7 +260,7 @@ async function writeSupervisors(tx: Tx, rows: SupervisorRecord[]) {
 }
 
 const readSupervisors = (tx: Tx) =>
-  tx.supervisor.findMany({ orderBy: { sysIdx: 'asc' } }).then((r) => r.map((x) => drop(x, [...SYS_KEYS])));
+  tx.supervisor.findMany({ orderBy: { sysIdx: 'asc' } }).then((r) => r.map((x) => hydrate(drop(x, [...SYS_KEYS]))));
 
 /// Kuncinya `code`, bukan `id`.
 async function writeStocks(tx: Tx, rows: StockMaterial[]) {
@@ -252,7 +271,7 @@ async function writeStocks(tx: Tx, rows: StockMaterial[]) {
 }
 
 const readStocks = (tx: Tx) =>
-  tx.stock.findMany({ orderBy: { sysIdx: 'asc' } }).then((r) => r.map((x) => drop(x, [...SYS_KEYS])));
+  tx.stock.findMany({ orderBy: { sysIdx: 'asc' } }).then((r) => r.map((x) => hydrate(drop(x, [...SYS_KEYS]))));
 
 // ---------------------------------------------------------------------------
 //  SWEEPING
@@ -278,8 +297,8 @@ async function readSweepings(tx: Tx) {
     orderBy: { sysIdx: 'asc' },
   });
   return rows.map((r) => ({
-    ...drop(r, [...SYS_KEYS, 'items']),
-    items: r.items.map((m) => drop(m, ['sweepingId', 'idx'])),
+    ...hydrate(drop(r, [...SYS_KEYS, 'items'])),
+    items: r.items.map((m) => hydrate(drop(m, ['sweepingId', 'idx']))),
   }));
 }
 
@@ -295,7 +314,7 @@ async function writeAudits(tx: Tx, rows: AuditRecord[]) {
 
 const readAudits = (tx: Tx) =>
   tx.audit.findMany({ orderBy: { sysIdx: 'asc' } })
-    .then((r) => r.map((x) => drop(x, ['seq', ...SYS_KEYS])));
+    .then((r) => r.map((x) => hydrate(drop(x, ['seq', ...SYS_KEYS]))));
 
 // ---------------------------------------------------------------------------
 //  KONFIGURASI: aturan standar, harga KHS, pemetaan kode material
