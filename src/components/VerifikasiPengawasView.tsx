@@ -1,35 +1,32 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { 
-  FileCheck2, 
-  Search, 
-  CheckCircle2, 
-  Clock, 
-  Building2, 
+import React, { useState, useMemo, useCallback } from 'react';
+import {
+  FileCheck2,
+  Search,
+  CheckCircle2,
+  Clock,
+  Building2,
   RotateCcw,
-  ShieldCheck,
+  Lock,
+  Unlock,
   AlertTriangle,
   FileText,
   TrendingUp,
-  Percent,
-  Edit3,
   X,
-  Eye,
-  Camera,
-  Layers,
   ArrowRight,
   HardHat,
-  Calendar,
   Check,
-  Info,
   Package,
   Zap,
-  ChevronRight
+  ChevronRight,
+  Eye,
+  Layers
 } from 'lucide-react';
 import { usePromotorStore } from '@/store/usePromotorStore';
-import { WorkOrderRecord, WoMaterialItem, WoJasaItem } from '@/types';
+import { WorkOrderRecord, WoJasaItem } from '@/types';
 import { calculateRabFromSurvey } from '@/data/rabMasterData';
+import { ModalRekapProgresJasa } from '@/components/ModalRekapProgresJasa';
 
 const parseSupervisor = (s?: string) => {
   if (!s || s === '—' || s === '-') return { name: '—', role: '' };
@@ -43,17 +40,20 @@ export const VerifikasiPengawasView: React.FC = () => {
   const { 
     workOrders, 
     surveys,
+    vendorPickupTransactions,
     customKhsPrices,
     updateWoProgress,
     pengawasVerifyReceipt,
     pengawasVerifyRealization,
     pengawasApproveProgress,
     pengawasRejectProgress,
+    pengawasLockProgressJasa,
+    pengawasUnlockProgressJasa,
     showToast,
     setCurrentPage
   } = usePromotorStore();
 
-  const [activeTab, setActiveTab] = useState<'all' | 'menunggu_verif_progress' | 'menunggu_sj' | 'jasa_belum_mulai' | 'konstruksi' | 'jasa_selesai' | 'realisasi'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'menunggu_verif_progress' | 'menunggu_sj' | 'jasa_belum_mulai' | 'konstruksi' | 'jasa_selesai' | 'realisasi' | 'closeout'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [rejectModalWo, setRejectModalWo] = useState<WorkOrderRecord | null>(null);
   const [rejectReasonInput, setRejectReasonInput] = useState<string>('');
@@ -61,14 +61,15 @@ export const VerifikasiPengawasView: React.FC = () => {
   // --------------------------------------------------------------------------
   // Helper: Kelompok Jasa & Perhitungan Progres Riil per WO
   // --------------------------------------------------------------------------
-  const getWoJasaItems = (wo: WorkOrderRecord): WoJasaItem[] => {
+  const getWoJasaItems = useCallback((wo: WorkOrderRecord): WoJasaItem[] => {
     // 1. Jika WO memiliki pengajuan pending dari vendor, utamakan pengajuan tersebut untuk diverifikasi
     if (wo.pendingJasaItems && wo.pendingJasaItems.length > 0) {
       return wo.pendingJasaItems;
     }
 
-    // 2. Jika WO sudah memiliki jasaItems resmi dengan detail lengkap (lebih dari 2 item), pakai data WO
-    if (wo.jasaItems && wo.jasaItems.length > 2) {
+    // 2. Jika WO sudah memiliki jasaItems resmi dengan detail lengkap (lebih dari 2 item)
+    //    atau volumenya sudah direvisi Asman, pakai data WO
+    if (wo.jasaItems && (wo.jasaItems.length > 2 || (wo.volumeEditedAt && wo.jasaItems.length > 0))) {
       return wo.jasaItems;
     }
 
@@ -121,7 +122,7 @@ export const VerifikasiPengawasView: React.FC = () => {
     }
 
     return [];
-  };
+  }, [surveys, customKhsPrices]);
 
   const calculateJasaProgress = (items: WoJasaItem[]): number => {
     if (!items || items.length === 0) return 0;
@@ -194,12 +195,14 @@ export const VerifikasiPengawasView: React.FC = () => {
   // MODAL 1: Verifikasi Material Diterima (Surat Jalan Vendor)
   // --------------------------------------------------------------------------
   const [verifSjWo, setVerifSjWo] = useState<WorkOrderRecord | null>(null);
+  const [activeSjTab, setActiveSjTab] = useState<string>(''); // nomor surat jalan yang sedang aktif di tab
   const [verifSjMaterials, setVerifSjMaterials] = useState<
     { material: string; unit: string; qtyAllocated: number; qtyVendorClaim: number; qtyTaken: number; note: string }[]
   >([]);
   const [verifSjNotes, setVerifSjNotes] = useState('');
   const [verifSjOfficer, setVerifSjOfficer] = useState('');
   const [previewPhotoModal, setPreviewPhotoModal] = useState<string | null>(null);
+  const [detailKendalaModal, setDetailKendalaModal] = useState<{ title: string; kendala: string } | null>(null);
 
   // --------------------------------------------------------------------------
   // MODAL 2: Update Progres Jasa Lapangan Berbasis Kelompok Jasa WO
@@ -208,6 +211,9 @@ export const VerifikasiPengawasView: React.FC = () => {
   const [progressVal, setProgressVal] = useState<number>(0);
   const [progressNote, setProgressNote] = useState<string>('');
   const [progressJasaItems, setProgressJasaItems] = useState<WoJasaItem[]>([]);
+
+  // MODAL REKAP READ-ONLY KELOMPOK JASA PER SUB-BAB (KLIK PERSENTASE)
+  const [rekapWo, setRekapWo] = useState<WorkOrderRecord | null>(null);
 
   // --------------------------------------------------------------------------
   // MODAL 3: Detail Laporan Retur Sisa Material ke Gudang
@@ -231,7 +237,7 @@ export const VerifikasiPengawasView: React.FC = () => {
   // Filter WO yang berstatus APPROVED atau dalam tahap pengerjaan
   const activeWos = useMemo(() => {
     return workOrders.filter(
-      (w) => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Verifikasi SJ' || w.status === 'Selesai'
+      (w) => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Verifikasi SJ' || w.status === 'Selesai' || w.status === 'Closeout'
     );
   }, [workOrders]);
 
@@ -260,6 +266,8 @@ export const VerifikasiPengawasView: React.FC = () => {
       });
     } else if (activeTab === 'realisasi') {
       list = list.filter((w) => w.vendorRealizationSubmitted || (w.progress && w.progress >= 95));
+    } else if (activeTab === 'closeout') {
+      list = list.filter((w) => w.progressJasaLocked);
     }
 
     if (!searchTerm.trim()) return list;
@@ -275,7 +283,7 @@ export const VerifikasiPengawasView: React.FC = () => {
         (w.supervisor1 && w.supervisor1.toLowerCase().includes(term)) ||
         (w.supervisor2 && w.supervisor2.toLowerCase().includes(term))
     );
-  }, [activeWos, activeTab, searchTerm]);
+  }, [activeWos, activeTab, searchTerm, getWoJasaItems]);
 
   // Statistik Ringkasan
   const summaryStats = useMemo(() => {
@@ -295,20 +303,31 @@ export const VerifikasiPengawasView: React.FC = () => {
       return jProg >= 100;
     }).length;
     const menungguRealisasi = activeWos.filter((w) => w.vendorRealizationSubmitted && !w.pengawasRealizationVerified).length;
-    return { total, menungguVerifProgress, menungguSj, jasaBelumMulai, dalamKonstruksi, jasaSelesai, menungguRealisasi };
-  }, [activeWos]);
+    const closeout = activeWos.filter((w) => w.progressJasaLocked).length;
+    return { total, menungguVerifProgress, menungguSj, jasaBelumMulai, dalamKonstruksi, jasaSelesai, menungguRealisasi, closeout };
+  }, [activeWos, getWoJasaItems]);
 
   // --------------------------------------------------------------------------
   // Handlers: Verifikasi Material Diterima (Surat Jalan)
   // --------------------------------------------------------------------------
-  const handleOpenVerifSj = (wo: WorkOrderRecord) => {
-    setVerifSjWo(wo);
-    setVerifSjOfficer(wo.supervisor1 || wo.supervisor || 'Hasian Sitorus (TC Lola Konstruksi)');
-    setVerifSjNotes(wo.sjVerificationNotes || '');
+  const loadSjMaterialsForTab = (wo: WorkOrderRecord, sjNumber: string) => {
+    // Cari transaksi spesifik atau list surat jalan
+    const specificTx = vendorPickupTransactions.find((tx) => tx.woId === wo.id && tx.suratJalanNumber === sjNumber);
+    const specificSj = (wo.suratJalanList || []).find((s) => s.suratJalanNumber === sjNumber);
 
     const items = (wo.materials || []).map((m) => {
       const alloc = m.qtyAllocated || m.qtyReksis || 1;
-      const vendorClaim = m.qtyTaken !== undefined ? m.qtyTaken : alloc;
+      let vendorClaim = 0;
+      if (specificTx) {
+        const found = specificTx.items.find((it) => it.material === m.material);
+        vendorClaim = found ? found.qtyTakenCurrent : 0;
+      } else if (specificSj && specificSj.items) {
+        const found = specificSj.items.find((it) => it.material === m.material);
+        vendorClaim = found ? found.qtyTaken : 0;
+      } else {
+        vendorClaim = m.qtyTaken !== undefined ? m.qtyTaken : alloc;
+      }
+
       return {
         material: m.material,
         unit: m.unit || 'Buah',
@@ -318,7 +337,34 @@ export const VerifikasiPengawasView: React.FC = () => {
         note: m.verificationNote || '',
       };
     });
+
+    // Jika ada filter per SJ, kita bisa tampilkan yang diklaim di SJ tersebut, atau semua material
     setVerifSjMaterials(items);
+  };
+
+  const handleOpenVerifSj = (wo: WorkOrderRecord, targetSjNumber?: string) => {
+    setVerifSjWo(wo);
+    setVerifSjOfficer(wo.supervisor1 || wo.supervisor || 'Hasian Sitorus (TC Lola Konstruksi)');
+    setVerifSjNotes(wo.sjVerificationNotes || '');
+
+    // Kumpulkan daftar nomor SJ dari wo.suratJalanList dan vendorPickupTransactions
+    const allSjNumbers = Array.from(
+      new Set([
+        ...(wo.suratJalanList || []).map((s) => s.suratJalanNumber),
+        ...vendorPickupTransactions.filter((tx) => tx.woId === wo.id).map((tx) => tx.suratJalanNumber),
+        ...(wo.suratJalanNumber ? [wo.suratJalanNumber] : []),
+      ])
+    ).filter(Boolean);
+
+    const initialSj = targetSjNumber || allSjNumbers[0] || wo.suratJalanNumber || 'SJ-01';
+    setActiveSjTab(initialSj);
+    loadSjMaterialsForTab(wo, initialSj);
+  };
+
+  const handleSwitchSjTab = (sjNumber: string) => {
+    if (!verifSjWo) return;
+    setActiveSjTab(sjNumber);
+    loadSjMaterialsForTab(verifSjWo, sjNumber);
   };
 
   const handleUpdateVerifSjQty = (idx: number, valStr: string) => {
@@ -343,19 +389,51 @@ export const VerifikasiPengawasView: React.FC = () => {
     e.preventDefault();
     if (!verifSjWo) return;
 
+    const anySelisih = verifSjMaterials.some((it) => it.qtyTaken !== it.qtyVendorClaim);
+
     pengawasVerifyReceipt(
       verifSjWo.id,
       verifSjMaterials.map((it) => ({
         material: it.material,
         qtyTaken: it.qtyTaken,
+        qtyVendorClaim: it.qtyVendorClaim,
         note: it.note,
       })),
       verifSjNotes,
-      verifSjOfficer
+      verifSjOfficer,
+      activeSjTab
     );
 
-    showToast(`✅ Verifikasi Surat Jalan untuk ${verifSjWo.id} berhasil disimpan!`);
-    setVerifSjWo(null);
+    // Update state lokal verifSjWo agar tab yang sedang aktif langsung berganti status sesuai hasil verifikasi
+    const targetStatus = anySelisih ? ('ADA_SELISIH' as const) : ('SESUAI' as const);
+    setVerifSjWo((prev) => {
+      if (!prev) return null;
+      const prevList = prev.suratJalanList || [];
+      const exists = prevList.some((s) => s.suratJalanNumber === activeSjTab);
+      const updatedList = exists
+        ? prevList.map((s) =>
+            s.suratJalanNumber === activeSjTab
+              ? { ...s, status: targetStatus, verifiedAt: new Date().toISOString(), verifiedBy: verifSjOfficer }
+              : s
+          )
+        : [
+            ...prevList,
+            {
+              suratJalanNumber: activeSjTab,
+              suratJalanDate: new Date().toISOString(),
+              status: targetStatus,
+              verifiedAt: new Date().toISOString(),
+              verifiedBy: verifSjOfficer,
+            },
+          ];
+      return {
+        ...prev,
+        sjVerificationStatus: targetStatus,
+        suratJalanList: updatedList,
+      };
+    });
+
+    showToast(`✅ Verifikasi Surat Jalan ${activeSjTab || ''} untuk ${verifSjWo.id} berhasil disimpan! Status: SESUAI`);
   };
 
   // --------------------------------------------------------------------------
@@ -390,7 +468,13 @@ export const VerifikasiPengawasView: React.FC = () => {
       const copy = [...prev];
       const item = { ...copy[idx] };
       item.progresPersen = pct;
-      item.qtyRealisasi = Math.round(((item.qtyTarget * pct) / 100) * 1000) / 1000;
+      if (pct === 100) {
+        item.qtyRealisasi = item.qtyTarget;
+      } else if (pct === 0) {
+        item.qtyRealisasi = 0;
+      } else {
+        item.qtyRealisasi = Math.round(((item.qtyTarget * pct) / 100) * 10000) / 10000;
+      }
       copy[idx] = item;
       
       const newTotal = calculateJasaProgress(copy);
@@ -495,35 +579,6 @@ export const VerifikasiPengawasView: React.FC = () => {
       };
     });
     setVerifRealizationItems(items);
-  };
-
-  const handleUpdateRealizationInstalled = (idx: number, valStr: string) => {
-    const val = parseFloat(valStr);
-    const num = isNaN(val) ? 0 : Math.max(0, val);
-    setVerifRealizationItems((prev) => {
-      const copy = [...prev];
-      const autoRetur = Math.max(0, copy[idx].qtyTaken - num);
-      copy[idx] = { ...copy[idx], qtyInstalled: num, qtyReturned: autoRetur };
-      return copy;
-    });
-  };
-
-  const handleUpdateRealizationReturned = (idx: number, valStr: string) => {
-    const val = parseFloat(valStr);
-    const num = isNaN(val) ? 0 : Math.max(0, val);
-    setVerifRealizationItems((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], qtyReturned: num };
-      return copy;
-    });
-  };
-
-  const handleUpdateRealizationNote = (idx: number, note: string) => {
-    setVerifRealizationItems((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], note };
-      return copy;
-    });
   };
 
   const handleSaveRealization = (e: React.FormEvent) => {
@@ -809,6 +864,25 @@ export const VerifikasiPengawasView: React.FC = () => {
               {summaryStats.menungguRealisasi}
             </span>
           </button>
+
+          {/* 8. Tab Closeout (progres jasa dikunci pengawas) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('closeout')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'closeout'
+                ? 'bg-purple-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+            }`}
+          >
+            <Lock className={`w-3.5 h-3.5 ${activeTab === 'closeout' ? 'text-white' : 'text-slate-400'}`} />
+            <span>Closeout</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+              activeTab === 'closeout' ? 'bg-purple-700 text-purple-100' : 'bg-slate-200/80 text-slate-600'
+            }`}>
+              {summaryStats.closeout}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -823,7 +897,6 @@ export const VerifikasiPengawasView: React.FC = () => {
                 <th className="py-3 px-3.5 min-w-[150px]">LOKASI</th>
                 <th className="py-3 px-3.5 min-w-[160px]">VENDOR</th>
                 <th className="py-3 px-3.5 min-w-[190px]">PENGAWAS</th>
-                <th className="py-3 px-2.5 text-center min-w-[110px] w-28">SURAT JALAN (SJ)</th>
                 <th className="py-3 px-2.5 text-center min-w-[130px] w-32">PROGRES MATERIAL</th>
                 <th className="py-3 px-2.5 text-center min-w-[130px] w-32">PROGRES JASA</th>
                 <th className="py-3 px-2.5 text-center min-w-[125px] w-32">RETUR SISA GUDANG</th>
@@ -833,7 +906,7 @@ export const VerifikasiPengawasView: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredWos.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400">
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
                     <FileCheck2 className="w-10 h-10 mx-auto mb-2 opacity-40 text-purple-500" />
                     Tidak ada data Work Order dalam kategori pengawasan ini
                   </td>
@@ -843,10 +916,6 @@ export const VerifikasiPengawasView: React.FC = () => {
                   const hasSj = Boolean(wo.vendorReceiptConfirmed || wo.suratJalanNumber || wo.suratJalanPhoto);
                   const sjVerified = wo.sjVerificationStatus === 'SESUAI';
                   const sjHasSelisih = wo.sjVerificationStatus === 'ADA_SELISIH';
-                  const currentProg = wo.progress || 0;
-
-                  const hasRealization = Boolean(wo.vendorRealizationSubmitted);
-                  const realVerified = Boolean(wo.pengawasRealizationVerified);
 
                   // Pengawas 1 & Pengawas 2
                   const p1 = wo.supervisor1 || wo.supervisor || 'Hasian Sitorus (TC Lola Konstruksi)';
@@ -934,53 +1003,6 @@ export const VerifikasiPengawasView: React.FC = () => {
                         })()}
                       </td>
 
-                      {/* 4. Status Surat Jalan */}
-                      <td className="py-3 px-2.5 text-center align-top">
-                        {hasSj ? (
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`px-2 py-0.5 rounded-full text-[9.5px] font-bold flex items-center gap-1 shadow-2xs whitespace-nowrap ${
-                              sjVerified
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                : sjHasSelisih
-                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                                : 'bg-blue-100 text-blue-800 border border-blue-300'
-                            }`}>
-                              {sjVerified ? (
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                              ) : sjHasSelisih ? (
-                                <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
-                              ) : (
-                                <Clock className="w-3 h-3 text-blue-600 shrink-0" />
-                              )}
-                              <span>
-                                {sjVerified ? 'SJ SESUAI' : sjHasSelisih ? 'ADA SELISIH' : 'Menunggu Verif'}
-                              </span>
-                            </span>
-
-                            {wo.suratJalanNumber && (
-                              <span className="font-mono text-[9px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200 max-w-[100px] truncate" title={wo.suratJalanNumber}>
-                                {wo.suratJalanNumber}
-                              </span>
-                            )}
-
-                            {wo.suratJalanPhoto && (
-                              <button
-                                type="button"
-                                onClick={() => setPreviewPhotoModal(wo.suratJalanPhoto || null)}
-                                className="text-[9.5px] text-blue-600 hover:text-blue-800 font-medium flex items-center gap-0.5 mt-0.5"
-                              >
-                                <Camera className="w-3 h-3" />
-                                <span>Foto SJ</span>
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-[9.5px] font-medium text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 whitespace-nowrap inline-block">
-                            Belum Ada SJ
-                          </span>
-                        )}
-                      </td>
-
                       {/* 5. Progres Material */}
                       <td className="py-3 px-2.5 text-center align-middle">
                         {(() => {
@@ -1014,19 +1036,28 @@ export const VerifikasiPengawasView: React.FC = () => {
                           const isPending = wo.progressStatus === 'MENUNGGU_VERIFIKASI_PROGRESS';
                           const isApproved = wo.progressStatus === 'DISETUJUI';
                           const isRejected = wo.progressStatus === 'DITOLAK';
+                          const isLocked = Boolean(wo.progressJasaLocked);
 
                           return (
-                            <div className="flex flex-col items-center gap-1 w-28 mx-auto">
-                              <span className={`text-[13px] font-black tabular-nums ${jasaProg === 100 ? 'text-emerald-600' : jasaProg > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
-                                {jasaProg}%
-                              </span>
+                            <button
+                              type="button"
+                              onClick={() => setRekapWo(wo)}
+                              title="Klik untuk melihat rincian capaian per kelompok & sub-bab jasa (read-only)"
+                              className="group flex flex-col items-center gap-1 w-28 mx-auto p-1.5 -m-1.5 rounded-xl hover:bg-slate-100 hover:shadow-xs transition text-center cursor-pointer"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span className={`text-[13px] font-black tabular-nums transition group-hover:scale-105 ${jasaProg === 100 ? 'text-emerald-600' : jasaProg > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
+                                  {jasaProg}%
+                                </span>
+                                <Eye className="w-3 h-3 text-slate-400 group-hover:text-blue-600 transition" />
+                              </div>
                               <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
                                 <div
                                   className={`h-full rounded-full transition-all duration-300 ${jasaProg === 100 ? 'bg-emerald-500' : jasaProg >= 50 ? 'bg-blue-500' : jasaProg > 0 ? 'bg-amber-400' : 'bg-slate-300'}`}
                                   style={{ width: `${jasaProg}%` }}
                                 />
                               </div>
-                              <span className="text-[9px] text-slate-500 font-medium tabular-nums">
+                              <span className="text-[9px] text-slate-500 font-medium tabular-nums group-hover:text-blue-600">
                                 {completedJasaItems}/{woJasaList.length} Selesai
                               </span>
 
@@ -1045,7 +1076,16 @@ export const VerifikasiPengawasView: React.FC = () => {
                                   ✗ Ditolak
                                 </span>
                               )}
-                            </div>
+                              {isLocked && (
+                                <span
+                                  className="px-1.5 py-0.2 rounded-full text-[8.5px] font-bold bg-slate-800 text-amber-300 border border-slate-700 mt-0.5 flex items-center gap-1"
+                                  title={`Dikunci oleh ${wo.progressLockedBy || 'Pengawas'}${wo.progressLockedAt ? ` • ${new Date(wo.progressLockedAt).toLocaleString('id-ID')}` : ''}`}
+                                >
+                                  <Lock className="w-2.5 h-2.5 shrink-0" />
+                                  <span>Terkunci • Closeout</span>
+                                </span>
+                              )}
+                            </button>
                           );
                         })()}
                       </td>
@@ -1201,180 +1241,255 @@ export const VerifikasiPengawasView: React.FC = () => {
 
             {/* Body Modal */}
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {/* Info Surat Jalan Vendor (Sesuai Data Asli Vendor Termasuk No Reservasi & No GI) */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/90 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
-                <div>
-                  <span className="text-slate-400 block font-medium">Nomor Surat Jalan:</span>
-                  <span className="font-bold font-mono text-slate-800 text-sm truncate block" title={verifSjWo.suratJalanNumber}>
-                    {verifSjWo.suratJalanNumber || '-'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-medium">Nomor Reservasi:</span>
-                  <span className="font-bold font-mono text-slate-800 truncate block" title={verifSjWo.reservationNumber}>
-                    {verifSjWo.reservationNumber || '-'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-medium">Nomor GI (Goods Issue):</span>
-                  <span className="font-bold font-mono text-indigo-700 truncate block" title={verifSjWo.giNumber}>
-                    {verifSjWo.giNumber || '-'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-medium">Nomor SPK:</span>
-                  <span className="font-bold font-mono text-slate-800 truncate block" title={verifSjWo.spkNumber}>
-                    {verifSjWo.spkNumber || '-'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-medium">Tanggal Pengambilan / SJ:</span>
-                  <span className="font-bold text-slate-800">
-                    {verifSjWo.suratJalanDate || verifSjWo.vendorReceiptDate || '-'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-medium">Vendor Pelaksana:</span>
-                  <span className="font-bold text-slate-800 truncate block" title={verifSjWo.vendor}>
-                    {verifSjWo.vendor}
-                  </span>
-                </div>
-              </div>
+              {(() => {
+                // Kumpulkan semua Surat Jalan yang ada untuk WO ini
+                const woTxList = vendorPickupTransactions.filter((tx) => tx.woId === verifSjWo.id);
+                const allSjNumbers = Array.from(
+                  new Set([
+                    ...(verifSjWo.suratJalanList || []).map((s) => s.suratJalanNumber),
+                    ...woTxList.map((tx) => tx.suratJalanNumber),
+                    ...(verifSjWo.suratJalanNumber ? [verifSjWo.suratJalanNumber] : []),
+                  ])
+                ).filter(Boolean);
 
-              {/* Catatan Vendor & Lampiran Berkas (Surat Jalan & Bukti Penerimaan) */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                <div className="bg-blue-50/50 p-3.5 rounded-xl border border-blue-200/80 text-xs flex flex-col justify-between">
-                  <div>
-                    <span className="text-blue-800 block font-bold mb-1 flex items-center gap-1.5">
-                      <FileText className="w-3.5 h-3.5 text-blue-600" />
-                      Catatan Penerimaan / Pengambilan dari Vendor:
-                    </span>
-                    <p className="text-slate-700 italic">
-                      &quot;{verifSjWo.vendorReceiptNotes || 'Material diambil dari gudang sesuai alokasi Surat Jalan.'}&quot;
-                    </p>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-blue-200/60 flex items-center justify-between text-[11px] text-slate-500">
-                    <span>Pengawas Pemeriksa:</span>
-                    <input
-                      type="text"
-                      value={verifSjOfficer}
-                      onChange={(e) => setVerifSjOfficer(e.target.value)}
-                      className="px-2 py-0.5 bg-white border border-slate-300 rounded text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
+                // Temukan data spesifik berdasarkan activeSjTab
+                const curTx = woTxList.find((tx) => tx.suratJalanNumber === activeSjTab);
+                const curSjRecord = (verifSjWo.suratJalanList || []).find((s) => s.suratJalanNumber === activeSjTab);
 
-                {/* 1. Berkas Lampiran Surat Jalan Vendor */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between text-xs">
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                        <FileCheck2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Foto Surat Jalan</span>
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        {(() => {
-                          const list = verifSjWo.suratJalanPhotos && verifSjWo.suratJalanPhotos.length > 0
-                            ? verifSjWo.suratJalanPhotos
-                            : (verifSjWo.suratJalanPhoto ? [verifSjWo.suratJalanPhoto] : []);
-                          return `${list.length} File`;
-                        })()}
-                      </span>
+                const currentSjNumber = activeSjTab || verifSjWo.suratJalanNumber || '-';
+                const currentResNumber = curTx?.reservationNumber || curSjRecord?.reservationNumber || verifSjWo.reservationNumber || '-';
+                const currentGiNumber = curTx?.giNumber || curSjRecord?.giNumber || verifSjWo.giNumber || '-';
+                const currentSjDate = curTx?.date || curSjRecord?.suratJalanDate || verifSjWo.suratJalanDate || verifSjWo.vendorReceiptDate || '-';
+                const currentNotes = curTx?.notes || curSjRecord?.notes || verifSjWo.vendorReceiptNotes || 'Material diambil dari gudang sesuai alokasi Surat Jalan.';
+
+                // Foto Surat Jalan untuk tab ini
+                const sjPhotoList = curTx?.suratJalanPhotos && curTx.suratJalanPhotos.length > 0
+                  ? curTx.suratJalanPhotos
+                  : curSjRecord?.photos && curSjRecord.photos.length > 0
+                  ? curSjRecord.photos
+                  : verifSjWo.suratJalanPhotos && verifSjWo.suratJalanPhotos.length > 0
+                  ? verifSjWo.suratJalanPhotos
+                  : (verifSjWo.suratJalanPhoto ? [verifSjWo.suratJalanPhoto] : []);
+
+                // Foto Bukti Penerimaan Material
+                const receiptPhotoList = curSjRecord?.receiptPhotos && curSjRecord.receiptPhotos.length > 0
+                  ? curSjRecord.receiptPhotos
+                  : (verifSjWo.receiptPhotos || []);
+
+                return (
+                  <div className="space-y-4">
+                    {/* TAB NAVIGASI SURAT JALAN VENDOR (Modern Segmented Pill) */}
+                    <div className="bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5">
+                        <div className="flex items-center gap-1.5 text-slate-500 font-bold text-xs uppercase tracking-wider shrink-0 mr-1 pl-1">
+                          <Layers className="w-4 h-4 text-amber-600" />
+                          <span>Pilih Dokumen SJ:</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200/90 shadow-2xs">
+                          {allSjNumbers.map((sjNo, i) => {
+                            const isActive = (activeSjTab === sjNo) || (!activeSjTab && i === 0);
+                            const matchedSj = (verifSjWo.suratJalanList || []).find((s) => s.suratJalanNumber === sjNo);
+                            const matchedTx = vendorPickupTransactions.find((t) => t.woId === verifSjWo.id && t.suratJalanNumber === sjNo);
+                            const isVerifiedThis = matchedSj?.status === 'SESUAI' || matchedTx?.status === 'SESUAI' || (verifSjWo.sjVerificationStatus === 'SESUAI' && allSjNumbers.length <= 1);
+                            return (
+                              <button
+                                key={sjNo}
+                                type="button"
+                                onClick={() => handleSwitchSjTab(sjNo)}
+                                className={`px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                                  isActive
+                                    ? 'bg-amber-500 text-white shadow-xs scale-[1.02]'
+                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                }`}
+                              >
+                                <FileCheck2 className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-amber-600'}`} />
+                                <span>{sjNo}</span>
+                                {isVerifiedThis ? (
+                                  <span className={`text-[9.5px] px-1.5 py-0.2 rounded-md font-sans font-bold ${isActive ? 'bg-amber-600 text-amber-100' : 'bg-emerald-100 text-emerald-800'}`}>
+                                    ✓ Sesuai
+                                  </span>
+                                ) : (
+                                  <span className={`text-[9.5px] px-1.5 py-0.2 rounded-md font-sans ${isActive ? 'bg-amber-600 text-amber-100' : 'bg-slate-200/70 text-slate-600'}`}>
+                                    Menunggu
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right pr-2">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-slate-600 bg-white border border-slate-200 shadow-2xs">
+                          <Package className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Total <b>{allSjNumbers.length}</b> Surat Jalan Bertahap</span>
+                        </span>
+                      </div>
                     </div>
 
-                    {(() => {
-                      const list = verifSjWo.suratJalanPhotos && verifSjWo.suratJalanPhotos.length > 0
-                        ? verifSjWo.suratJalanPhotos
-                        : (verifSjWo.suratJalanPhoto ? [verifSjWo.suratJalanPhoto] : []);
-                      if (list.length === 0) {
-                        return <p className="text-[11px] text-slate-400 italic">Tidak ada foto fisik SJ</p>;
-                      }
-                      return (
-                        <div className="flex flex-wrap gap-1.5 mt-1">
-                          {list.map((url, idx) => (
-                            <img
-                              key={idx}
-                              src={url}
-                              alt={`SJ ${idx + 1}`}
-                              className="w-12 h-12 object-cover rounded-lg border border-slate-300 shadow-2xs cursor-pointer hover:opacity-90"
-                              onClick={() => setPreviewPhotoModal(url)}
-                              title={`Klik perbesar Surat Jalan #${idx + 1}`}
-                            />
-                          ))}
+                    {/* Info Metadata Surat Jalan Vendor Aktif */}
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 text-xs">
+                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Nomor Surat Jalan:</span>
+                          <span className="font-bold font-mono text-slate-800 text-xs block break-all" title={currentSjNumber}>
+                            {currentSjNumber}
+                          </span>
                         </div>
-                      );
-                    })()}
-                  </div>
-                  {(() => {
-                    const list = verifSjWo.suratJalanPhotos && verifSjWo.suratJalanPhotos.length > 0
-                      ? verifSjWo.suratJalanPhotos
-                      : (verifSjWo.suratJalanPhoto ? [verifSjWo.suratJalanPhoto] : []);
-                    if (list.length > 0) {
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => setPreviewPhotoModal(list[0])}
-                          className="mt-2 text-center py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-[10px] font-bold text-blue-700 cursor-pointer"
-                        >
-                          Perbesar Surat Jalan
-                        </button>
-                      );
-                    }
-                    return null;
-                  })()}
-                </div>
-
-                {/* 2. Berkas Lampiran Bukti Penerimaan Material */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between text-xs">
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                        <Package className="w-3.5 h-3.5 text-blue-600" />
-                        <span>Bukti Penerimaan Material</span>
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        {(verifSjWo.receiptPhotos || []).length} File
-                      </span>
+                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Nomor Reservasi:</span>
+                          <span className="font-bold font-mono text-slate-800 text-xs block break-all" title={currentResNumber}>
+                            {currentResNumber}
+                          </span>
+                        </div>
+                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Nomor GI (Goods Issue):</span>
+                          <span className={`font-bold font-mono text-xs block break-all ${currentGiNumber !== '-' ? 'text-indigo-700' : 'text-slate-400'}`} title={currentGiNumber}>
+                            {currentGiNumber}
+                          </span>
+                        </div>
+                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Nomor SPK:</span>
+                          <span className="font-bold font-mono text-slate-800 text-xs block break-all" title={verifSjWo.spkNumber}>
+                            {verifSjWo.spkNumber || '-'}
+                          </span>
+                        </div>
+                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Tanggal Pengambilan:</span>
+                          <span className="font-bold text-slate-800 text-xs block">
+                            {currentSjDate}
+                          </span>
+                        </div>
+                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Vendor Pelaksana:</span>
+                          <span className="font-bold text-slate-800 text-xs block break-words" title={verifSjWo.vendor}>
+                            {verifSjWo.vendor}
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
-                    {(() => {
-                      const list = verifSjWo.receiptPhotos || [];
-                      if (list.length === 0) {
-                        return <p className="text-[11px] text-slate-400 italic">Tidak ada foto bukti serah terima</p>;
-                      }
-                      return (
-                        <div className="flex flex-wrap gap-1.5 mt-1">
-                          {list.map((url, idx) => (
-                            <img
-                              key={idx}
-                              src={url}
-                              alt={`Bukti ${idx + 1}`}
-                              className="w-12 h-12 object-cover rounded-lg border border-slate-300 shadow-2xs cursor-pointer hover:opacity-90"
-                              onClick={() => setPreviewPhotoModal(url)}
-                              title={`Klik perbesar Bukti Terima #${idx + 1}`}
-                            />
-                          ))}
+                    {/* Catatan Vendor & Lampiran Berkas (Surat Jalan & Bukti Penerimaan) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
+                      <div className="bg-gradient-to-br from-blue-50/70 to-indigo-50/50 p-4 rounded-2xl border border-blue-200/90 text-xs flex flex-col justify-between shadow-2xs">
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="p-1.5 rounded-lg bg-blue-600 text-white shadow-2xs">
+                              <FileText className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="text-blue-950 font-bold text-xs">
+                              Catatan Pengambilan:
+                            </span>
+                          </div>
+                          <div className="bg-white/80 p-3 rounded-xl border border-blue-100 text-slate-700 italic text-[11.5px] leading-relaxed">
+                            &quot;{currentNotes}&quot;
+                          </div>
                         </div>
-                      );
-                    })()}
+                        <div className="mt-3 pt-2.5 border-t border-blue-200/60 flex items-center justify-between text-[11px] text-slate-600">
+                          <span className="font-medium">Pengawas Pemeriksa:</span>
+                          <input
+                            type="text"
+                            value={verifSjOfficer}
+                            onChange={(e) => setVerifSjOfficer(e.target.value)}
+                            className="px-2.5 py-1 bg-white border border-blue-300 rounded-lg text-slate-800 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 shadow-2xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 1. Berkas Lampiran Surat Jalan Vendor */}
+                      <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col justify-between text-xs shadow-2xs">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-bold text-slate-800 flex items-center gap-2">
+                              <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700">
+                                <FileCheck2 className="w-3.5 h-3.5" />
+                              </div>
+                              <span>Foto Surat Jalan</span>
+                            </span>
+                            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                              {sjPhotoList.length} File
+                            </span>
+                          </div>
+
+                          {sjPhotoList.length === 0 ? (
+                            <div className="py-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-[11px] italic">
+                              Tidak ada lampiran foto fisik SJ
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {sjPhotoList.map((url, idx) => (
+                                <div key={idx} className="relative group">
+                                  <img
+                                    src={url}
+                                    alt={`SJ ${idx + 1}`}
+                                    className="w-14 h-14 object-cover rounded-xl border border-slate-200 shadow-2xs cursor-pointer hover:opacity-90 hover:ring-2 hover:ring-amber-500 transition"
+                                    onClick={() => setPreviewPhotoModal(url)}
+                                    title={`Klik perbesar Surat Jalan #${idx + 1}`}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {sjPhotoList.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewPhotoModal(sjPhotoList[0])}
+                            className="mt-3 text-center py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-bold text-blue-700 cursor-pointer transition shadow-2xs"
+                          >
+                            Perbesar Dokumen Surat Jalan
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 2. Berkas Lampiran Bukti Penerimaan Material */}
+                      <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col justify-between text-xs shadow-2xs">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-bold text-slate-800 flex items-center gap-2">
+                              <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700">
+                                <Package className="w-3.5 h-3.5" />
+                              </div>
+                              <span>Bukti Penerimaan Material</span>
+                            </span>
+                            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                              {receiptPhotoList.length} File
+                            </span>
+                          </div>
+
+                          {receiptPhotoList.length === 0 ? (
+                            <div className="py-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-[11px] italic">
+                              Tidak ada lampiran foto serah terima fisik
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {receiptPhotoList.map((url, idx) => (
+                                <div key={idx} className="relative group">
+                                  <img
+                                    src={url}
+                                    alt={`Bukti ${idx + 1}`}
+                                    className="w-14 h-14 object-cover rounded-xl border border-slate-200 shadow-2xs cursor-pointer hover:opacity-90 hover:ring-2 hover:ring-blue-500 transition"
+                                    onClick={() => setPreviewPhotoModal(url)}
+                                    title={`Klik perbesar Bukti Terima #${idx + 1}`}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {receiptPhotoList.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewPhotoModal(receiptPhotoList[0])}
+                            className="mt-3 text-center py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-bold text-blue-700 cursor-pointer transition shadow-2xs"
+                          >
+                            Perbesar Foto Penerimaan
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  {(() => {
-                    const list = verifSjWo.receiptPhotos || [];
-                    if (list.length > 0) {
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => setPreviewPhotoModal(list[0])}
-                          className="mt-2 text-center py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-[10px] font-bold text-blue-700 cursor-pointer"
-                        >
-                          Perbesar Bukti Terima
-                        </button>
-                      );
-                    }
-                    return null;
-                  })()}
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Tabel Ceklis Material */}
               <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
@@ -1391,7 +1506,7 @@ export const VerifikasiPengawasView: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {verifSjMaterials.map((it, idx) => {
-                      const isSelisih = it.qtyTaken !== it.qtyAllocated;
+                      const isSelisih = it.qtyTaken !== it.qtyVendorClaim;
                       return (
                         <tr key={idx} className={`hover:bg-slate-50/50 ${isSelisih ? 'bg-amber-50/30' : ''}`}>
                           <td className="py-2.5 px-3 text-center text-slate-400">{idx + 1}</td>
@@ -1478,10 +1593,8 @@ export const VerifikasiPengawasView: React.FC = () => {
         const totalRencanaRp = progressJasaItems.reduce((acc, it) => acc + (it.qtyTarget * (it.hargaSatuan || 0)), 0);
         const totalRealisasiRp = progressJasaItems.reduce((acc, it) => acc + ((it.qtyRealisasi || 0) * (it.hargaSatuan || 0)), 0);
         
-        // Deteksi Item Overrun (> Rencana) & Underrun (< Rencana)
+        // Deteksi Item Overrun (> Rencana)
         const overrunItems = progressJasaItems.filter((it) => (it.qtyRealisasi || 0) > it.qtyTarget);
-        const underrunItems = progressJasaItems.filter((it) => (it.qtyRealisasi || 0) > 0 && (it.qtyRealisasi || 0) < it.qtyTarget);
-        const exactItems = progressJasaItems.filter((it) => (it.qtyRealisasi || 0) === it.qtyTarget && it.qtyTarget > 0);
 
         // Kelompokkan item berdasarkan subKategori
         const subKategoriList: string[] = [];
@@ -1496,9 +1609,23 @@ export const VerifikasiPengawasView: React.FC = () => {
           groupedMap.get(sub)!.push({ item, originalIndex });
         });
 
+        // Status kunci dibaca dari data terbaru supaya tombol langsung berubah
+        // saat Pengawas mengunci / membuka kunci tanpa menutup modal.
+        const liveWo = workOrders.find((w) => w.id === progressWo.id) || progressWo;
+        const isJasaLocked = Boolean(liveWo.progressJasaLocked);
+        const hasPendingVendor = liveWo.progressStatus === 'MENUNGGU_VERIFIKASI_PROGRESS';
+        const lockedByLabel =
+          liveWo.progressLockedBy ||
+          liveWo.supervisor1 ||
+          liveWo.supervisor ||
+          'Pengawas Lapangan PLN';
+        const lockedAtLabel = liveWo.progressLockedAt
+          ? new Date(liveWo.progressLockedAt).toLocaleString('id-ID')
+          : null;
+
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-            <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-xs">
+            <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
               {/* Header Modal */}
               <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-blue-50/80 via-white to-blue-50/50 rounded-t-2xl shrink-0">
                 <div className="flex items-center gap-3">
@@ -1636,18 +1763,20 @@ export const VerifikasiPengawasView: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                    <table className="w-full text-left text-xs border-collapse">
+                  <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs">
+                    <table className="w-full min-w-[1100px] text-left text-xs border-collapse">
                       <thead className="bg-[#f8fafc] text-slate-600 text-[10px] uppercase font-bold border-b border-slate-200">
                         <tr>
                           <th className="py-2.5 px-3 w-10 text-center">No</th>
-                          <th className="py-2.5 px-3 min-w-[240px]">Uraian Item Kelompok Jasa</th>
-                          <th className="py-2.5 px-3 text-center w-24">Satuan</th>
-                          <th className="py-2.5 px-3 text-right w-32">Harga Satuan</th>
-                          <th className="py-2.5 px-3 text-center w-32 bg-blue-50/40">Vol. Rencana (WO)</th>
-                          <th className="py-2.5 px-3 text-center min-w-[190px] bg-amber-50/40">Vol. Realisasi (Fisik)</th>
-                          <th className="py-2.5 px-3 text-right w-36">Nilai Realisasi (Rp)</th>
-                          <th className="py-2.5 px-3 text-center w-28">Status & Capaian</th>
+                          <th className="py-2.5 px-3 min-w-[200px]">Uraian Item Kelompok Jasa</th>
+                          <th className="py-2.5 px-3 text-center w-16">Satuan</th>
+                          <th className="py-2.5 px-3 text-right w-24">Harga Satuan</th>
+                          <th className="py-2.5 px-3 text-center w-24 bg-blue-50/40">Vol. Rencana</th>
+                          <th className="py-2.5 px-3 text-center min-w-[155px] bg-amber-50/40">Vol. Realisasi</th>
+                          <th className="py-2.5 px-3 text-center min-w-[120px] bg-emerald-50/30">Bukti Foto</th>
+                          <th className="py-2.5 px-3 text-center w-28 bg-rose-50/30">Kendala Lapangan</th>
+                          <th className="py-2.5 px-3 text-right w-28">Nilai Realisasi</th>
+                          <th className="py-2.5 px-3 text-center w-24">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -1657,7 +1786,7 @@ export const VerifikasiPengawasView: React.FC = () => {
                             <React.Fragment key={subKatName}>
                               {/* Sub Header Kategori (Mirip Dokumen WO PLN) */}
                               <tr className="bg-slate-100/90 border-y border-slate-200">
-                                <td colSpan={8} className="py-2 px-3">
+                                <td colSpan={10} className="py-2 px-3">
                                   <div className="flex items-center gap-1.5 font-bold text-slate-800 text-[11px]">
                                     <ChevronRight className="w-3.5 h-3.5 text-blue-600" />
                                     <span>{subKatName}</span>
@@ -1770,6 +1899,53 @@ export const VerifikasiPengawasView: React.FC = () => {
                                           100%
                                         </button>
                                       </div>
+                                    </td>
+                                    {/* Kolom Bukti Foto Vendor untuk Pengawas */}
+                                    <td className="py-2.5 px-3 align-middle bg-emerald-50/10 text-center">
+                                      {item.evidencePhoto ? (
+                                        <div className="flex flex-col items-center justify-center gap-1">
+                                          <div className="relative group w-11 h-11 rounded-lg border border-emerald-400 overflow-hidden shrink-0 shadow-2xs bg-white">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={item.evidencePhoto}
+                                              alt={item.deskripsi}
+                                              className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition"
+                                              onClick={() => setPreviewPhotoModal(item.evidencePhoto || null)}
+                                            />
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => setPreviewPhotoModal(item.evidencePhoto || null)}
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 text-[9px] font-bold transition"
+                                            title="Periksa Foto Lapangan"
+                                          >
+                                            <Eye className="w-2.5 h-2.5" />
+                                            <span>Lihat Foto</span>
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-400 text-[9.5px]">
+                                          Tanpa Foto
+                                        </span>
+                                      )}
+                                    </td>
+                                    {/* Kolom Laporan Kendala Lapangan Vendor untuk Pengawas */}
+                                    <td className="py-2.5 px-3 align-middle bg-rose-50/10 text-center">
+                                      {item.kendala && item.kendala.trim() ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setDetailKendalaModal({ title: item.deskripsi, kendala: item.kendala || '' })}
+                                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300 text-[10.5px] font-bold shadow-2xs hover:scale-105 active:scale-95 transition cursor-pointer"
+                                          title="Klik untuk melihat rincian kendala lapangan"
+                                        >
+                                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                          <span>Ada Kendala</span>
+                                        </button>
+                                      ) : (
+                                        <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-400 text-[9.5px]">
+                                          Lancar
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="py-2.5 px-3 text-right align-middle font-mono">
                                       <div className={`font-bold text-[11px] ${
@@ -1921,6 +2097,58 @@ export const VerifikasiPengawasView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Band Kunci Progres Jasa: setelah dikunci, vendor berhenti update & WO Closeout */}
+              <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0">
+                <div className="text-[11.5px] leading-snug">
+                  {isJasaLocked ? (
+                    <span className="text-slate-700">
+                      <b className="text-slate-900">Progres jasa TERKUNCI — WO Closeout.</b> Vendor tidak dapat mengirim update lagi.
+                      {' '}Dikunci oleh <b className="text-slate-900">{lockedByLabel}</b>
+                      {lockedAtLabel ? ` • ${lockedAtLabel}` : ''}.
+                    </span>
+                  ) : hasPendingVendor ? (
+                    <span className="text-amber-800">
+                      Masih ada pengajuan progres vendor. <b>Setujui atau tolak dulu</b> sebelum progres jasa dikunci.
+                    </span>
+                  ) : (
+                    <span className="text-slate-600">
+                      Progres jasa masih terbuka — vendor dapat mengirim update.
+                      <b className="text-slate-800"> Klik &quot;Kunci & Closeout&quot; bila hasil pekerjaan sudah disahkan.</b>
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={!isJasaLocked && hasPendingVendor}
+                  onClick={() => {
+                    if (isJasaLocked) {
+                      pengawasUnlockProgressJasa(liveWo.id, lockedByLabel);
+                      return;
+                    }
+                    if (
+                      confirm(
+                        `Kunci progres jasa WO ${liveWo.id} (${liveWo.progressJasa ?? 0}%)?\n\nVendor tidak bisa update progres lagi dan WO langsung berstatus Closeout.`
+                      )
+                    ) {
+                      pengawasLockProgressJasa(liveWo.id, lockedByLabel);
+                    }
+                  }}
+                  className={`px-4 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 border shadow-2xs whitespace-nowrap shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isJasaLocked
+                      ? 'bg-slate-800 hover:bg-slate-900 text-amber-300 border-slate-700 cursor-pointer'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 cursor-pointer'
+                  }`}
+                  title={
+                    isJasaLocked
+                      ? 'Buka kunci: batalkan Closeout supaya vendor dapat mengirim update progres jasa lagi'
+                      : 'Kunci progres jasa: vendor tidak bisa update lagi dan WO langsung Closeout'
+                  }
+                >
+                  {isJasaLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                  <span>{isJasaLocked ? 'Buka Kunci (Batalkan Closeout)' : 'Kunci & Closeout'}</span>
+                </button>
+              </div>
+
               {/* Footer Modal */}
               <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-slate-50 rounded-b-2xl shrink-0">
                 <button
@@ -2059,7 +2287,7 @@ export const VerifikasiPengawasView: React.FC = () => {
                 <div className="md:col-span-2 pt-2 border-t border-slate-200">
                   <span className="text-slate-400 block font-medium">Catatan / Bukti Serah Terima Vendor:</span>
                   <p className="text-slate-700 italic mt-0.5">
-                    "{verifRealizationWo.vendorRealizationNotes || 'Tidak ada catatan khusus dari vendor.'}"
+                    &quot;{verifRealizationWo.vendorRealizationNotes || 'Tidak ada catatan khusus dari vendor.'}&quot;
                   </p>
                 </div>
               </div>
@@ -2215,6 +2443,70 @@ export const VerifikasiPengawasView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ---------------------------------------------------------------------- */}
+      {/* MODAL 5: DETAIL KENDALA LAPANGAN REKANAN VENDOR */}
+      {/* ---------------------------------------------------------------------- */}
+      {detailKendalaModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 border border-rose-200 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Laporan Kendala Fisik Lapangan
+                  </h3>
+                  <p className="text-[11px] text-slate-500 line-clamp-1">
+                    {detailKendalaModal.title}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailKendalaModal(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[11px] font-bold text-rose-900 uppercase tracking-tight">
+                Uraian Kendala / Hambatan Rekanan Vendor:
+              </span>
+              <div className="p-3.5 bg-rose-50/80 rounded-xl border border-rose-200 text-xs text-rose-950 font-medium leading-relaxed whitespace-pre-wrap">
+                {detailKendalaModal.kendala}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <span className="text-[10.5px] text-slate-400 italic">
+                *Informasi dilaporkan langsung oleh rekanan saat input progres jasa
+              </span>
+              <button
+                type="button"
+                onClick={() => setDetailKendalaModal(null)}
+                className="px-4 py-2 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-xl transition shadow-xs cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Rekap Read-Only Status Capaian Jasa per Sub-Bab */}
+      {rekapWo && (
+        <ModalRekapProgresJasa
+          wo={rekapWo}
+          items={getWoJasaItems(rekapWo)}
+          onClose={() => setRekapWo(null)}
+          onPreviewPhoto={(url) => setPreviewPhotoModal(url)}
+        />
       )}
     </div>
   );

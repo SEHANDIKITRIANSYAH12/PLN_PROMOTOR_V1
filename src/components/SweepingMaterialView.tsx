@@ -1,37 +1,31 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { 
-  ClipboardCheck, 
-  Search, 
-  Plus, 
-  Printer, 
-  Trash2, 
-  CheckCircle2, 
-  Clock, 
-  FileText, 
-  Building2, 
-  Calendar, 
-  X, 
-  Layers, 
-  Check, 
-  AlertCircle, 
-  ShieldCheck, 
+import {
+  ClipboardCheck,
+  Search,
+  Plus,
+  Printer,
+  Trash2,
+  CheckCircle2,
+  Clock,
+  Building2,
+  Calendar,
+  X,
+  Check,
+  ShieldCheck,
   ArrowLeft,
-  ChevronRight,
-  Eye,
-  Boxes,
-  Edit,
-  RotateCcw
+  ChevronRight
 } from 'lucide-react';
 import { usePromotorStore, deriveVendorOptions } from '@/store/usePromotorStore';
-import { SweepingRecord, SweepingMaterialItem, WorkOrderRecord } from '@/types';
+import { SweepingRecord, SweepingMaterialItem } from '@/types';
 import { generateWorkTitlePln } from '@/data/surveyRabCalculator';
 
 export const SweepingMaterialView: React.FC = () => {
   const { 
     sweepings, 
     workOrders, 
+    surveys,
     vendors, 
     addSweeping, 
     updateSweeping, 
@@ -105,12 +99,16 @@ export const SweepingMaterialView: React.FC = () => {
     const firstCust = firstWo?.customerName || 'PENGGANTIAN MATERIAL DISTRIBUSI';
     setNoSpk(spk);
     if (!namaPekerjaan) {
-      const generatedTitle = generateWorkTitlePln(firstWo, firstWo?.category === 'WO Paket 2' ? 'paket2' : 'paket1');
+      // Judul dari data survey terkait (lebih lengkap), fallback ke data WO.
+      const linkedSurvey = firstWo && surveys.find(
+        (s) => (firstWo.surveyId && s.id === firstWo.surveyId) || (firstWo.idpel && s.idpel === firstWo.idpel)
+      );
+      const paket = firstWo?.category === 'WO Tiang' ? 'tiang' : firstWo?.category === 'WO Paket 2' ? 'paket2' : 'paket1';
+      const generatedTitle = generateWorkTitlePln(linkedSurvey || firstWo, paket);
       setNamaPekerjaan(generatedTitle && generatedTitle !== '-' ? generatedTitle : `PENGGANTIAN DAN REKONSILIASI MATERIAL - ${firstCust}`);
     }
 
     // Aggregate materials from chosen WOs
-    const aggregated: SweepingMaterialItem[] = [];
     const matMap = new Map<string, SweepingMaterialItem>();
 
     chosenWos.forEach((wo) => {
@@ -175,7 +173,7 @@ export const SweepingMaterialView: React.FC = () => {
   };
 
   // Update draft item row
-  const handleUpdateDraftItem = (index: number, field: keyof SweepingMaterialItem, value: any) => {
+  const handleUpdateDraftItem = <K extends keyof SweepingMaterialItem>(index: number, field: K, value: SweepingMaterialItem[K]) => {
     setDraftItems((prev) => {
       const copy = [...prev];
       copy[index] = { ...copy[index], [field]: value };
@@ -441,7 +439,7 @@ export const SweepingMaterialView: React.FC = () => {
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400">
                     <ClipboardCheck className="w-10 h-10 mx-auto mb-2 opacity-30 text-blue-500" />
-                    Belum ada data Sweeping Material. Klik "Buat Sweeping Material Baru" untuk memulai.
+                    Belum ada data Sweeping Material. Klik &quot;Buat Sweeping Material Baru&quot; untuk memulai.
                   </td>
                 </tr>
               ) : (

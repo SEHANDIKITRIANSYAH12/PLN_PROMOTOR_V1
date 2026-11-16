@@ -1,15 +1,34 @@
-import { SurveyRecord } from '@/types';
+import { PoleData, SurveyRecord } from '@/types';
 import { RabRowItem, PAKET_1_TEMPLATE_RAW, PAKET_2_TEMPLATE_RAW } from './rabMasterData';
+
+/** Sumber judul pekerjaan: SurveyRecord atau Work Order (cukup field yang sama namanya). */
+export type WorkTitleSource = Partial<Omit<SurveyRecord, 'status'>>;
+
+/** Data gardu / teknis bersarang dari format survey lama. */
+type LegacyGardu = Partial<Record<'tipe' | 'kapasitas' | 'jumlahKabelNaik' | 'jenisPekerjaan' | 'trafoLama' | 'trafoBaru', string>>;
+type LegacyDataTeknis = Partial<Record<'dayaBaru' | 'dayaLama' | 'tipeGardu' | 'kapasitasTrafo' | 'jumlahKabelNaik' | 'jenisPekerjaan', string>>;
+
+/** Input kalkulator RAB: SurveyRecord, atau format lama (tiang terpisah jtmPoles/jtrPoles,
+ *  data gardu sebagai objek, dan dataTeknis bersarang). */
+export type RabSurveyInput = Partial<Omit<SurveyRecord, 'gardu' | 'poles'>> & {
+  poles?: PoleData[];
+  jtmPoles?: PoleData[];
+  jtrPoles?: PoleData[];
+  gardu?: string | LegacyGardu;
+  dataTeknis?: LegacyDataTeknis;
+};
 
 /**
  * Generator Judul / Nama Pekerjaan Otomatis Standar PLN KHS 2026
  * Sumber: PROJECT MASTER WO KHS 2026.xlsx -> Sheet 'ISIAN PEKERJAAN' Baris 378 s/d 388 & Baris 478
  * Contoh Hasil:
- * "Pembangunan Jaringan SUTM Dan Pemasangan Instalasi Gardu (PKN240) Untuk PB POKTAN TANI BERKAH"
+ *  P1: "Pembangunan Jaringan SUTM Dan Pemasangan Instalasi Gardu (PKN240) Untuk PB POKTAN TANI BERKAH"
+ *  P1: "Mutasi Trafo Distribusi 100 kVA ke 160 kVA (PKN240) Untuk PD BUDI"
+ *  P2: "Pembangunan SKUTR Dan Pemasangan Dan Pembongkaran Box APP Untuk PD BUDI"
  */
 export function generateWorkTitlePln(
-  survey: SurveyRecord | any,
-  paket: 'paket1' | 'paket2' | string = 'paket1'
+  survey: WorkTitleSource | null | undefined,
+  paket: 'paket1' | 'paket2' | 'tiang' | string = 'paket1'
 ): string {
   if (!survey) return '-';
 
@@ -27,84 +46,89 @@ export function generateWorkTitlePln(
   }
   cleanCust = cleanCust.replace(/^[-\s]+|[-\s]+$/g, '').trim();
 
-  // 2. Tentukan Jenis Transaksi (Baris 479: PB atau PD)
+  // 2. Jenis Transaksi (B479): PD bila ada Daya Lama, selain itu PB
   const jobType = (survey.jobType || '').toUpperCase();
-  const dayaLama = parseDayaVA(survey.dayaLama);
-  const isPD = jobType.includes('PERUBAHAN') || jobType.includes('PD') || dayaLama > 0;
-  const prefixJob = isPD ? 'PD ' : 'PB ';
-
-  // 3. Data Teknis Terkait
-  const poles = Array.isArray(survey.poles) ? survey.poles : [];
-  const hasJtm = (survey.perluasanJTM && survey.perluasanJTM !== '0 m' && survey.perluasanJTM !== '0') ||
-    poles.some((p: any) => p.networkType === 'JTM' || p.networkType === 'SUTM' || (p.id || '').startsWith('TM') || (p.a3cs && parseFloat(p.a3cs) > 0));
-  
-  const hasJtr = (survey.perluasanJTR && survey.perluasanJTR !== '0 m' && survey.perluasanJTR !== '0') ||
-    poles.some((p: any) => p.networkType === 'JTR' || p.networkType === 'SUTR' || (p.id || '').startsWith('TR') || (p.lvTwisted && parseFloat(p.lvTwisted) > 0));
-
-  const jtmType = (survey.perluasanJTM && survey.perluasanJTM.toUpperCase().includes('SKTM'))
-    ? 'SKTM'
-    : (survey.perluasanJTM && survey.perluasanJTM.toUpperCase().includes('SKUTM'))
-    ? 'SKUTM (MVTIC)'
-    : 'SUTM';
-
-  const jtrType = (survey.perluasanJTR && survey.perluasanJTR.toUpperCase().includes('SKUTR'))
-    ? 'SKUTR'
-    : (survey.perluasanJTR && survey.perluasanJTR.toUpperCase().includes('SKTR'))
-    ? 'SKTR'
-    : 'SUTR';
-
-  // Info Gardu & Trafo
-  let garduName = (survey.gardu || survey.penyulang || '').trim();
-  const garduStr = garduName && garduName !== '-' && garduName !== '0' ? `(${garduName}) ` : '';
-
-  let tipeGardu = (survey.tipePembangunanGardu || survey.tipeGardu || '').trim();
-  if (!tipeGardu && poles.length > 0) {
-    const hasGardu = poles.some((p: any) => (p.tmConstruction || '').toUpperCase().includes('GARDU'));
-    if (hasGardu) tipeGardu = 'Gardu Portal Distribusi';
-  }
-
-  const kapTrafo = (survey.kapasitasTrafo || '').trim();
-  const trafoStr = kapTrafo ? `${kapTrafo} ` : '';
-
+  const dayaLamaVA = parseDayaVA(survey.dayaLama);
   const dayaBaruVA = parseDayaVA(survey.dayaBaru || survey.daya || survey.dayaPerUnit);
+  const isPD = jobType.includes('PERUBAHAN') || dayaLamaVA > 0;
+  const untuk = `Untuk ${isPD ? 'PD' : 'PB'} ${cleanCust}`;
+
+  const poles = Array.isArray(survey.poles) ? survey.poles : [];
+  const perluasan = resolvePerluasan(survey.perluasanJTM, survey.perluasanJTR, poles);
+  const finish = (title: string) => title.replace(/\s+/g, ' ').trim();
+
+  // WO Tiang mengikuti jaringan tiangnya: tiang baru JTM → judul Paket 1, selain itu judul Paket 2.
   const normalizedPaket = String(paket).toLowerCase();
-
-  // 4. Perumusan sesuai Sheet 'ISIAN PEKERJAAN' Baris 478
-  if (normalizedPaket === 'paket1' || normalizedPaket.includes('p1')) {
-    // Baris 378 - 388 (Paket 1 JTM & Gardu: B478)
-    const hasGardu = Boolean(tipeGardu);
-    const part1 = (hasJtm || hasGardu) ? 'Pembangunan ' : '';
-    const part2 = hasJtm ? 'Jaringan ' : '';
-    const part3 = hasJtm ? `${jtmType} ` : '';
-    const part4 = (hasJtm && hasGardu) ? 'Dan ' : '';
-    let part5 = '';
-    if (hasGardu) {
-      if (tipeGardu.toLowerCase().includes('gardu')) {
-        part5 = `Pemasangan Instalasi ${tipeGardu} `;
-      } else {
-        part5 = `Pemasangan Instalasi Gardu ${tipeGardu} `;
-      }
-    }
-
-    const fullTitle = `${part1}${part2}${part3}${part4}${part5}${trafoStr}${garduStr}Untuk ${prefixJob}${cleanCust}`;
-    return fullTitle.replace(/\s+/g, ' ').trim();
-  } else {
-    // Baris 378 - 388 (Paket 2 JTR & Box APP: C478)
-    const hasBoxApp = dayaBaruVA >= 53000;
-    const part1 = hasJtr ? 'Pembangunan ' : '';
-    const part2 = hasJtr ? `${jtrType} ` : '';
-    const part3 = (hasJtr && hasBoxApp) ? 'Dan ' : '';
-    const part4 = hasBoxApp ? 'Pemasangan Box APP ' : '';
-
-    let base = `${part1}${part2}${part3}${part4}`;
-    if (!hasJtr && !hasBoxApp) {
-      base = 'Pemasangan Sambungan Tenaga Listrik ';
-    }
-
-    const fullTitle = `${base}Untuk ${prefixJob}${cleanCust}`;
-    return fullTitle.replace(/\s+/g, ' ').trim();
+  let target: 'paket1' | 'paket2' = normalizedPaket === 'paket1' || normalizedPaket.includes('p1') ? 'paket1' : 'paket2';
+  if (normalizedPaket.includes('tiang') || normalizedPaket === 'tb') {
+    const newPoles = poles.filter(isNewPole);
+    const jtmTiang = newPoles.length > 0 ? newPoles.some(isJtmPole) : isFilled(perluasan.jtm);
+    target = jtmTiang ? 'paket1' : 'paket2';
   }
+
+  if (target === 'paket1') {
+    // B378 - B388 & B478 (Paket 1: Jaringan JTM, Gardu, Mutasi Trafo)
+    const jtmRaw = perluasan.jtm.toUpperCase();
+    const jtmType = jtmRaw.includes('SKUTM') ? 'SKUTM (MVTIC)' : jtmRaw.includes('SKTM') ? 'SKTM' : 'SUTM';
+    const jaringanSeg = perluasan.jtm ? `Jaringan ${jtmType}` : '';
+
+    const jenisPekerjaan = cleanField(survey.jenisPekerjaanGardu);
+    let garduWord = mapTipeGarduTitle(survey.tipePembangunanGardu || survey.tipeGardu);
+    // "Pemasangan Instalasi Gardu" + "Gardu Portal Distribusi" → "Pemasangan Instalasi Gardu Portal Distribusi"
+    if (/gardu$/i.test(jenisPekerjaan) && /^gardu\s/i.test(garduWord)) garduWord = garduWord.replace(/^gardu\s+/i, '');
+    const garduSeg = [jenisPekerjaan, garduWord, formatKva(survey.kapasitasTrafo)].filter(Boolean).join(' ');
+
+    const trafoLama = formatKva(survey.trafoLama);
+    const trafoBaru = formatKva(survey.trafoBaru);
+    const mutasiSeg = trafoLama || trafoBaru
+      ? `Mutasi Trafo Distribusi ${[trafoLama, trafoBaru].filter(Boolean).join(' ke ')}`
+      : '';
+
+    const body = [jaringanSeg, garduSeg, mutasiSeg].filter(Boolean).join(' Dan ');
+    const pembangunan = jaringanSeg || (garduWord && !jenisPekerjaan) ? 'Pembangunan ' : '';
+    const garduName = cleanField(survey.gardu);
+    const garduStr = garduName ? `(${garduName})` : '';
+
+    return finish(`${body ? `${pembangunan}${body}` : 'Pembangunan Jaringan Distribusi'} ${garduStr} ${untuk}`);
+  }
+
+  // C378 - C388 & C478 (Paket 2: Jaringan JTR & Box APP)
+  const jtrRaw = perluasan.jtr.toUpperCase();
+  const jtrType = jtrRaw.includes('SKUTR') ? 'SKUTR' : jtrRaw.includes('SUTR') ? 'SUTR' : jtrRaw.includes('SKTR') ? 'SKTR' : 'SKUTR';
+  const jtrSeg = perluasan.jtr ? `Pembangunan ${jtrType}` : '';
+
+  const pasangBox = dayaBaruVA >= 53000;
+  const bongkarBox = dayaLamaVA >= 53000;
+  const boxSeg = pasangBox || bongkarBox
+    ? `${[pasangBox && 'Pemasangan', bongkarBox && 'Pembongkaran'].filter(Boolean).join(' Dan ')} Box APP`
+    : '';
+
+  const body = [jtrSeg, boxSeg].filter(Boolean).join(' Dan ');
+  return finish(`${body || 'Pemasangan Sambungan Tenaga Listrik'} ${untuk}`);
 }
+
+/** Nilai isian kosong / placeholder ("-", "0") dianggap tidak diisi. */
+const cleanField = (v?: string | null) => {
+  const t = (v || '').trim();
+  return t === '-' || t === '0' ? '' : t;
+};
+
+/** "100" / "100 kVA" / "100kva" → "100 kVA". */
+const formatKva = (v?: string | null) => {
+  const t = cleanField(v);
+  const n = parseInt(t.match(/\d+/)?.[0] || '', 10);
+  return n > 0 ? `${n} kVA` : '';
+};
+
+/** B383: Tipe Pembangunan Gardu → frasa judul. Gardu Beton tidak ditulis (diwakili Jenis Pekerjaan). */
+const mapTipeGarduTitle = (v?: string | null) => {
+  const t = cleanField(v);
+  const u = t.toUpperCase();
+  if (!t || u.includes('BETON')) return '';
+  if (u === 'GARDU CANTOL KHUSUS') return 'Gardu Cantol Khusus Distribusi';
+  if (u === 'GARDU PORTAL KHUSUS') return 'Gardu Portal (Khusus) Distribusi';
+  return t;
+};
 
 export const JTM_CONSTRUCTION_MATRIX: Record<string, Record<string, number>> = {
   "TM - 1B": {
@@ -419,97 +443,37 @@ export function parseDayaVA(val?: string | number): number {
  * volume kolom RENCANA pada master WO Paket 1 dan WO Paket 2.
  */
 export function calculateRabFromSurvey(
-  survey: SurveyRecord | any,
+  survey: RabSurveyInput,
   paket: 'paket1' | 'paket2' | 'PAKET_1' | 'PAKET_2',
   customPrices?: Record<string, number>
 ): RabRowItem[] {
   const isPaket2 = (paket || '').toString().toLowerCase().includes('2');
 
   // Poles array: periksa survey.poles atau (survey.jtmPoles + survey.jtrPoles)
-  let poles: any[] = [];
+  let poles: PoleData[] = [];
   if (Array.isArray(survey.poles)) {
     poles = survey.poles;
   } else {
     if (Array.isArray(survey.jtmPoles)) poles.push(...survey.jtmPoles);
     if (Array.isArray(survey.jtrPoles)) poles.push(...survey.jtrPoles);
   }
+  const garduObj = typeof survey.gardu === 'object' ? survey.gardu : undefined;
 
   // Pisahkan Tiang JTR & JTM
-  const jtrPoles = poles.filter((p) => p.networkType === 'JTR' || (p.id && p.id.startsWith('TR')) || p.trConstruction);
-  const jtmPoles = poles.filter((p) => p.networkType === 'JTM' || (p.id && p.id.startsWith('TM')) || p.tmConstruction);
+  const jtrPoles = poles.filter(isJtrPole);
+  const jtmPoles = poles.filter(isJtmPole);
 
   // Data Pelanggan & Teknis (Mendukung baik flat maupun nested di bawah gardu / dataTeknis)
   const dayaBaruVA = parseDayaVA(survey.dayaBaru || survey.daya || survey.dayaPerUnit || survey.dataTeknis?.dayaBaru);
   const dayaLamaVA = parseDayaVA(survey.dayaLama || survey.dataTeknis?.dayaLama);
-  let tipeGardu = (survey.tipePembangunanGardu || survey.tipeGardu || survey.gardu?.tipe || survey.dataTeknis?.tipeGardu || '').trim();
-  let kapasitasTrafo = (survey.kapasitasTrafo || survey.gardu?.kapasitas || survey.dataTeknis?.kapasitasTrafo || '').trim();
-  let jumlahKabelNaik = parseInt(survey.jumlahKabelNaik || survey.gardu?.jumlahKabelNaik || survey.dataTeknis?.jumlahKabelNaik || '0', 10);
-  const jenisPekerjaanGardu = (survey.jenisPekerjaanGardu || survey.gardu?.jenisPekerjaan || survey.dataTeknis?.jenisPekerjaan || '').trim();
-  const trafoLama = (survey.trafoLama || survey.gardu?.trafoLama || '').trim();
-  const trafoBaru = (survey.trafoBaru || survey.gardu?.trafoBaru || '').trim();
-
-  // Smart Fallback Detection jika tipeGardu belum terisi di root
-  if (!tipeGardu && poles && poles.length > 0) {
-    const garduPole = poles.find((p) => {
-      const tm = (p.tmConstruction || '').toUpperCase();
-      const name = (p.name || '').toUpperCase();
-      const note = (p.note || '').toUpperCase();
-      const std = (p.std || '').toUpperCase();
-      return (
-        tm.includes('GARDU') || tm.includes('PORTAL') || tm.includes('CANTOL') ||
-        name.includes('GARDU') || note.includes('GARDU') || std.includes('GARDU')
-      );
-    });
-
-    if (garduPole) {
-      const combined = `${garduPole.tmConstruction || ''} ${garduPole.name || ''} ${garduPole.note || ''} ${garduPole.std || ''}`.toUpperCase();
-      if (combined.includes('CANTOL')) {
-        tipeGardu = 'Gardu Cantol Distribusi';
-      } else if (combined.includes('BETON') || combined.includes('RMU')) {
-        tipeGardu = 'Gardu Portal RMU / Beton';
-      } else if (combined.includes('PORTAL')) {
-        tipeGardu = 'Gardu Portal Distribusi';
-      } else {
-        tipeGardu = (dayaBaruVA >= 100000 || (survey.jumlahUnit && survey.jumlahUnit > 50))
-          ? 'Gardu Portal Distribusi'
-          : 'Gardu Cantol Distribusi';
-      }
-    } else if (dayaBaruVA >= 100000 || (survey.jumlahUnit && survey.jumlahUnit > 50)) {
-      tipeGardu = 'Gardu Portal Distribusi';
-    } else if (dayaBaruVA >= 33000) {
-      tipeGardu = 'Gardu Cantol Distribusi';
-    }
-  }
-
-  // Smart Fallback Detection kapasitasTrafo jika belum terisi
-  if (!kapasitasTrafo) {
-    const kvaRegex = /(\d+)\s*(?:kva|kVA|KVA)/;
-    for (const p of poles) {
-      const text = `${p.note || ''} ${p.name || ''} ${p.tmConstruction || ''}`;
-      const match = text.match(kvaRegex);
-      if (match) {
-        kapasitasTrafo = `${match[1]} kVA`;
-        break;
-      }
-    }
-    if (!kapasitasTrafo) {
-      const nameMatch = (survey.customerName || '').match(kvaRegex);
-      if (nameMatch) {
-        kapasitasTrafo = `${nameMatch[1]} kVA`;
-      } else if (tipeGardu.toUpperCase().includes('CANTOL')) {
-        kapasitasTrafo = dayaBaruVA <= 50000 ? '50 kVA' : '100 kVA';
-      } else if (tipeGardu.toUpperCase().includes('PORTAL') || tipeGardu.toUpperCase().includes('BETON')) {
-        if (dayaBaruVA <= 160000) kapasitasTrafo = '160 kVA';
-        else if (dayaBaruVA <= 250000) kapasitasTrafo = '250 kVA';
-        else if (dayaBaruVA <= 400000) kapasitasTrafo = '400 kVA';
-        else kapasitasTrafo = '250 kVA';
-      }
-    }
-  }
-
-  if (!jumlahKabelNaik || jumlahKabelNaik === 0) {
-    jumlahKabelNaik = tipeGardu.toUpperCase().includes('PORTAL') ? 2 : 1;
-  }
+  // These fields correspond to independent workbook inputs; blank is not a default design.
+  const tipeGardu = cleanField(survey.tipePembangunanGardu || survey.tipeGardu || garduObj?.tipe || survey.dataTeknis?.tipeGardu);
+  const kapasitasTrafo = formatKva(survey.kapasitasTrafo || garduObj?.kapasitas || survey.dataTeknis?.kapasitasTrafo);
+  const jumlahKabelNaik = Math.max(0, parseInt(survey.jumlahKabelNaik || garduObj?.jumlahKabelNaik || survey.dataTeknis?.jumlahKabelNaik || '0', 10) || 0);
+  const jumlahKubikelLBS = Math.max(0, parseInt(survey.jumlahKubikelLBS || '0', 10) || 0);
+  const jenisPekerjaanGardu = cleanField(survey.jenisPekerjaanGardu || garduObj?.jenisPekerjaan || survey.dataTeknis?.jenisPekerjaan);
+  const trafoLama = formatKva(survey.trafoLama || garduObj?.trafoLama);
+  const trafoBaru = formatKva(survey.trafoBaru || garduObj?.trafoBaru);
 
   // Penentuan Pelanggan Khusus vs Umum (Baris 486)
   const isKhusus = tipeGardu.toUpperCase().includes('KHUSUS');
@@ -559,8 +523,7 @@ export function calculateRabFromSurvey(
 
       // Tiang (jika 'Tanpa Tiang' atau 'Terusan TM', jangan hitung penambahan tiang baru)
       const pType = (p.poleType || p.std || '').toUpperCase();
-      const isNoPole = pType.includes('TANPA') || pType.includes('EKSISTING') || pType.includes('TERUSAN') || pType.includes('UNDERBUILT') || pType === 'NONE' || pType === '';
-      if (!isNoPole) {
+      if (isNewPole(p)) {
         if (pType.includes('350')) {
           countTiang9_350 += 1;
         } else {
@@ -569,10 +532,10 @@ export function calculateRabFromSurvey(
       }
 
       // Konstruksi TR
-      const trKey = (p.trConstruction || 'TR - 1B').trim();
+      const trKey = (p.trConstruction || '').trim().toUpperCase();
       const matchedKey = Object.keys(TR_CONSTRUCTION_MATRIX).find(
         (k) => k.replace(/\s+/g, '') === trKey.replace(/\s+/g, '')
-      ) || 'TR - 1B';
+      ) || '';
 
       const rowM = TR_CONSTRUCTION_MATRIX[matchedKey] || {};
       sumD341_Susp += rowM['SUSPENSION 70'] || 0;
@@ -597,7 +560,7 @@ export function calculateRabFromSurvey(
     });
 
     // Lookup Kebutuhan NYY & Sepatu Kabel dari Box APP (Baris 487 & 342)
-    const dayaLookup = DAYA_MATRIX[dayaBaruVA] || (dayaBaruVA >= 53000 ? DAYA_MATRIX[53000] : null);
+    const dayaLookup = DAYA_MATRIX[dayaBaruVA];
     const b487_nyyBoxApp = !isKhusus && dayaLookup ? dayaLookup.nyy_1x70 : 0;
     const j342_shoeBoxApp = !isKhusus && dayaLookup ? dayaLookup.cable_shoe_cu_70 : 0;
     const j343_totalShoeCu70 = sumJ341_CableShoe + j342_shoeBoxApp;
@@ -619,7 +582,7 @@ export function calculateRabFromSurvey(
     volMap[33] = b487_nyyBoxApp + sumN341_NYY;
 
     // Baris 38: TIC 3x70 = 103% * C341 (Andongan 3%)
-    volMap[38] = Math.round(sumC341_TIC * 1.03);
+    volMap[38] = Number((sumC341_TIC * 1.03).toFixed(8));
 
     // Baris 39-43: Aksesoris SUTR
     volMap[39] = sumD341_Susp;
@@ -647,14 +610,14 @@ export function calculateRabFromSurvey(
     volMap[69] = volMap[33];
 
     // Baris 70: Terminasi Indoor = lookup terminasi + N341/40
-    volMap[70] = (dayaLookup ? dayaLookup.terminasi_indoor : 0) + (sumN341_NYY > 0 ? Math.ceil(sumN341_NYY / 40) : 0);
+    volMap[70] = (dayaLookup?.terminasi_indoor || 0) + sumN341_NYY / 40;
 
     // Baris 75 & 77: Pembuatan Pondasi Tiang 9m = I60 & I61
     volMap[75] = volMap[60];
     volMap[77] = volMap[61];
 
     // Baris 81: Pasang TIC 3x70 (kms) = I38 / 1000
-    volMap[81] = volMap[38] > 0 ? Number((volMap[38] / 1000).toFixed(3)) : 0;
+    volMap[81] = Number((volMap[38] / 1000).toFixed(11));
 
     // Baris 82-93: Jasa Konstruksi TR-1B s/d TR-11B
     volMap[82] = countTRConst['TR - 1B'] || 0;
@@ -677,8 +640,9 @@ export function calculateRabFromSurvey(
 
     // Baris 117-119: Angkutan Box, As Built, Foto
     volMap[117] = (volMap[65] || 0) + (volMap[66] || 0);
-    volMap[118] = sumC341_TIC > 0 ? 1 : 0;
-    volMap[119] = sumC341_TIC > 0 ? 1 : 0;
+    const hasPaket2Work = getSurveyPackages(survey).paket2;
+    volMap[118] = hasPaket2Work ? 1 : 0;
+    volMap[119] = hasPaket2Work ? 1 : 0;
 
     // Baris 124-128: Angkutan Kabel Twisted Bertingkat
     const ticLen = volMap[38] || 0;
@@ -705,8 +669,7 @@ export function calculateRabFromSurvey(
     sumC111_AAACS += len;
 
     const pType = (p.poleType || p.std || '').toUpperCase();
-    const isNoPole = pType.includes('TANPA') || pType.includes('EKSISTING') || pType.includes('TERUSAN') || pType.includes('UNDERBUILT') || pType === 'NONE' || pType === '';
-    if (!isNoPole) {
+    if (isNewPole(p)) {
       if (pType.includes('200')) {
         countTiang12_200 += 1;
       } else {
@@ -714,26 +677,31 @@ export function calculateRabFromSurvey(
       }
     }
 
-    const tmKey = (p.tmConstruction || 'TM - 1B').trim();
+    const tmKey = (p.tmConstruction || '').trim().toUpperCase();
     const matchedKey = Object.keys(JTM_CONSTRUCTION_MATRIX).find(
       (k) => k.replace(/\s+/g, '') === tmKey.replace(/\s+/g, '')
-    ) || 'TM - 1B';
+    ) || '';
 
     const rowM = JTM_CONSTRUCTION_MATRIX[matchedKey] || {};
     Object.entries(rowM).forEach(([matName, q]) => {
-      jtmAccum[matName] = (jtmAccum[matName] || 0) + (typeof q === 'number' ? q : parseFloat(q) || 0);
+      if (matName.startsWith('TIANG ') && !isNewPole(p)) return;
+      jtmAccum[matName] = (jtmAccum[matName] || 0) + q;
     });
+    // ISIAN PEKERJAAN!AK412 is a formula, not a fixed matrix quantity.
+    if (matchedKey === 'GARDU BETON') {
+      jtmAccum['KUBIKEL LBS MOTORIZED'] = (jtmAccum['KUBIKEL LBS MOTORIZED'] || 0) + jumlahKubikelLBS;
+    }
   });
 
   const volMapP1: Record<number, number> = {};
 
   // Baris 27-32: Transformator Distribusi (Trafo Baru atau Trafo Mutasi Baru)
-  volMapP1[27] = kapasitasTrafo.includes('50') || trafoBaru.includes('50') ? 1 : 0;
-  volMapP1[28] = kapasitasTrafo.includes('100') || trafoBaru.includes('100') ? 1 : 0;
-  volMapP1[29] = kapasitasTrafo.includes('160') || trafoBaru.includes('160') ? 1 : 0;
-  volMapP1[30] = kapasitasTrafo.includes('200') || trafoBaru.includes('200') ? 1 : 0;
-  volMapP1[31] = kapasitasTrafo.includes('250') || trafoBaru.includes('250') ? 1 : 0;
-  volMapP1[32] = kapasitasTrafo.includes('400') || trafoBaru.includes('400') ? 1 : 0;
+  volMapP1[27] = kapasitasTrafo === '50 kVA' || trafoBaru === '50 kVA' ? 1 : 0;
+  volMapP1[28] = kapasitasTrafo === '100 kVA' || trafoBaru === '100 kVA' ? 1 : 0;
+  volMapP1[29] = kapasitasTrafo === '160 kVA' || trafoBaru === '160 kVA' ? 1 : 0;
+  volMapP1[30] = kapasitasTrafo === '200 kVA' || trafoBaru === '200 kVA' ? 1 : 0;
+  volMapP1[31] = kapasitasTrafo === '250 kVA' || trafoBaru === '250 kVA' ? 1 : 0;
+  volMapP1[32] = kapasitasTrafo === '400 kVA' || trafoBaru === '400 kVA' ? 1 : 0;
 
   // Baris 34 & 36: LVSB Cantol & Portal
   volMapP1[34] = jtmAccum['LVSB CANTOL'] || 0;
@@ -829,9 +797,9 @@ export function calculateRabFromSurvey(
     volMapP1[233] = 2; // PEKERJAAN LAIN - LAIN : Pembuatan Tanda Gardu/nomer Gardu
     volMapP1[236] = 1; // PEMASANGAN ARRESTER DAN PENGADAAN DUDUKAN
     volMapP1[237] = 1; // PEMASANGAN CUT OUT DAN PENGADAAN DUDUKAN
-    volMapP1[238] = kapasitasTrafo.includes('25') ? 1 : 0;
-    volMapP1[239] = kapasitasTrafo.includes('50') ? 1 : 0;
-    volMapP1[240] = kapasitasTrafo.includes('100') ? 1 : 0;
+    volMapP1[238] = kapasitasTrafo === '25 kVA' ? 1 : 0;
+    volMapP1[239] = kapasitasTrafo === '50 kVA' ? 1 : 0;
+    volMapP1[240] = kapasitasTrafo === '100 kVA' ? 1 : 0;
     volMapP1[241] = volMapP1[68] || 1; // Pemasangan penanaman earthing rod
     volMapP1[242] = volMapP1[68] || 1; // PEMASANGAN PIPA ARDE (1,5 Inc per 6 mtr)
     volMapP1[243] = 9.79; // INSTALASI LISTRIK & LAIN-LAIN : Upah pasang kawat BC 50 mm2
@@ -853,10 +821,12 @@ export function calculateRabFromSurvey(
     volMapP1[119] = 5;
   }
 
+  const isPortalRMU = tipeGardu.toUpperCase().includes('RMU');
+  const isBeton = tipeGardu.toUpperCase().includes('BETON');
+
   // Baris 75-84: CT 20kV di Gardu Beton / RMU berdasarkan Daya Baru / Daya Lama
-  const isBeton = jenisPekerjaanGardu.includes('Pemasangan') || tipeGardu.toUpperCase().includes('BETON') || tipeGardu.toUpperCase().includes('RMU');
   const ctDaya = dayaBaruVA || dayaLamaVA;
-  if (isBeton || jenisPekerjaanGardu.includes('CT') || jenisPekerjaanGardu.includes('Pemasangan')) {
+  if (isBeton || isPortalRMU || jenisPekerjaanGardu.includes('CT') || (jenisPekerjaanGardu.includes('Pemasangan') && isBeton)) {
     volMapP1[75] = ctDaya === 240000 ? 3 : 0;
     volMapP1[76] = ctDaya === 345000 ? 3 : 0;
     volMapP1[77] = (ctDaya === 555000 || ctDaya === 690000) ? 3 : 0;
@@ -886,20 +856,20 @@ export function calculateRabFromSurvey(
     volMapP1[271] = 2; // PEKERJAAN LAIN - LAIN : Pembuatan Tanda Gardu/nomer Gardu
     volMapP1[274] = 1; // PEMASANGAN ARRESTER DAN PENGADAAN DUDUKAN
     volMapP1[275] = 1; // PEMASANGAN CUT OUT DAN PENGADAAN DUDUKAN
-    volMapP1[276] = kapasitasTrafo.includes('50') ? 1 : 0;
-    volMapP1[277] = kapasitasTrafo.includes('100') ? 1 : 0;
-    volMapP1[278] = kapasitasTrafo.includes('160') ? 1 : 0;
-    volMapP1[279] = kapasitasTrafo.includes('200') ? 1 : 0;
-    volMapP1[280] = kapasitasTrafo.includes('250') ? 1 : 0;
-    volMapP1[281] = kapasitasTrafo.includes('400') ? 1 : 0;
+    volMapP1[276] = kapasitasTrafo === '50 kVA' ? 1 : 0;
+    volMapP1[277] = kapasitasTrafo === '100 kVA' ? 1 : 0;
+    volMapP1[278] = kapasitasTrafo === '160 kVA' ? 1 : 0;
+    volMapP1[279] = kapasitasTrafo === '200 kVA' ? 1 : 0;
+    volMapP1[280] = kapasitasTrafo === '250 kVA' ? 1 : 0;
+    volMapP1[281] = kapasitasTrafo === '400 kVA' ? 1 : 0;
     volMapP1[282] = volMapP1[68] || 2; // Pemasangan penanaman earthing rod
     volMapP1[283] = volMapP1[68] || 2; // PEMASANGAN PIPA ARDE (1,5 Inc per 6 mtr)
     volMapP1[284] = 9.79; // INSTALASI LISTRIK & LAIN-LAIN : Upah pasang kawat BC 50 mm2
     volMapP1[285] = 9.79; // PEKERJAAN PEMIPAAN : Arde BC 50 mm2
     volMapP1[286] = 1; // PEMBANGUNAN GARDU CANTOL & PORTAL : - Pemasangan Hardware dan perlengkapannya
     volMapP1[287] = jumlahKabelNaik; // Pasang kabel naik TR & pipa pelindung
-    volMapP1[289] = kapasitasTrafo.includes('400') ? 0 : 1; // JASA ANGKUTAN MATERIAL : Angkutan Trafo 25/ 50/ 100/ 160/ 250 kVA
-    volMapP1[290] = kapasitasTrafo.includes('400') ? 1 : 0; // JASA ANGKUTAN MATERIAL : Angkutan Trafo 400 kVA
+    volMapP1[289] = kapasitasTrafo === '400 kVA' ? 0 : 1; // JASA ANGKUTAN MATERIAL : Angkutan Trafo 25/ 50/ 100/ 160/ 250 kVA
+    volMapP1[290] = kapasitasTrafo === '400 kVA' ? 1 : 0; // JASA ANGKUTAN MATERIAL : Angkutan Trafo 400 kVA
     volMapP1[291] = !isKhusus ? 1 : 0; // JASA ANGKUTAN MATERIAL : Angkutan Rak TR dan perlengkapannya
     volMapP1[292] = 1; // JASA ANGKUTAN MATERIAL : Angk Travers,Isolator,dudukan fuse,arrester
     volMapP1[293] = 1; // JASA ANGKUTAN MATERIAL : Angkutan Kabel NYFGBY 4x95
@@ -907,8 +877,9 @@ export function calculateRabFromSurvey(
     volMapP1[295] = 1; // INSTALASI LISTRIK & LAIN-LAIN : Gambar As Built Drawing
   }
 
-  if (isBeton) {
-    volMapP1[297] = 1; // GARDU PORTAL RMU / GARDU BETON
+  // Paket Gardu Portal RMU / Beton: HANYA aktif jika tipe pembangunan gardu adalah RMU atau Gardu Beton
+  if (isPortalRMU || isBeton) {
+    volMapP1[297] = isPortalRMU ? 1 : 0; // Baris 297 Excel: =IF('ISIAN PEKERJAAN'!B21="Portal RMU ",1,0)
     volMapP1[299] = 3.3; // PEKERJAAN PERSIAPAN : Stripping, tebal 20 cm
     volMapP1[300] = 3.3; // PEKERJAAN PERSIAPAN : Babat Rumput/Alang-alang
     volMapP1[301] = 5.48; // PEKERJAAN PERSIAPAN : Pasang Bouwplank
@@ -953,12 +924,12 @@ export function calculateRabFromSurvey(
     volMapP1[353] = 1; // PEMASANGAN CUT OUT DAN PENGADAAN DUDUKAN
 
     // Baris 354-359: Pasang Trafo Gardu Beton
-    volMapP1[354] = kapasitasTrafo.includes('50') ? 1 : 0;
-    volMapP1[355] = kapasitasTrafo.includes('100') ? 1 : 0;
-    volMapP1[356] = kapasitasTrafo.includes('160') ? 1 : 0;
-    volMapP1[357] = kapasitasTrafo.includes('200') ? 1 : 0;
-    volMapP1[358] = kapasitasTrafo.includes('250') ? 1 : 0;
-    volMapP1[359] = kapasitasTrafo.includes('400') ? 1 : 0;
+    volMapP1[354] = kapasitasTrafo === '50 kVA' ? 1 : 0;
+    volMapP1[355] = kapasitasTrafo === '100 kVA' ? 1 : 0;
+    volMapP1[356] = kapasitasTrafo === '160 kVA' ? 1 : 0;
+    volMapP1[357] = kapasitasTrafo === '200 kVA' ? 1 : 0;
+    volMapP1[358] = kapasitasTrafo === '250 kVA' ? 1 : 0;
+    volMapP1[359] = kapasitasTrafo === '400 kVA' ? 1 : 0;
 
     volMapP1[362] = 9.79; // Upah pasang kawat BC 50 mm2
     volMapP1[363] = 9.79; // Arde BC 50 mm2
@@ -983,7 +954,6 @@ export function calculateRabFromSurvey(
   }
 
   // Kubikel & Aksesoris Instalasi Gardu (Portal RMU & Gardu Beton)
-  const isPortalRMU = tipeGardu.toUpperCase().includes('RMU');
   const totalKubikel = (volMapP1[70] || 0) + (volMapP1[71] || 0) + (volMapP1[72] || 0) + (volMapP1[73] || 0);
   if (isBeton || isPortalRMU || totalKubikel > 0) {
     volMapP1[379] = (volMapP1[71] || 0) + (volMapP1[72] || 0) + (volMapP1[73] || 0); // Kubikel LBS/PT/PB
@@ -999,29 +969,29 @@ export function calculateRabFromSurvey(
   }
 
   // Baris 382-389: Pemasangan Trafo Baru di Gardu Tiang (Mutasi / Pasang Baru)
-  volMapP1[382] = trafoBaru.includes('25') ? 1 : 0;
-  volMapP1[383] = trafoBaru.includes('50') ? 1 : 0;
-  volMapP1[384] = trafoBaru.includes('100') ? 1 : 0;
-  volMapP1[385] = trafoBaru.includes('160') ? 1 : 0;
-  volMapP1[386] = trafoBaru.includes('200') ? 1 : 0;
-  volMapP1[387] = trafoBaru.includes('250') ? 1 : 0;
-  volMapP1[389] = trafoBaru.includes('400') ? 1 : 0;
+  volMapP1[382] = trafoBaru === '25 kVA' ? 1 : 0;
+  volMapP1[383] = trafoBaru === '50 kVA' ? 1 : 0;
+  volMapP1[384] = trafoBaru === '100 kVA' ? 1 : 0;
+  volMapP1[385] = trafoBaru === '160 kVA' ? 1 : 0;
+  volMapP1[386] = trafoBaru === '200 kVA' ? 1 : 0;
+  volMapP1[387] = trafoBaru === '250 kVA' ? 1 : 0;
+  volMapP1[389] = trafoBaru === '400 kVA' ? 1 : 0;
 
   // Baris 397: Pasang Single Core TR di Trafo
   const totalPasangTrafo = (volMapP1[382] || 0) + (volMapP1[383] || 0) + (volMapP1[384] || 0) + (volMapP1[385] || 0) + (volMapP1[386] || 0) + (volMapP1[387] || 0) + (volMapP1[389] || 0);
   volMapP1[397] = totalPasangTrafo > 0 ? 1 : 0;
 
   // Baris 430-432: Pembongkaran Trafo Lama
-  volMapP1[430] = trafoLama.includes('25') || trafoLama.includes('50') ? 1 : 0;
+  volMapP1[430] = trafoLama === '25 kVA' || trafoLama === '50 kVA' ? 1 : 0;
   volMapP1[431] =
-    trafoLama.includes('100') ||
-    trafoLama.includes('160') ||
-    trafoLama.includes('200') ||
-    trafoLama.includes('250') ||
-    trafoLama.includes('315')
+    trafoLama === '100 kVA' ||
+    trafoLama === '160 kVA' ||
+    trafoLama === '200 kVA' ||
+    trafoLama === '250 kVA' ||
+    trafoLama === '315 kVA'
       ? 1
       : 0;
-  volMapP1[432] = trafoLama.includes('400') || trafoLama.includes('630') ? 1 : 0;
+  volMapP1[432] = trafoLama === '400 kVA' || trafoLama === '630 kVA' ? 1 : 0;
 
   // Baris 441: Pembongkaran Instalasi Gardu Single Core TR di Trafo
   const totalBongkarTrafo = (volMapP1[430] || 0) + (volMapP1[431] || 0) + (volMapP1[432] || 0);
@@ -1157,4 +1127,109 @@ function buildActiveRabList(
         keterangan: keterangan || it.keterangan,
       };
     });
+}
+
+/** Dokumen output RAB hasil survey. */
+export type SurveyDocType = 'paket1' | 'paket2' | 'tiang';
+
+/** Paket pekerjaan yang terbentuk dari isian survey. */
+export type SurveyPackages = Record<SurveyDocType, boolean>;
+
+const isFilled = (v?: string | null) => {
+  const t = (v || '').trim().toLowerCase();
+  return t !== '' && t !== '-' && t !== '0' && t !== '0 m';
+};
+
+/** Tiang baru yang diinput di JTM / JTR (bukan "Tanpa Tiang", eksisting, atau terusan). */
+export const isNewPole = (p: PoleData) =>
+  p.poleStatus !== 'EXISTING' &&
+  /\d/.test(p.poleType || p.std || '') &&
+  !/TANPA|EKSISTING|EXISTING|TERUSAN|UNDERBUILT|NONE/i.test(p.poleType || p.std || '');
+
+const isJtmPole = (p: PoleData) => p.networkType
+  ? p.networkType === 'JTM' || p.networkType === 'SUTM'
+  : (p.id || '').startsWith('TM') || (!(p.id || '').startsWith('TR') && Boolean(p.tmConstruction));
+const isJtrPole = (p: PoleData) => p.networkType
+  ? p.networkType === 'JTR' || p.networkType === 'SUTR'
+  : !isJtmPole(p) && ((p.id || '').startsWith('TR') || Boolean(p.trConstruction));
+
+/**
+ * Perluasan JTM / JTR efektif: pakai pilihan form bila diisi, jika kosong tetapi ada tiang
+ * di jaringan tersebut, dianggap SUTM / SKUTR (tipe jaringan yang saat ini aktif digunakan).
+ */
+export function resolvePerluasan(perluasanJTM: string | undefined, perluasanJTR: string | undefined, poles: PoleData[]) {
+  return {
+    jtm: isFilled(perluasanJTM) ? perluasanJTM!.trim() : poles.some(isJtmPole) ? 'SUTM' : '',
+    jtr: isFilled(perluasanJTR) ? perluasanJTR!.trim() : poles.some(isJtrPole) ? 'SKUTR' : '',
+  };
+}
+
+/**
+ * Aturan paket output survey:
+ *  a. Paket 1 → Perluasan JTM, Tipe Pembangunan Gardu, Mutasi Trafo, atau Gardu Beton diisi.
+ *  b. Paket 2 → Daya baru / Daya lama ≥ 53.000 VA (Pemasangan / Pembongkaran Box APP), atau Perluasan JTR diisi.
+ *  c. WO Tiang → ada tiang baru yang diinput di JTM atau JTR.
+ */
+export function getSurveyPackages(survey: RabSurveyInput | null | undefined): SurveyPackages {
+  if (!survey) return { paket1: false, paket2: false, tiang: false };
+  const garduObj = typeof survey.gardu === 'object' ? survey.gardu : undefined;
+  const poles = Array.isArray(survey.poles)
+    ? survey.poles
+    : [...(survey.jtmPoles || []), ...(survey.jtrPoles || [])];
+  const perluasan = resolvePerluasan(survey.perluasanJTM, survey.perluasanJTR, poles);
+
+  const paket1 =
+    isFilled(perluasan.jtm) ||
+    isFilled(survey.tipePembangunanGardu || survey.tipeGardu || garduObj?.tipe || survey.dataTeknis?.tipeGardu) ||
+    isFilled(survey.trafoLama || garduObj?.trafoLama) ||
+    isFilled(survey.trafoBaru || garduObj?.trafoBaru) ||
+    isFilled(survey.jenisPekerjaanGardu || garduObj?.jenisPekerjaan || survey.dataTeknis?.jenisPekerjaan);
+  const dayaBaruVA = parseDayaVA(survey.dayaBaru || survey.daya || survey.dataTeknis?.dayaBaru);
+  const dayaLamaVA = parseDayaVA(survey.dayaLama || survey.dataTeknis?.dayaLama);
+  const paket2 = dayaBaruVA >= 53000 || dayaLamaVA >= 53000 || isFilled(perluasan.jtr);
+  const tiang = poles.some(isNewPole);
+
+  return { paket1, paket2, tiang };
+}
+
+/** Urutan dokumen output yang tersedia untuk sebuah survey. */
+export const listSurveyDocs = (packages: SurveyPackages): SurveyDocType[] =>
+  (['paket1', 'paket2', 'tiang'] as const).filter((doc) => packages[doc]);
+
+/** Baris pekerjaan tiang murni (material tiang beton & jasa pondasi/penanaman tiang) — sama dengan isi WO Tiang. */
+export const isTiangRabRow = (row: RabRowItem) => {
+  const desc = (row.desc || '').toLowerCase();
+  const sub = (row.subSection || '').toLowerCase();
+
+  // Kecualikan item yang hanya menyebut 'tiang' tetapi bukan tiang (misal trafo gardu tiang, serandang trafo 1 tiang, dsb)
+  if (desc.includes('pasang trafo') || desc.includes('serandang trafo') || desc.includes('tic')) {
+    return false;
+  }
+
+  if (row.section === 'MATERIAL') {
+    return sub.includes('tiang beton') || desc.includes('pole;concrete') || desc.includes('tiang');
+  }
+
+  // Untuk JASA: harus jasa pembuatan pondasi tiang, penanaman/pembongkaran tiang, atau angkutan tiang
+  return (
+    desc.includes('pondasi tiang') ||
+    desc.includes('penanaman tiang') ||
+    desc.includes('pemasangan, tiang') ||
+    desc.includes('pasang tiang') ||
+    desc.includes('pembongkaran tiang') ||
+    desc.includes('angkutan tiang') ||
+    desc.includes('angkt tiang')
+  );
+};
+
+/** RAB WO Tiang hasil survey: baris tiang dari kalkulasi Paket 1 dan Paket 2. */
+export function calculateTiangRabFromSurvey(
+  survey: RabSurveyInput,
+  customPrices?: Record<string, number>
+): RabRowItem[] {
+  return (['paket1', 'paket2'] as const).flatMap((paket) =>
+    calculateRabFromSurvey(survey, paket, customPrices)
+      .filter((row) => !row.isHeader && row.rencanaVol > 0 && isTiangRabRow(row))
+      .map((row) => ({ ...row, id: `tb-${paket}-${row.id}` }))
+  );
 }

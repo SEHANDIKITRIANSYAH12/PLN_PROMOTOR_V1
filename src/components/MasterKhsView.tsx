@@ -7,23 +7,19 @@ import {
   HS_WO_PAKET_2_DATA,
   HsWoRowItem
 } from '@/data/hsWoMasterData';
-import { 
-  Search, 
-  Filter, 
-  Edit3, 
-  RotateCcw, 
-  Download, 
-  Printer, 
+import {
+  Search,
+  Filter,
+  Edit3,
+  RotateCcw,
+  Download,
+  Printer,
   Sparkles,
-  Info,
   ChevronLeft,
   ChevronRight,
   Package,
   Layers,
-  Coins,
-  FileSpreadsheet,
-  CheckCircle2,
-  Tag
+  Coins
 } from 'lucide-react';
 
 export const MasterKhsView: React.FC = () => {
@@ -38,7 +34,7 @@ export const MasterKhsView: React.FC = () => {
 
   // Pagination for paginated mode
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const pageSize = 50;
 
   // Edit Modal State
   const [editingItem, setEditingItem] = useState<{
@@ -335,7 +331,7 @@ export const MasterKhsView: React.FC = () => {
               <select
                 value={kategoriFilter}
                 onChange={(e) => {
-                  setKategoriFilter(e.target.value as any);
+                  setKategoriFilter(e.target.value as typeof kategoriFilter);
                   setCurrentPage(1);
                 }}
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 bg-slate-50/50 focus:outline-hidden focus:ring-2 focus:ring-blue-500 cursor-pointer font-medium"
@@ -368,7 +364,7 @@ export const MasterKhsView: React.FC = () => {
               <select
                 value={statusFilter}
                 onChange={(e) => {
-                  setStatusFilter(e.target.value as any);
+                  setStatusFilter(e.target.value as typeof statusFilter);
                   setCurrentPage(1);
                 }}
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 bg-slate-50/50 focus:outline-hidden focus:ring-2 focus:ring-blue-500 cursor-pointer"

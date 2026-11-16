@@ -2,22 +2,11 @@
 
 import React from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
-import { 
-  Plus, 
-  ArrowRight, 
-  Clock, 
-  CheckCircle2, 
-  AlertTriangle,
-  FileCheck2,
-  TrendingUp,
+import {
+  Plus,
+  ArrowRight,
   FileText,
-  Boxes,
-  Zap,
-  Sparkles,
   ChevronRight,
-  ShieldAlert,
-  ArrowUpRight,
-  Calculator,
   Crosshair,
   Layers,
   FileCode

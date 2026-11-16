@@ -280,6 +280,17 @@ model WorkOrder {
   progressVerifiedBy  String?
   progressRejectedReason String?
 
+  // Progres jasa dikunci pengawas: vendor tidak boleh mengirim update lagi,
+  // status WO menjadi 'Closeout'. Status sebelumnya disimpan untuk buka kunci.
+  progressJasaLocked Boolean?
+  progressLockedAt   String?
+  progressLockedBy   String?
+  statusBeforeCloseout String?
+
+  // Volume rencana direvisi Asman sebelum approval: dokumen WO memakai volume WO.
+  volumeEditedAt String?
+  volumeEditedBy String?
+
   sysIdx       Int      @default(0)
   sysCreatedAt DateTime @default(now())
   sysUpdatedAt DateTime @updatedAt

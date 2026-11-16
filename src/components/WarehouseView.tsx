@@ -3,22 +3,20 @@
 import React, { useState, useMemo } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
 import { StockMaterial, WorkOrderRecord } from '@/types';
-import { 
-  Warehouse, 
-  AlertTriangle, 
-  CheckCircle2, 
-  RefreshCw, 
-  Search, 
-  Edit3, 
-  Plus, 
-  Trash2, 
-  X, 
-  Save, 
+import {
+  Warehouse,
+  AlertTriangle,
+  CheckCircle2,
+  RefreshCw,
+  Search,
+  Edit3,
+  Plus,
+  Trash2,
+  X,
+  Save,
   Package,
   RotateCcw,
-  FileText,
-  Building2,
-  Boxes
+  FileText
 } from 'lucide-react';
 import { Pagination } from '@/components/Pagination';
 
@@ -560,7 +558,7 @@ export const WarehouseView: React.FC = () => {
                             <div className="text-[10px] text-rose-800 font-medium bg-rose-50 p-2 rounded border border-rose-200 flex items-center gap-2 mt-2">
                               <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                               <span>
-                                Ditolak oleh <b>{wo.returRejectedBy}</b> pada {wo.returRejectedAt}. Alasan: "{wo.returRejectionReason}"
+                                Ditolak oleh <b>{wo.returRejectedBy}</b> pada {wo.returRejectedAt}. Alasan: &quot;{wo.returRejectionReason}&quot;
                               </span>
                             </div>
                           )}

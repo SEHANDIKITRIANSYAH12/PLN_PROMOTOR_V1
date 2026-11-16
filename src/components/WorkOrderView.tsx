@@ -1,27 +1,20 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useEffectEvent, useMemo } from 'react';
 import { usePromotorStore, deriveVendorOptions, nextFreeWoBase } from '@/store/usePromotorStore';
 import { WorkOrderRecord } from '@/types';
-import { 
-  HardHat, 
-  CheckCircle, 
-  Clock, 
-  Link2, 
-  ExternalLink, 
-  Package, 
-  Search, 
-  Eye, 
-  Filter, 
+import {
+  HardHat,
+  Clock,
+  Search,
+  Eye,
+  Filter,
   X,
   FileText,
   Trash2,
   Printer,
-  Edit3,
   PlusCircle,
-  ClipboardCheck,
   ShieldCheck,
-  AlertCircle,
   PenTool,
   Check,
   Layers,
@@ -32,14 +25,14 @@ import {
   Briefcase,
   ChevronDown,
   Phone,
-  UserCheck
+  UserCheck,
+  Lock
 } from 'lucide-react';
 import { Pagination } from '@/components/Pagination';
 import { RabDocumentModal } from '@/components/RabDocumentModal';
 import { SignaturePadModal } from '@/components/SignaturePadModal';
-import { calculateRabFromSurvey } from '@/data/rabMasterData';
+import { getSurveyPackages } from '@/data/surveyRabCalculator';
 
-const DEFAULT_ASMAN_PARAF = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMTIwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEyMCI+PHBhdGggZD0iTSAzNSw0NSBDIDQ1LDgwIDU1LDg1IDYyLDM1IEMgNzAsNzUgODAsODAgODgsMzAgQyA5NSw0NSAxMTAsMjUgMTI1LDUwIEMgMTM1LDY4IDEyMCw4NSA5NSw4MCBNIDQ1LDkwIEwgMTQwLDg4IiBmaWxsPSJub25lIiBzdHJva2U9IiMwMDMzNjYiIHN0cm9rZS13aWR0aD0iMyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+';
 const DEFAULT_HASIAN_PARAF = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMTIwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEyMCI+PHBhdGggZD0iTSA0MCw3MCBDIDUwLDUwIDcwLDI1IDc4LDEyIEMgODIsNSA3NSw4IDcwLDIyIEMgNjIsNDggNTUsODAgNDgsMTEyIE0gNTIsNzIgQyA2MCw0OCA3Miw0MCA4Miw0MiBDIDkwLDQ0IDg4LDYyIDg5LDc2IEMgOTIsMjggMTAyLDIwIDEwOCwzMCBDIDExMiwzOCAxMTAsNjggMTEyLDgwIEMgMTE2LDQ4IDEyNiw0NSAxMzIsNTYgQyAxMzYsNjYgMTM4LDgyIDE0NCwxMDIgTSA2Miw1OCBMIDEzMCw1NiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAzMzY2IiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+';
 
 const parseSupervisor = (s?: string) => {
@@ -58,17 +51,10 @@ export const WorkOrderView: React.FC = () => {
     vendors, 
     contracts, 
     supervisors,
-    customKhsPrices,
     createWorkOrdersFromDaftung, 
-    approveWorkOrder, 
-    rejectWorkOrder, 
-    resubmitWorkOrder,
     selectedDaftungIdForWo,
     setSelectedDaftungIdForWo,
-    updateWoProgress, 
-    updateWoReservation, 
     deleteWorkOrder, 
-    setCurrentPage, 
     showToast 
   } = usePromotorStore();
 
@@ -180,35 +166,9 @@ export const WorkOrderView: React.FC = () => {
       return { hasP1: true, hasP2: true, hasTiang: true };
     }
 
-    // 1. Cek Paket 1 (JTM / Gardu)
-    const hasJtmPoles = (s.poles || []).some(
-      (p) => p.networkType === 'JTM' || p.networkType === 'SUTM' || (p.id || '').startsWith('TM') || (p.tmConstruction || '').includes('GARDU')
-    );
-    const p1Rab = calculateRabFromSurvey(s, 'paket1', customKhsPrices);
-    const hasP1Items = p1Rab.some((it) => !it.isHeader && (it.rencanaVol > 0 || it.realisasiVol > 0));
-    const hasP1 = hasJtmPoles || hasP1Items;
-
-    // 2. Cek Paket 2 (JTR / Sambungan Rumah)
-    const hasJtrPoles = (s.poles || []).some(
-      (p) => p.networkType === 'JTR' || p.networkType === 'SUTR' || (p.id || '').startsWith('TR') || Boolean(p.trConstruction)
-    );
-    const p2Rab = calculateRabFromSurvey(s, 'paket2', customKhsPrices);
-    const hasP2Items = p2Rab.some((it) => !it.isHeader && (it.rencanaVol > 0 || it.realisasiVol > 0));
-    const hasP2 = hasJtrPoles || hasP2Items;
-
-    // 3. Aturan WO Tiang: Harus ada Material Tiang Rencana Baru (bukan existing)
-    // Cek di data tiang lapangan: apakah ada tiang yang statusnya bukan EXISTING dan bukan 'Tanpa Tiang'
-    const hasNewPoles = (s.poles || []).some(
-      (p) => p.poleStatus !== 'EXISTING' && p.poleType !== 'Tanpa Tiang' && !p.poleType?.startsWith('Terusan')
-    );
-    // Cek juga di kalkulasi RAB apakah ada volume tiang beton > 0
-    const allActiveItems = [...p1Rab, ...p2Rab].filter((it) => !it.isHeader && it.rencanaVol > 0);
-    const hasTiangInRab = allActiveItems.some(
-      (it) => it.desc.toLowerCase().includes('tiang beton') || it.desc.toLowerCase().includes('tiang besi') || (it.subSection || '').toLowerCase().includes('tiang')
-    );
-    const hasTiang = hasNewPoles || hasTiangInRab;
-
-    return { hasP1, hasP2, hasTiang };
+    // Aturan paket sama dengan output RAB di menu Survey (lihat getSurveyPackages).
+    const packages = getSurveyPackages(s);
+    return { hasP1: packages.paket1, hasP2: packages.paket2, hasTiang: packages.tiang };
   };
 
   // State Pembuat WO (Admin WO / Penanggung Jawab Konsep)
@@ -216,29 +176,6 @@ export const WorkOrderView: React.FC = () => {
   const [creatorRole, setCreatorRole] = useState('TC LOLA KONS');
   const [creatorSig, setCreatorSig] = useState<string>(DEFAULT_HASIAN_PARAF);
   const [isCreatorSignPadOpen, setIsCreatorSignPadOpen] = useState(false);
-
-  // State Modal Persetujuan Asman
-  const [approvalModalWo, setApprovalModalWo] = useState<WorkOrderRecord | null>(null);
-  const [asmanName, setAsmanName] = useState('WEGIG DIDIK KURNIAWAN');
-  const [asmanRole, setAsmanRole] = useState('ASMAN KONSTRUKSI');
-  const [asmanSig, setAsmanSig] = useState<string>(DEFAULT_ASMAN_PARAF);
-  const [asmanNote, setAsmanNote] = useState('Disetujui untuk dilaksanakan di lapangan sesuai SPK dan standar KHS 2026.');
-  const [isRejectMode, setIsRejectMode] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState('');
-
-  // Digital Signature Pad Modal
-  const [sigPadConfig, setSigPadConfig] = useState<{
-    isOpen: boolean;
-    title: string;
-    initialName: string;
-    initialRole: string;
-    initialSig?: string;
-  }>({
-    isOpen: false,
-    title: '',
-    initialName: '',
-    initialRole: '',
-  });
 
   // Kumpulan kandidat permohonan yang siap dibuatkan WO (dari Potensi Daftung & Daftung)
   const allApplyCandidates = [
@@ -334,12 +271,15 @@ export const WorkOrderView: React.FC = () => {
     setIsApplyModalOpen(true);
   };
 
-  // Navigasi otomatis jika dipicu dari menu Daftung
+  // Navigasi otomatis jika dipicu dari menu Daftung: intent dari store eksternal
+  // dikonsumsi sekali lalu dikosongkan.
+  const openApplyFromDaftung = useEffectEvent((daftungId: string) => {
+    handleOpenApplyModal(daftungId);
+    setSelectedDaftungIdForWo(null);
+  });
   useEffect(() => {
-    if (selectedDaftungIdForWo) {
-      handleOpenApplyModal(selectedDaftungIdForWo);
-      setSelectedDaftungIdForWo(null);
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sinkronisasi dengan store navigasi eksternal
+    if (selectedDaftungIdForWo) openApplyFromDaftung(selectedDaftungIdForWo);
   }, [selectedDaftungIdForWo]);
 
   // Handler cepat jika klik Revisi pada baris WO yang ditolak
@@ -438,7 +378,6 @@ export const WorkOrderView: React.FC = () => {
     // Gunakan paket aktif yang dicentang (utamakan Paket 1 jika aktif, atau Paket 2, atau WO Tiang)
     const isP1 = p1Enabled;
     const isP2 = !p1Enabled && p2Enabled;
-    const isTb = !p1Enabled && !p2Enabled && tbEnabled;
 
     const previewCategory = isP1 ? 'WO Paket 1' : isP2 ? 'WO Paket 2' : 'WO Tiang';
     const previewNoWo = isP1 ? p1NoWo : isP2 ? p2NoWo : tbNoWo;
@@ -475,41 +414,6 @@ export const WorkOrderView: React.FC = () => {
     setSelectedDocWo(previewWo);
   };
 
-  // Buka Modal Persetujuan Asman
-  const handleOpenApproval = (wo: WorkOrderRecord) => {
-    setApprovalModalWo(wo);
-    setAsmanName(wo.approverName || 'WEGIG DIDIK KURNIAWAN');
-    setAsmanRole(wo.approverRole || 'ASMAN KONSTRUKSI');
-    setAsmanSig(wo.approverSignature || DEFAULT_ASMAN_PARAF);
-    setAsmanNote(wo.catatan || 'Disetujui untuk dilaksanakan di lapangan sesuai SPK dan standar KHS 2026.');
-    setIsRejectMode(false);
-    setRejectionReason('');
-  };
-
-  // Asman Menyetujui WO
-  const handleConfirmApprove = () => {
-    if (!approvalModalWo) return;
-    const disetujui = approveWorkOrder(approvalModalWo.id, {
-      name: asmanName.trim(),
-      role: asmanRole.trim(),
-      signature: asmanSig,
-      catatan: asmanNote.trim(),
-    });
-    // Modal dibiarkan terbuka bila sistem menolak (mis. beban pagu melebihi sisa).
-    if (disetujui) setApprovalModalWo(null);
-  };
-
-  // Asman Menolak / Mengembalikan WO
-  const handleConfirmReject = () => {
-    if (!approvalModalWo) return;
-    if (!rejectionReason.trim()) {
-      showToast('Mohon isi alasan penolakan/pengembalian');
-      return;
-    }
-    rejectWorkOrder(approvalModalWo.id, rejectionReason.trim());
-    setApprovalModalWo(null);
-  };
-
   const filteredWorkOrders = workOrders.filter((w) => {
     const matchSearch =
       w.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -525,7 +429,7 @@ export const WorkOrderView: React.FC = () => {
       categoryFilter === 'BELUM_DISETUJUI' ? isPendingOrRejected :
       categoryFilter === 'ALL' ? true :
       categoryFilter === 'PENDING' ? (w.status === 'Menunggu Persetujuan Asman' || w.approvalStatus === 'PENDING') :
-      categoryFilter === 'APPROVED' ? (w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Selesai') :
+      categoryFilter === 'APPROVED' ? (w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Selesai' || w.status === 'Closeout') :
       w.category === categoryFilter;
 
     return matchSearch && matchCategory;
@@ -599,7 +503,7 @@ export const WorkOrderView: React.FC = () => {
             className="p-2 border border-slate-200 rounded-lg text-xs font-semibold bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
           >
             <option value="BELUM_DISETUJUI">⚡ Belum Disetujui Asman ({workOrders.filter(w => w.status === 'Menunggu Persetujuan Asman' || w.status === 'Dikembalikan' || w.approvalStatus === 'PENDING' || w.approvalStatus === 'REJECTED').length})</option>
-            <option value="APPROVED">✓ Sudah Disetujui Asman (Pindah ke Daftung) ({workOrders.filter(w => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Selesai').length})</option>
+            <option value="APPROVED">✓ Sudah Disetujui Asman (Pindah ke Daftung) ({workOrders.filter(w => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Selesai' || w.status === 'Closeout').length})</option>
             <option value="ALL">Semua WO ({workOrders.length})</option>
             <option value="WO Paket 1">WO Paket 1</option>
             <option value="WO Paket 2">WO Paket 2</option>
@@ -823,6 +727,14 @@ export const WorkOrderView: React.FC = () => {
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300">
                             <Clock className="w-3 h-3 text-amber-700 animate-pulse" />
                             <span>Menunggu Asman</span>
+                          </span>
+                        ) : w.status === 'Closeout' ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold bg-slate-800 text-amber-300 border border-slate-700"
+                            title={`Progres jasa dikunci oleh ${w.progressLockedBy || 'Pengawas'}${w.progressLockedAt ? ` • ${new Date(w.progressLockedAt).toLocaleString('id-ID')}` : ''}`}
+                          >
+                            <Lock className="w-3 h-3" />
+                            <span>Closeout ({w.progress}%)</span>
                           </span>
                         ) : isCompleted ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
@@ -1750,223 +1662,6 @@ export const WorkOrderView: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL 2: PERSETUJUAN ASMAN KONSTRUKSI (ASMAN APPROVAL MODAL) */}
-      {approvalModalWo && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
-            {/* Modal Header */}
-            <div className="p-4 px-6 bg-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm">Persetujuan Asman Konstruksi</h3>
-                  <p className="text-[11px] text-slate-300">
-                    Verifikasi teknis & bubuhkan tanda tangan digital Asman untuk menerbitkan Work Order resmi.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setApprovalModalWo(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-4 text-xs flex-1">
-              {/* Ringkasan WO */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block uppercase font-bold">Nomor Work Order</span>
-                    <b className="text-sm font-black text-slate-900">{approvalModalWo.id}</b>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                    {approvalModalWo.category}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
-                  <div>
-                    <span className="text-slate-500 block">Pelanggan:</span>
-                    <b className="text-slate-900">{approvalModalWo.customerName}</b>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block">IDPEL:</span>
-                    <b className="font-mono text-slate-900">{approvalModalWo.idpel}</b>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block">Vendor Pelaksana:</span>
-                    <b className="text-slate-900">{approvalModalWo.vendor}</b>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block">Pengawas TC Lola:</span>
-                    <b className="text-slate-900">{approvalModalWo.supervisor1 || approvalModalWo.supervisor}</b>
-                  </div>
-                </div>
-              </div>
-
-              {/* Rincian Material yang Diajukan */}
-              <div>
-                <label className="block text-slate-700 font-bold mb-1.5 flex items-center justify-between">
-                  <span>Alokasi Material yang Diajukan ({approvalModalWo.materials.length} Item):</span>
-                  <span className="text-[11px] text-slate-500 font-normal">Sesuai Kebutuhan Lapangan</span>
-                </label>
-                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-36 overflow-y-auto">
-                  <table className="w-full text-left text-[11px] border-collapse">
-                    <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
-                      <tr className="divide-x divide-slate-200">
-                        <th className="p-2 px-3">Uraian Material</th>
-                        <th className="p-2 text-center w-20">Volume</th>
-                        <th className="p-2 text-center w-20">Satuan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {approvalModalWo.materials.map((m, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50 divide-x divide-slate-200">
-                          <td className="p-2 px-3 font-semibold text-slate-800">{m.material}</td>
-                          <td className="p-2 text-center font-bold text-blue-700 tabular-nums">{m.qtyAllocated}</td>
-                          <td className="p-2 text-center text-slate-500">{m.unit}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Box Tanda Tangan & Pejabat Asman */}
-              <div className="border-2 border-dashed border-amber-300 bg-amber-50/40 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-amber-900 flex items-center gap-1.5 text-xs">
-                    <PenTool className="w-4 h-4 text-amber-700" />
-                    <span>Tanda Tangan Persetujuan Asman Konstruksi</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSigPadConfig({
-                        isOpen: true,
-                        title: 'Tanda Tangan Digital Asman Konstruksi',
-                        initialName: asmanName,
-                        initialRole: asmanRole,
-                        initialSig: asmanSig,
-                      })
-                    }
-                    className="px-2.5 py-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition cursor-pointer flex items-center gap-1"
-                  >
-                    <Edit3 className="w-3 h-3" />
-                    <span>Ubah / Tanda Tangan</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-4 bg-white p-3 rounded-lg border border-amber-200">
-                  <div className="w-36 h-20 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center overflow-hidden p-1">
-                    {asmanSig ? (
-                      <img src={asmanSig} alt="Paraf Asman" className="max-h-full max-w-full object-contain" />
-                    ) : (
-                      <span className="text-[10px] text-slate-400 italic">Belum ada tanda tangan</span>
-                    )}
-                  </div>
-                  <div className="space-y-1 flex-1">
-                    <div className="font-black text-slate-900 text-xs tracking-tight uppercase underline">
-                      {asmanName}
-                    </div>
-                    <div className="text-[11px] font-bold text-slate-600 uppercase">
-                      {asmanRole}
-                    </div>
-                    <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 mt-1">
-                      <Check className="w-3 h-3 text-emerald-600" />
-                      <span>Siap diterbitkan & ditandatangani</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Catatan Persetujuan */}
-                <div>
-                  <label className="block text-[11px] text-slate-700 font-bold mb-1">Catatan Asman Konstruksi:</label>
-                  <input
-                    type="text"
-                    value={asmanNote}
-                    onChange={(e) => setAsmanNote(e.target.value)}
-                    className="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white"
-                    placeholder="Contoh: Disetujui untuk dilaksanakan di lapangan sesuai SPK."
-                  />
-                </div>
-              </div>
-
-              {/* Mode Tolak / Kembalikan jika Asman ingin menolak */}
-              {isRejectMode && (
-                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
-                  <label className="block text-rose-900 font-bold text-[11px]">
-                    Alasan Penolakan / Pengembalian ke Draf:
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    placeholder="Contoh: Periksa kembali alokasi kabel dan jadwal pelaksanaan vendor..."
-                    className="w-full p-2 border border-rose-300 rounded-lg text-xs bg-white text-slate-800"
-                    required
-                  />
-                  <div className="flex justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setIsRejectMode(false)}
-                      className="px-3 py-1 bg-white border border-slate-300 text-slate-700 rounded-lg text-[11px] font-semibold"
-                    >
-                      Batal Tolak
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmReject}
-                      className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer"
-                    >
-                      Konfirmasi Tolak WO
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer Actions */}
-            <div className="p-4 px-6 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-              {!isRejectMode ? (
-                <button
-                  type="button"
-                  onClick={() => setIsRejectMode(true)}
-                  className="px-3.5 py-2 text-rose-700 hover:text-rose-800 hover:bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer"
-                >
-                  Tolak / Kembalikan
-                </button>
-              ) : (
-                <div />
-              )}
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setApprovalModalWo(null)}
-                  className="px-4 py-2 border border-slate-300 bg-white text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-100 transition cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmApprove}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Setujui & Terbitkan Work Order</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* MODAL: DOKUMEN RESMI WORK ORDER & RAB */}
       {selectedDocWo && (
         <RabDocumentModal
@@ -1977,23 +1672,6 @@ export const WorkOrderView: React.FC = () => {
           mode="wo"
         />
       )}
-
-      {/* MODAL 6: TANDA TANGAN DIGITAL ASMAN */}
-      <SignaturePadModal
-        isOpen={sigPadConfig.isOpen}
-        onClose={() => setSigPadConfig((prev) => ({ ...prev, isOpen: false }))}
-        title={sigPadConfig.title}
-        signerType="approver"
-        initialName={sigPadConfig.initialName}
-        initialRole={sigPadConfig.initialRole}
-        initialSignature={sigPadConfig.initialSig}
-        onSave={(dataUrl, newName, newRole) => {
-          setAsmanName(newName);
-          setAsmanRole(newRole);
-          setAsmanSig(dataUrl);
-          setSigPadConfig((prev) => ({ ...prev, isOpen: false }));
-        }}
-      />
 
       {/* MODAL 7: TANDA TANGAN DIGITAL PEMBUAT WO (ADMIN WO / TC LOLA KONS) */}
       <SignaturePadModal

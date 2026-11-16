@@ -14,6 +14,80 @@ interface SignaturePadModalProps {
   onSave: (signatureDataUrl: string, name: string, role: string) => void;
 }
 
+// Gambar Paraf Otentik Hasian Sitorus (Sesuai Screenshot Excel User)
+function drawDefaultHasianParaf(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.save();
+  ctx.strokeStyle = '#003366'; // Biru tinta pulpen resmi
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Stroke 1: Loop kiri melengkung tinggi ke atas lalu turun panjang
+  ctx.beginPath();
+  ctx.moveTo(w * 0.22, h * 0.58);
+  ctx.bezierCurveTo(w * 0.28, h * 0.45, w * 0.38, h * 0.22, w * 0.42, h * 0.12);
+  ctx.bezierCurveTo(w * 0.44, h * 0.05, w * 0.40, h * 0.08, w * 0.37, h * 0.22);
+  ctx.bezierCurveTo(w * 0.33, h * 0.45, w * 0.30, h * 0.75, w * 0.25, h * 0.94);
+  ctx.stroke();
+
+  // Stroke 2: Tarikan tengah naik ke loop kedua dan gelombang vertikal Hasian
+  ctx.beginPath();
+  ctx.moveTo(w * 0.27, h * 0.65);
+  ctx.bezierCurveTo(w * 0.32, h * 0.42, w * 0.40, h * 0.35, w * 0.46, h * 0.36);
+  ctx.bezierCurveTo(w * 0.50, h * 0.38, w * 0.48, h * 0.55, w * 0.49, h * 0.68);
+  ctx.stroke();
+
+  // Stroke 3: Gelombang vertikal tinggi tengah
+  ctx.beginPath();
+  ctx.moveTo(w * 0.49, h * 0.68);
+  ctx.bezierCurveTo(w * 0.52, h * 0.25, w * 0.58, h * 0.18, w * 0.62, h * 0.28);
+  ctx.bezierCurveTo(w * 0.64, h * 0.35, w * 0.62, h * 0.62, w * 0.63, h * 0.72);
+  ctx.stroke();
+
+  // Stroke 4: Gelombang kanan ketiga dan ekor panjang turun
+  ctx.beginPath();
+  ctx.moveTo(w * 0.63, h * 0.72);
+  ctx.bezierCurveTo(w * 0.66, h * 0.42, w * 0.72, h * 0.40, w * 0.75, h * 0.50);
+  ctx.bezierCurveTo(w * 0.77, h * 0.60, w * 0.78, h * 0.75, w * 0.82, h * 0.88);
+  ctx.stroke();
+
+  // Stroke 5: Garis potong melintang dan titik paraf
+  ctx.beginPath();
+  ctx.moveTo(w * 0.35, h * 0.52);
+  ctx.lineTo(w * 0.72, h * 0.50);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// Gambar Paraf Asman Konstruksi (Wegig Didik Kurniawan)
+function drawDefaultAsmanParaf(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.save();
+  ctx.strokeStyle = '#003366';
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Inisial W & D mengalir khas pejabat PLN
+  ctx.beginPath();
+  ctx.moveTo(w * 0.2, h * 0.4);
+  ctx.bezierCurveTo(w * 0.25, h * 0.7, w * 0.3, h * 0.75, w * 0.35, h * 0.3);
+  ctx.bezierCurveTo(w * 0.4, h * 0.65, w * 0.45, h * 0.7, w * 0.5, h * 0.25);
+  ctx.bezierCurveTo(w * 0.55, h * 0.4, w * 0.65, h * 0.2, w * 0.75, h * 0.45);
+  ctx.bezierCurveTo(w * 0.8, h * 0.6, w * 0.7, h * 0.75, w * 0.55, h * 0.7);
+  ctx.stroke();
+
+  // Garis tegas bawah penutup paraf
+  ctx.beginPath();
+  ctx.moveTo(w * 0.25, h * 0.8);
+  ctx.lineTo(w * 0.78, h * 0.78);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 export const SignaturePadModal: React.FC<SignaturePadModalProps> = ({
   isOpen,
   onClose,
@@ -28,12 +102,19 @@ export const SignaturePadModal: React.FC<SignaturePadModalProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [name, setName] = useState(initialName);
   const [role, setRole] = useState(initialRole);
-  const [hasContent, setHasContent] = useState(Boolean(initialSignature));
 
-  useEffect(() => {
+  // Isi ulang nama & jabatan setiap kali modal dibuka.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
     if (isOpen) {
       setName(initialName);
       setRole(initialRole);
+    }
+  }
+
+  useEffect(() => {
+    if (isOpen) {
       // Wait for canvas to mount
       setTimeout(() => {
         const canvas = canvasRef.current;
@@ -47,95 +128,16 @@ export const SignaturePadModal: React.FC<SignaturePadModalProps> = ({
         // If existing signature exists, draw it
         if (initialSignature) {
           const img = new Image();
-          img.onload = () => {
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            setHasContent(true);
-          };
+          img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           img.src = initialSignature;
         } else if (signerType === 'creator') {
           drawDefaultHasianParaf(ctx, canvas.width, canvas.height);
-          setHasContent(true);
         } else {
           drawDefaultAsmanParaf(ctx, canvas.width, canvas.height);
-          setHasContent(true);
         }
       }, 50);
     }
-  }, [isOpen, initialName, initialRole, initialSignature, signerType]);
-
-  // Gambar Paraf Otentik Hasian Sitorus (Sesuai Screenshot Excel User)
-  const drawDefaultHasianParaf = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
-    ctx.clearRect(0, 0, w, h);
-    ctx.save();
-    ctx.strokeStyle = '#003366'; // Biru tinta pulpen resmi
-    ctx.lineWidth = 2.2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    // Stroke 1: Loop kiri melengkung tinggi ke atas lalu turun panjang
-    ctx.beginPath();
-    ctx.moveTo(w * 0.22, h * 0.58);
-    ctx.bezierCurveTo(w * 0.28, h * 0.45, w * 0.38, h * 0.22, w * 0.42, h * 0.12);
-    ctx.bezierCurveTo(w * 0.44, h * 0.05, w * 0.40, h * 0.08, w * 0.37, h * 0.22);
-    ctx.bezierCurveTo(w * 0.33, h * 0.45, w * 0.30, h * 0.75, w * 0.25, h * 0.94);
-    ctx.stroke();
-
-    // Stroke 2: Tarikan tengah naik ke loop kedua dan gelombang vertikal Hasian
-    ctx.beginPath();
-    ctx.moveTo(w * 0.27, h * 0.65);
-    ctx.bezierCurveTo(w * 0.32, h * 0.42, w * 0.40, h * 0.35, w * 0.46, h * 0.36);
-    ctx.bezierCurveTo(w * 0.50, h * 0.38, w * 0.48, h * 0.55, w * 0.49, h * 0.68);
-    ctx.stroke();
-
-    // Stroke 3: Gelombang vertikal tinggi tengah
-    ctx.beginPath();
-    ctx.moveTo(w * 0.49, h * 0.68);
-    ctx.bezierCurveTo(w * 0.52, h * 0.25, w * 0.58, h * 0.18, w * 0.62, h * 0.28);
-    ctx.bezierCurveTo(w * 0.64, h * 0.35, w * 0.62, h * 0.62, w * 0.63, h * 0.72);
-    ctx.stroke();
-
-    // Stroke 4: Gelombang kanan ketiga dan ekor panjang turun
-    ctx.beginPath();
-    ctx.moveTo(w * 0.63, h * 0.72);
-    ctx.bezierCurveTo(w * 0.66, h * 0.42, w * 0.72, h * 0.40, w * 0.75, h * 0.50);
-    ctx.bezierCurveTo(w * 0.77, h * 0.60, w * 0.78, h * 0.75, w * 0.82, h * 0.88);
-    ctx.stroke();
-
-    // Stroke 5: Garis potong melintang dan titik paraf
-    ctx.beginPath();
-    ctx.moveTo(w * 0.35, h * 0.52);
-    ctx.lineTo(w * 0.72, h * 0.50);
-    ctx.stroke();
-
-    ctx.restore();
-  };
-
-  // Gambar Paraf Asman Konstruksi (Wegig Didik Kurniawan)
-  const drawDefaultAsmanParaf = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
-    ctx.clearRect(0, 0, w, h);
-    ctx.save();
-    ctx.strokeStyle = '#003366';
-    ctx.lineWidth = 2.4;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    // Inisial W & D mengalir khas pejabat PLN
-    ctx.beginPath();
-    ctx.moveTo(w * 0.2, h * 0.4);
-    ctx.bezierCurveTo(w * 0.25, h * 0.7, w * 0.3, h * 0.75, w * 0.35, h * 0.3);
-    ctx.bezierCurveTo(w * 0.4, h * 0.65, w * 0.45, h * 0.7, w * 0.5, h * 0.25);
-    ctx.bezierCurveTo(w * 0.55, h * 0.4, w * 0.65, h * 0.2, w * 0.75, h * 0.45);
-    ctx.bezierCurveTo(w * 0.8, h * 0.6, w * 0.7, h * 0.75, w * 0.55, h * 0.7);
-    ctx.stroke();
-
-    // Garis tegas bawah penutup paraf
-    ctx.beginPath();
-    ctx.moveTo(w * 0.25, h * 0.8);
-    ctx.lineTo(w * 0.78, h * 0.78);
-    ctx.stroke();
-
-    ctx.restore();
-  };
+  }, [isOpen, initialSignature, signerType]);
 
   // Handlers canvas drawing
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -176,7 +178,6 @@ export const SignaturePadModal: React.FC<SignaturePadModalProps> = ({
 
     ctx.lineTo(x, y);
     ctx.stroke();
-    setHasContent(true);
   };
 
   const stopDrawing = () => {
@@ -189,7 +190,6 @@ export const SignaturePadModal: React.FC<SignaturePadModalProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHasContent(false);
   };
 
   const handleApplyPreset = () => {
@@ -202,7 +202,6 @@ export const SignaturePadModal: React.FC<SignaturePadModalProps> = ({
     } else {
       drawDefaultAsmanParaf(ctx, canvas.width, canvas.height);
     }
-    setHasContent(true);
   };
 
   const handleSave = () => {

@@ -1,15 +1,12 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { 
-  Boxes, 
-  Search, 
-  CheckCircle2, 
-  Clock, 
-  Building2, 
-  RotateCcw,
-  ShieldCheck,
-  AlertTriangle,
+import {
+  Boxes,
+  Search,
+  CheckCircle2,
+  Clock,
+  Building2,
   FileText,
   RefreshCw,
   PauseCircle,
@@ -17,19 +14,15 @@ import {
   Eye,
   Edit3,
   X,
-  ExternalLink,
-  ChevronDown,
-  Info,
   Calendar,
-  Layers,
   ArrowRight,
   Lock,
-  Printer,
-  AlertCircle
+  Printer
 } from 'lucide-react';
 import { usePromotorStore } from '@/store/usePromotorStore';
 import { WorkOrderRecord, WoMaterialItem } from '@/types';
 import { calculateRabFromSurvey } from '@/data/surveyRabCalculator';
+import type { RabRowItem } from '@/data/rabMasterData';
 
 const parseSupervisor = (s?: string) => {
   if (!s || s === '—' || s === '-') return { name: '—', role: '' };
@@ -61,8 +54,8 @@ export const ReservasiMaterialView: React.FC = () => {
   // MODAL 1: Form Reservasi Material Gudang
   // --------------------------------------------------------------------------
   const [reservationWo, setReservationWo] = useState<WorkOrderRecord | null>(null);
-  const [reservationTab, setReservationTab] = useState<'STOK' | 'NON_STOK'>('STOK');
   const [resNumber, setResNumber] = useState('');
+  const [resNumberNonStock, setResNumberNonStock] = useState('');
   const [resDate, setResDate] = useState('');
   const [resNotes, setResNotes] = useState('');
   const [viewSuratJalanModal, setViewSuratJalanModal] = useState<{ wo: WorkOrderRecord; type: 'STOK' | 'NON_STOK' } | null>(null);
@@ -107,7 +100,7 @@ export const ReservasiMaterialView: React.FC = () => {
   // Filter WO yang berstatus APPROVED atau dalam tahap pengerjaan
   const approvedWos = useMemo(() => {
     return workOrders.filter(
-      (w) => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Verifikasi SJ' || w.status === 'Selesai'
+      (w) => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Verifikasi SJ' || w.status === 'Selesai' || w.status === 'Closeout'
     );
   }, [workOrders]);
 
@@ -271,14 +264,6 @@ export const ReservasiMaterialView: React.FC = () => {
     return 'A. MATERIAL GARDU DISTRIBUSI DAN LENGKAPAN';
   };
 
-  const getKelompokBadgeClass = (kelompok: string) => {
-    if (kelompok.startsWith('A.')) return 'bg-sky-50 text-sky-800 border-sky-200';
-    if (kelompok.startsWith('B.')) return 'bg-indigo-50 text-indigo-800 border-indigo-200';
-    if (kelompok.startsWith('C.')) return 'bg-amber-50 text-amber-800 border-amber-200';
-    if (kelompok.startsWith('D.')) return 'bg-slate-100 text-slate-800 border-slate-300';
-    return 'bg-blue-50 text-blue-800 border-blue-200';
-  };
-
   // Filter list WO berdasarkan tab dan pencarian
   const filteredWos = useMemo(() => {
     let list = approvedWos;
@@ -350,7 +335,7 @@ export const ReservasiMaterialView: React.FC = () => {
       if (currentMats.length === 0) {
         // Jika WO Tiang tapi materialnya kosong, coba ambil dari RAB
         if (matchedSurvey && matchedSurvey.poles && matchedSurvey.poles.length > 0) {
-          const isTiangRabRow = (r: any) => {
+          const isTiangRabRow = (r: RabRowItem) => {
             const sub = (r.subSection || '').toUpperCase();
             const desc = (r.desc || '').toLowerCase();
             return sub.includes('TIANG') || desc.includes('pole;concrete') || desc.startsWith('tiang beton') || (desc.includes('tiang') && !desc.includes('serandang') && !desc.includes('trafo'));
@@ -401,12 +386,40 @@ export const ReservasiMaterialView: React.FC = () => {
       currentMats = currentMats.filter((m) => !isTiangMaterial(m));
     }
 
-    setReservationWo({ ...wo, materials: currentMats });
-    setReservationTab('STOK');
+    // Inisialisasi material dengan nilai default reservasi transaksi ini = sisa yang belum reservasi/belum diambil
+    const initializedMats = currentMats.map((m) => {
+      const req = m.qtyAllocated || m.qtyReksis || 1;
+      const sudah = m.qtyTaken || (m.isTaken ? req : 0);
+      const sisa = Math.max(0, req - sudah);
+      
+      const isTiang = isTiangMaterial(m);
+      // Default: material stok masuk ke Qty SAP, sedangkan tiang/non-stok masuk ke Qty Non-SAP
+      const defaultSap = isTiang ? 0 : (m.qtyReservedSap !== undefined ? Math.min(m.qtyReservedSap, sisa) : sisa);
+      const defaultNonSap = isTiang ? (m.qtyReservedNonSap !== undefined ? Math.min(m.qtyReservedNonSap, sisa) : sisa) : (m.qtyReservedNonSap || 0);
+
+      return {
+        ...m,
+        qtyReservedSap: defaultSap,
+        qtyReservedNonSap: defaultNonSap,
+        qtyReserved: defaultSap + defaultNonSap,
+      };
+    });
+
+    setReservationWo({ ...wo, materials: initializedMats });
 
     const nowStr = new Date().toISOString().split('T')[0];
-    const defaultResNo = wo.reservationNumber || `RES/UP3-BTS/${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${wo.id.split('.').pop() || '001'}`;
-    setResNumber(defaultResNo);
+    const woSuffix = wo.id.split('.').pop() || '001';
+    const yearStr = new Date().getFullYear();
+    const monthStr = String(new Date().getMonth() + 1).padStart(2, '0');
+
+    const defaultResNoSap = wo.reservationNumber || `RES-SAP/UP3-BTS/${yearStr}/${monthStr}/${woSuffix}`;
+    const defaultResNoNonSap = wo.reservationNumberNonStock || `RES-NONSAP/UP3-BTS/${yearStr}/${monthStr}/${woSuffix}`;
+    
+    const hasInitialSap = initializedMats.some((m) => (m.qtyReservedSap || 0) > 0);
+    const hasInitialNonSap = initializedMats.some((m) => (m.qtyReservedNonSap || 0) > 0);
+
+    setResNumber(hasInitialSap ? defaultResNoSap : '');
+    setResNumberNonStock(hasInitialNonSap ? defaultResNoNonSap : '');
     setResDate(wo.reservationDate || nowStr);
     setResNotes(wo.reservationNotes || 'Pengambilan material di Gudang UP3 Banten Selatan.');
   };
@@ -416,39 +429,116 @@ export const ReservasiMaterialView: React.FC = () => {
     e.preventDefault();
     if (!reservationWo) return;
 
-    if (!resNumber.trim()) {
-      showToast('⚠️ Mohon isi Nomor Reservasi Material!');
+    const hasSap = (reservationWo.materials || []).some((m) => (m.qtyReservedSap || 0) > 0);
+    const hasNonSap = (reservationWo.materials || []).some((m) => (m.qtyReservedNonSap || 0) > 0);
+
+    if (hasSap && !resNumber.trim()) {
+      showToast('⚠️ Mohon isi Nomor Reservasi SAP (Stok Gudang)!');
       return;
     }
 
+    if (hasNonSap && !resNumberNonStock.trim()) {
+      showToast('⚠️ Mohon isi Nomor Reservasi Non-SAP (Pabrikan / Pengadaan Luar)!');
+      return;
+    }
+
+    if (!resNumber.trim() && !resNumberNonStock.trim()) {
+      showToast('⚠️ Mohon isi minimal salah satu Nomor Reservasi (SAP atau Non-SAP)!');
+      return;
+    }
+
+    // Hitung total qtyReserved = qtyReservedSap + qtyReservedNonSap
+    const updatedMats = (reservationWo.materials || []).map((m) => {
+      const sap = m.qtyReservedSap || 0;
+      const nonSap = m.qtyReservedNonSap || 0;
+      return {
+        ...m,
+        qtyReserved: sap + nonSap,
+      };
+    });
+
     reserveMaterialWo(
       reservationWo.id,
-      resNumber.trim() || `RES/UP3-BTS/${new Date().getFullYear()}/${reservationWo.id.split('.').pop() || '001'}`,
+      resNumber.trim() || '',
       resDate,
-      reservationWo.materials,
+      updatedMats,
       false,
       undefined,
       resNotes.trim(),
-      undefined,
-      undefined
+      resNumberNonStock.trim() || ''
     );
 
-    showToast(`✅ Berhasil! Reservasi ${resNumber.trim()} diterbitkan ke Vendor ${reservationWo.vendor}.`);
+    const docLabels = [resNumber.trim() && `SAP: ${resNumber.trim()}`, resNumberNonStock.trim() && `Non-SAP: ${resNumberNonStock.trim()}`].filter(Boolean).join(' & ');
+    showToast(`✅ Berhasil! Reservasi (${docLabels}) diterbitkan ke Vendor ${reservationWo.vendor}.`);
     setReservationWo(null);
   };
 
-  // Handler Ubah Jumlah Qty Reservasi per Material
-  const handleQtyReservedChange = (idx: number, newQty: number) => {
+  // Handler Ubah Jumlah Qty Reservasi SAP & Non-SAP per Material
+  const handleQtyReservedSapChange = (idx: number, newQtySap: number) => {
     if (!reservationWo) return;
     const updatedMats = (reservationWo.materials || []).map((mat, i) => {
       if (i === idx) {
+        const req = mat.qtyAllocated || mat.qtyReksis || 1;
+        const sudah = mat.qtyTaken || (mat.isTaken ? req : 0);
+        const sisa = Math.max(0, req - sudah);
+        const validSap = Math.max(0, Math.min(sisa, newQtySap));
+        const curNonSap = mat.qtyReservedNonSap || 0;
+        const adjustedNonSap = Math.min(curNonSap, Math.max(0, sisa - validSap));
         return {
           ...mat,
-          qtyReserved: newQty,
+          qtyReservedSap: validSap,
+          qtyReservedNonSap: adjustedNonSap,
+          qtyReserved: validSap + adjustedNonSap,
         };
       }
       return mat;
     });
+
+    // Cek apakah ada qty SAP > 0
+    const hasAnySap = updatedMats.some((m) => (m.qtyReservedSap || 0) > 0);
+    if (hasAnySap && !resNumber.trim()) {
+      const woSuffix = reservationWo.id.split('.').pop() || '001';
+      const yearStr = new Date().getFullYear();
+      const monthStr = String(new Date().getMonth() + 1).padStart(2, '0');
+      setResNumber(reservationWo.reservationNumber || `RES-SAP/UP3-BTS/${yearStr}/${monthStr}/${woSuffix}`);
+    } else if (!hasAnySap) {
+      setResNumber('');
+    }
+
+    setReservationWo({ ...reservationWo, materials: updatedMats });
+  };
+
+  const handleQtyReservedNonSapChange = (idx: number, newQtyNonSap: number) => {
+    if (!reservationWo) return;
+    const updatedMats = (reservationWo.materials || []).map((mat, i) => {
+      if (i === idx) {
+        const req = mat.qtyAllocated || mat.qtyReksis || 1;
+        const sudah = mat.qtyTaken || (mat.isTaken ? req : 0);
+        const sisa = Math.max(0, req - sudah);
+        const validNonSap = Math.max(0, Math.min(sisa, newQtyNonSap));
+        const curSap = mat.qtyReservedSap || 0;
+        const adjustedSap = Math.min(curSap, Math.max(0, sisa - validNonSap));
+        return {
+          ...mat,
+          qtyReservedSap: adjustedSap,
+          qtyReservedNonSap: validNonSap,
+          qtyReserved: adjustedSap + validNonSap,
+        };
+      }
+      return mat;
+    });
+
+    // Cek apakah ada qty Non-SAP > 0
+    const hasAnyNonSap = updatedMats.some((m) => (m.qtyReservedNonSap || 0) > 0);
+    if (hasAnyNonSap && !resNumberNonStock.trim()) {
+      const woSuffix = reservationWo.id.split('.').pop() || '001';
+      const yearStr = new Date().getFullYear();
+      const monthStr = String(new Date().getMonth() + 1).padStart(2, '0');
+      setResNumberNonStock(reservationWo.reservationNumberNonStock || `RES-NONSAP/UP3-BTS/${yearStr}/${monthStr}/${woSuffix}`);
+    } else if (!hasAnyNonSap) {
+      setResNumberNonStock('');
+    }
+
     setReservationWo({ ...reservationWo, materials: updatedMats });
   };
 
@@ -670,13 +760,33 @@ export const ReservasiMaterialView: React.FC = () => {
                   <th className="py-2.5 px-3 min-w-[100px] text-center font-mono">No Material</th>
                   <th className="py-2.5 px-3 min-w-[200px] text-left">Material</th>
                   <th className="py-2.5 px-3 text-center min-w-[90px]">Qty Material</th>
-                  <th className="py-2.5 px-3 text-center min-w-[110px] bg-blue-100/80 text-blue-900 border-x border-blue-200">
+                  <th className="py-2.5 px-3 text-center min-w-[85px] bg-blue-100/90 text-blue-950 border-l border-blue-200">
                     <div>
-                      <span>Qty Reservasi</span>
-                      <span className="block text-[8.5px] font-bold text-blue-700 normal-case">✎ Transaksi Ini</span>
+                      <span>QTY SAP</span>
                     </div>
                   </th>
-                  <th className="py-2.5 px-3 text-center min-w-[100px] bg-slate-100 text-slate-800">
+                  <th className="py-2.5 px-3 text-center min-w-[95px] bg-indigo-100/90 text-indigo-950 border-r border-indigo-200">
+                    <div>
+                      <span>QTY NON-SAP</span>
+                    </div>
+                  </th>
+                  <th className="py-2.5 px-3 text-center min-w-[115px] bg-blue-50/80 text-blue-900 border-r border-blue-200">
+                    <div>
+                      <span>STOK FISIK</span>
+                      <span className="inline-block mt-0.5 text-[8.5px] font-bold text-blue-700 bg-blue-100/80 px-1.5 py-0.2 rounded border border-blue-200 normal-case">
+                        🕒 16/11/2026 08:00
+                      </span>
+                    </div>
+                  </th>
+                  <th className="py-2.5 px-3 text-center min-w-[115px]">
+                    <div>
+                      <span>STOK SAP</span>
+                      <span className="inline-block mt-0.5 text-[8.5px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200 normal-case">
+                        🕒 16/11/2026 08:00
+                      </span>
+                    </div>
+                  </th>
+                  <th className="py-2.5 px-3 text-center min-w-[100px] bg-slate-100 text-slate-800 border-l border-slate-200">
                     <div>
                       <span>Sudah Reservasi</span>
                       <span className="block text-[8.5px] font-normal text-slate-500 normal-case">(Sudah Diambil)</span>
@@ -688,18 +798,6 @@ export const ReservasiMaterialView: React.FC = () => {
                       <span className="block text-[8.5px] font-normal text-amber-700 normal-case">(Sisa Kebutuhan)</span>
                     </div>
                   </th>
-                  <th className="py-2.5 px-3 text-center min-w-[105px] bg-blue-50/80 text-blue-900 border-x border-blue-200">
-                    <div>
-                      <span>Stok Fisik</span>
-                      <span className="block text-[8.5px] font-bold text-blue-700 normal-case">✓ Acuan WO</span>
-                    </div>
-                  </th>
-                  <th className="py-2.5 px-3 text-center min-w-[90px]">
-                    <div>
-                      <span>Stok SAP</span>
-                      <span className="block text-[8.5px] font-normal text-slate-400 normal-case">(ERP PLN)</span>
-                    </div>
-                  </th>
                   <th className="py-2.5 px-3 text-center min-w-[120px]">Aksi</th>
                 </tr>
               </thead>
@@ -708,18 +806,28 @@ export const ReservasiMaterialView: React.FC = () => {
                   const req = m.qtyAllocated || m.qtyReksis || 1;
                   const sudahReservasi = m.qtyTaken || (m.isTaken ? req : 0);
                   const belumReservasi = Math.max(0, req - sudahReservasi);
-                  const qtyReservasi = m.qtyReserved !== undefined ? m.qtyReserved : belumReservasi;
+
+                  const isTiang = isTiangMaterial(m);
+                  const qtySap = m.qtyReservedSap !== undefined ? Math.min(m.qtyReservedSap, belumReservasi) : (isTiang ? 0 : belumReservasi);
+                  const qtyNonSap = m.qtyReservedNonSap !== undefined ? Math.min(m.qtyReservedNonSap, belumReservasi) : (isTiang ? belumReservasi : 0);
+                  const totalResTrans = qtySap + qtyNonSap;
+
                   const stock = findMatchingStock(m.material, m.kode);
                   const isItemHeld = Boolean(m.isHold);
-                  const isTakenByVendor = Boolean(m.isTaken && (m.qtyTaken || 0) > 0);
+                  // Material hanya terkunci jika sudah diambil LENGKAP tanpa sisa (belumReservasi === 0).
+                  // Jika masih ada sisa kebutuhan (belumReservasi > 0), maka aksi TIDAK TERKUNCI agar pengawas tetap bisa edit/substitusi/hold sisa material.
+                  const isFullyTaken = Boolean(m.isTaken && belumReservasi === 0);
+                  const isTakenPartial = Boolean(m.isTaken && (m.qtyTaken || 0) > 0 && belumReservasi > 0);
                   const isShortage = stock && stock.qtyFisik < req;
 
                   return (
                     <tr 
                       key={originalIdx} 
                       className={`transition-colors ${
-                        isTakenByVendor 
+                        isFullyTaken 
                           ? 'bg-emerald-50/20' 
+                          : isTakenPartial
+                          ? 'bg-blue-50/20'
                           : isItemHeld 
                           ? 'bg-rose-50/50' 
                           : isShortage 
@@ -752,10 +860,16 @@ export const ReservasiMaterialView: React.FC = () => {
                             ⛔ Material Ditahan (Hold)
                           </div>
                         )}
-                        {isTakenByVendor && (
+                        {isFullyTaken && (
                           <div className="text-[10px] text-emerald-800 font-bold bg-emerald-100/90 px-1.5 py-0.5 rounded mt-0.5 border border-emerald-300 inline-flex items-center gap-1 shadow-2xs">
                             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            <span>Fisik Telah Diambil ({m.qtyTaken} {m.unit})</span>
+                            <span>Fisik Telah Diambil Lengkap ({m.qtyTaken} {m.unit})</span>
+                          </div>
+                        )}
+                        {isTakenPartial && (
+                          <div className="text-[10px] text-amber-800 font-bold bg-amber-100/90 px-1.5 py-0.5 rounded mt-0.5 border border-amber-300 inline-flex items-center gap-1 shadow-2xs">
+                            <Clock className="w-3 h-3 text-amber-600" />
+                            <span>Diambil Sebagian ({m.qtyTaken} {m.unit}) — Sisa: {belumReservasi} {m.unit}</span>
                           </div>
                         )}
                       </td>
@@ -765,31 +879,90 @@ export const ReservasiMaterialView: React.FC = () => {
                         {req} <span className="font-sans font-normal text-slate-500 text-[10px]">{m.unit || 'Buah'}</span>
                       </td>
 
-                      {/* Qty Reservasi */}
-                      <td className="py-2.5 px-3 text-center align-top bg-blue-50/40 border-x border-blue-100">
+                      {/* Qty SAP */}
+                      <td className="py-2.5 px-2 text-center align-top bg-blue-50/40 border-l border-blue-100">
                         <div className="inline-flex items-center justify-center gap-1">
                           <input 
                             type="number"
                             min={0}
                             max={belumReservasi}
                             disabled={belumReservasi === 0}
-                            value={qtyReservasi}
+                            value={qtySap}
                             onChange={(e) => {
                               const val = Math.max(0, Math.min(belumReservasi, Number(e.target.value) || 0));
-                              handleQtyReservedChange(originalIdx, val);
+                              handleQtyReservedSapChange(originalIdx, val);
                             }}
-                            className={`w-16 px-2 py-1 text-xs text-center font-mono font-bold rounded-lg border focus:outline-none focus:ring-2 shadow-2xs ${
+                            className={`w-14 px-1.5 py-1 text-xs text-center font-mono font-bold rounded-lg border focus:outline-none focus:ring-2 shadow-2xs ${
                               belumReservasi === 0 
                                 ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
                                 : 'bg-white text-blue-950 border-blue-300 focus:ring-blue-500'
                             }`}
                           />
-                          <span className="text-[10px] text-slate-500">{m.unit || 'Buah'}</span>
+                          <span className="text-[9.5px] text-slate-500">{m.unit || 'Buah'}</span>
                         </div>
                       </td>
 
+                      {/* Qty Non-SAP */}
+                      <td className="py-2.5 px-2 text-center align-top bg-indigo-50/40 border-r border-indigo-100">
+                        <div className="inline-flex items-center justify-center gap-1">
+                          <input 
+                            type="number"
+                            min={0}
+                            max={belumReservasi}
+                            disabled={belumReservasi === 0}
+                            value={qtyNonSap}
+                            onChange={(e) => {
+                              const val = Math.max(0, Math.min(belumReservasi, Number(e.target.value) || 0));
+                              handleQtyReservedNonSapChange(originalIdx, val);
+                            }}
+                            className={`w-14 px-1.5 py-1 text-xs text-center font-mono font-bold rounded-lg border focus:outline-none focus:ring-2 shadow-2xs ${
+                              belumReservasi === 0 
+                                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                : 'bg-white text-indigo-950 border-indigo-300 focus:ring-indigo-500'
+                            }`}
+                          />
+                          <span className="text-[9.5px] text-slate-500">{m.unit || 'Buah'}</span>
+                        </div>
+                        {totalResTrans > 0 && (
+                          <div className="text-[8.5px] text-slate-400 font-mono mt-0.5" title="Total reservasi batch ini">
+                            Tot: {totalResTrans}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Stok Fisik */}
+                      <td className="py-2.5 px-3 text-center align-top bg-blue-50/40 border-r border-blue-100">
+                        {stock ? (
+                          <div className="font-mono">
+                            <span className="font-black text-blue-900 text-xs">{stock.qtyFisik}</span>{' '}
+                            <span className="text-[10px] text-slate-400">{stock.unit}</span>
+                          </div>
+                        ) : (
+                          <div className="font-mono">
+                            <span className="font-bold text-blue-900 text-xs">{req}</span>{' '}
+                            <span className="text-[10px] text-slate-400">{m.unit || 'bh'}</span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Stok SAP */}
+                      <td className="py-2.5 px-3 text-center font-mono align-top">
+                        {stock ? (
+                          <div>
+                            <span className="font-semibold text-slate-700">
+                              {stock.qtySap !== undefined ? stock.qtySap : stock.qtyFisik}
+                            </span>{' '}
+                            <span className="text-[10px] text-slate-400">{stock.unit}</span>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="text-slate-400 font-mono text-[10px]">Tersedia</span>
+                          </div>
+                        )}
+                      </td>
+
                       {/* Sudah Reservasi */}
-                      <td className="py-2.5 px-3 text-center align-top bg-slate-50/70 font-mono font-semibold text-slate-700">
+                      <td className="py-2.5 px-3 text-center align-top bg-slate-50/70 font-mono font-semibold text-slate-700 border-l border-slate-200">
                         {sudahReservasi} <span className="font-sans font-normal text-slate-400 text-[10px]">{m.unit || 'Buah'}</span>
                       </td>
 
@@ -806,47 +979,9 @@ export const ReservasiMaterialView: React.FC = () => {
                         )}
                       </td>
 
-                      {/* Stok Fisik */}
-                      <td className="py-2.5 px-3 text-center align-top bg-blue-50/40">
-                        {stock ? (
-                          <div className="font-mono">
-                            <span className="font-black text-blue-900 text-xs">{stock.qtyFisik}</span>{' '}
-                            <span className="text-[10px] text-slate-400">{stock.unit}</span>
-                            <span className="block text-[8.5px] font-bold text-blue-700 bg-blue-100/90 rounded px-1 mt-0.5 border border-blue-200">
-                              Ada di Gudang
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="font-mono">
-                            <span className="font-bold text-blue-900 text-xs">{req}</span>{' '}
-                            <span className="text-[10px] text-slate-400">{m.unit || 'bh'}</span>
-                            <span className="block text-[8.5px] font-bold text-blue-700 bg-blue-100/90 rounded px-1 mt-0.5 border border-blue-200">
-                              Tersedia
-                            </span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Stok SAP */}
-                      <td className="py-2.5 px-3 text-center font-mono align-top">
-                        {stock ? (
-                          <div>
-                            <span className="font-semibold text-slate-700">
-                              {stock.qtySap !== undefined ? stock.qtySap : stock.qtyFisik}
-                            </span>{' '}
-                            <span className="text-[10px] text-slate-400">{stock.unit}</span>
-                            <div className="text-[9px] text-slate-400 font-sans">
-                              (Sisa: {stock.qtySisa})
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 font-mono text-[10px]">Tersedia</span>
-                        )}
-                      </td>
-
                       {/* Aksi */}
                       <td className="py-2.5 px-3 text-center align-top">
-                        {isTakenByVendor ? (
+                        {isFullyTaken ? (
                           <span className="px-2 py-1 text-[9.5px] font-bold text-slate-600 bg-slate-100 border border-slate-300 rounded-lg inline-flex items-center justify-center gap-1 whitespace-nowrap shadow-2xs cursor-default">
                             <Lock className="w-3 h-3 text-slate-500" />
                             <span>Terkunci</span>
@@ -1080,17 +1215,16 @@ export const ReservasiMaterialView: React.FC = () => {
                 <th className="py-3 px-3.5 min-w-[170px]">PELANGGAN</th>
                 <th className="py-3 px-3.5 min-w-[155px]">LOKASI</th>
                 <th className="py-3 px-3.5 min-w-[160px]">VENDOR</th>
-                <th className="py-3 px-3.5 min-w-[220px]">PENGAWAS LAPANGAN</th>
-                <th className="py-3 px-2.5 text-center min-w-[110px] w-28">STOK GUDANG</th>
-                <th className="py-3 px-2.5 text-center min-w-[125px] w-32">STATUS RESERVASI</th>
-                <th className="py-3 px-2.5 text-center min-w-[100px] w-28">TGL RESERVASI</th>
-                <th className="py-3 px-2.5 text-center min-w-[150px] w-40">AKSI PENGAWAS / GUDANG</th>
+                <th className="py-3 px-3.5 min-w-[210px]">PENGAWAS LAPANGAN</th>
+                <th className="py-3 px-3 text-center min-w-[150px]">STATUS RESERVASI</th>
+                <th className="py-3 px-2.5 text-center min-w-[95px] w-24">TGL RESERVASI</th>
+                <th className="py-3 px-2.5 text-center min-w-[145px] w-36">AKSI PENGAWAS</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredWos.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400">
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
                     <Boxes className="w-10 h-10 mx-auto mb-2 opacity-40 text-blue-500" />
                     Tidak ada data Work Order pada kategori reservasi ini
                   </td>
@@ -1099,8 +1233,20 @@ export const ReservasiMaterialView: React.FC = () => {
                 filteredWos.map((wo) => {
                   const isHold = wo.isHold || wo.reservationStatus === 'Hold';
                   const isReserved = (wo.reservationStatus === 'Siap Ambil' || wo.reservationStatus === 'Selesai' || wo.reservationStatus === 'Suplai Pabrikan') && !isHold;
-                  const stockStatus = checkWoStockStatus(wo);
                   const isTiang = isTiangWo(wo);
+
+                  // Cek apakah seluruh material sudah tuntas (selesai diambil penuh oleh vendor ATAU tidak ada lagi sisa material yang belum reservasi/belum diambil)
+                  const mats = wo.materials || [];
+                  const isAllMaterialReserved = mats.length > 0 && isReserved && mats.every((m) => {
+                    const req = m.qtyAllocated || m.qtyReksis || 1;
+                    const taken = m.qtyTaken || 0;
+                    // Material benar-benar tuntas jika fisik sudah diambil penuh oleh vendor (taken >= req)
+                    // Jika vendor belum ambil atau masih ada sisa kebutuhan (taken < req), berarti BELUM SELESAI!
+                    return taken >= req;
+                  });
+
+                  // Cek apakah baru sebagian yang direservasi atau vendor masih dalam proses pengambilan bertahap
+                  const isPartialReservation = isReserved && !isAllMaterialReserved;
 
                   // Pengawas 1 & Pengawas 2
                   const p1 = wo.supervisor1 || wo.supervisor || 'Hasian Sitorus (TC Lola Konstruksi)';
@@ -1215,61 +1361,65 @@ export const ReservasiMaterialView: React.FC = () => {
                         })()}
                       </td>
 
-                      {/* 4. Status Stok Fisik Gudang */}
-                      <td className="py-3 px-2.5 text-center align-top">
-                        {isTiang ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-bold border whitespace-nowrap bg-emerald-50 text-emerald-800 border-emerald-300">
-                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            <span>Pabrikan (Pasti Ada)</span>
-                          </span>
-                        ) : (
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-bold border whitespace-nowrap ${
-                            stockStatus.color === 'emerald'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200'
-                          }`}>
-                            {stockStatus.color === 'emerald' ? (
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                      {/* 6. STATUS RESERVASI (Minimalis & Elegan) */}
+                      <td className="py-3 px-3 text-center align-top">
+                        <div className="flex flex-col items-center gap-1.5">
+                          {/* Badge Status Bersih */}
+                          {isHold ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-300 flex items-center gap-1 whitespace-nowrap shadow-2xs">
+                              <PauseCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                              <span>Hold Pengawas</span>
+                            </span>
+                          ) : isReserved ? (
+                            isPartialReservation ? (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1 whitespace-nowrap shadow-2xs">
+                                <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                <span>Reservasi Sebagian</span>
+                              </span>
                             ) : (
-                              <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
-                            )}
-                            <span>{stockStatus.label}</span>
-                          </span>
-                        )}
-                      </td>
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 flex items-center gap-1 whitespace-nowrap shadow-2xs">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>Reservasi Terbit</span>
+                              </span>
+                            )
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1 whitespace-nowrap">
+                              <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span>Belum Reservasi</span>
+                            </span>
+                          )}
 
-                      {/* 5. Status Reservasi Gudang */}
-                      <td className="py-3 px-2.5 text-center align-top">
-                        {isHold ? (
-                          <div className="inline-flex flex-col items-center">
-                            <span className="px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 shadow-2xs whitespace-nowrap">
-                              <PauseCircle className="w-3 h-3 text-rose-600 shrink-0" />
-                              <span>DITAHAN (HOLD)</span>
+                          {/* Catatan Hold jika ada */}
+                          {isHold && wo.holdReason && (
+                            <span className="text-[9.5px] text-rose-600 max-w-[140px] truncate font-medium" title={wo.holdReason}>
+                              ⚠️ {wo.holdReason}
                             </span>
-                            {wo.holdReason && (
-                              <span className="text-[9px] text-rose-600 mt-1 max-w-[110px] truncate" title={wo.holdReason}>
-                                {wo.holdReason}
-                              </span>
-                            )}
-                          </div>
-                        ) : isReserved ? (
-                          <div className="inline-flex flex-col items-center">
-                            <span className="px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 shadow-2xs whitespace-nowrap">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                              <span>Reservasi Terbit</span>
-                            </span>
-                            {wo.reservationNumber && (
-                              <span className="font-mono text-[9px] font-bold text-blue-700 mt-1 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 max-w-[130px] truncate block" title={`No. Reservasi: ${wo.reservationNumber}`}>
-                                📦 {wo.reservationNumber}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1 whitespace-nowrap">
-                            <Clock className="w-3 h-3 text-amber-600 shrink-0" />
-                            <span>Belum Reservasi</span>
-                          </span>
-                        )}
+                          )}
+
+                          {/* Nomor Reservasi Tanpa Kotak Tebal (Text Elegan) */}
+                          {isReserved && (wo.reservationNumber || wo.reservationNumberNonStock) && (
+                            <div className="flex flex-col gap-0.5 text-left w-full max-w-[145px] pt-0.5">
+                              {wo.reservationNumber && (
+                                <div
+                                  className="text-[10px] font-mono text-slate-600 flex items-center justify-between border-b border-slate-100 pb-0.5"
+                                  title={`No. Reservasi SAP (Gudang): ${wo.reservationNumber}`}
+                                >
+                                  <span className="text-[9px] font-sans font-bold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-200 shrink-0">SAP</span>
+                                  <span className="truncate ml-1 font-semibold text-slate-700">{wo.reservationNumber}</span>
+                                </div>
+                              )}
+                              {wo.reservationNumberNonStock && (
+                                <div
+                                  className="text-[10px] font-mono text-slate-600 flex items-center justify-between pt-0.5"
+                                  title={`No. Reservasi Non-SAP (Pabrikan): ${wo.reservationNumberNonStock}`}
+                                >
+                                  <span className="text-[9px] font-sans font-bold text-indigo-700 bg-indigo-50 px-1 py-0.2 rounded border border-indigo-200 shrink-0">Non-SAP</span>
+                                  <span className="truncate ml-1 font-semibold text-slate-700">{wo.reservationNumberNonStock}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       {/* 6. Tanggal Reservasi */}
@@ -1288,16 +1438,28 @@ export const ReservasiMaterialView: React.FC = () => {
                       <td className="py-3 px-2.5 text-center align-top">
                         <div className="flex flex-col gap-1.5 items-center justify-center max-w-[150px] mx-auto">
                           {/* Tombol Utama Reservasi */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenReservation(wo)}
-                            className="w-full py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[11px] flex items-center justify-center gap-1 transition shadow-2xs cursor-pointer whitespace-nowrap"
-                          >
-                            <Boxes className="w-3.5 h-3.5 shrink-0" />
-                            <span>
-                              {isReserved ? 'Edit Reservasi' : 'Input Reservasi'}
-                            </span>
-                          </button>
+                          {isAllMaterialReserved ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenReservation(wo)}
+                              className="w-full py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] flex items-center justify-center gap-1 transition shadow-2xs cursor-pointer whitespace-nowrap"
+                              title="Seluruh material telah diterbitkan reservasinya. Klik untuk melihat atau mengubah rincian."
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-white" />
+                              <span>Reservasi Selesai</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenReservation(wo)}
+                              className="w-full py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[11px] flex items-center justify-center gap-1 transition shadow-2xs cursor-pointer whitespace-nowrap"
+                            >
+                              <Boxes className="w-3.5 h-3.5 shrink-0" />
+                              <span>
+                                {isReserved ? 'Edit Reservasi' : 'Input Reservasi'}
+                              </span>
+                            </button>
+                          )}
 
                           {/* Tombol Rincian Material */}
                           <button
@@ -1309,23 +1471,6 @@ export const ReservasiMaterialView: React.FC = () => {
                             <Eye className="w-3 h-3 shrink-0" />
                             <span>Detail Material</span>
                           </button>
-
-                          {/* Tombol Cetak Dokumen jika sudah ada Reservasi */}
-                          {isReserved && (
-                            <div className="w-full flex items-center gap-1 mt-0.5">
-                              {wo.reservationNumber && (
-                                <button
-                                  type="button"
-                                  onClick={() => setViewSuratJalanModal({ wo, type: 'STOK' })}
-                                  title="Cetak Formulir Surat Jalan TUG-9"
-                                  className="flex-1 py-1 px-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-md text-[9.5px] font-bold flex items-center justify-center gap-0.5 transition cursor-pointer whitespace-nowrap"
-                                >
-                                  <FileText className="w-3 h-3 text-blue-600 shrink-0" />
-                                  <span>Cetak TUG-9</span>
-                                </button>
-                              )}
-                            </div>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -1428,56 +1573,98 @@ export const ReservasiMaterialView: React.FC = () => {
                       );
                     })()}
 
-                    {/* Input No Reservasi, Tanggal & Catatan Pengawas */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50/90 p-3.5 rounded-xl border border-slate-200">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Nomor Reservasi Material (TUG-9) <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={resNumber}
-                          onChange={(e) => setResNumber(e.target.value)}
-                          placeholder="Contoh: RES/UP3-BTS/2026/02/001 atau 91029384"
-                          className="w-full px-3.5 py-2 text-xs bg-white border border-slate-300 rounded-xl font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs"
-                          required
-                        />
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          Nomor resmi reservasi logistik pekerjaan WO.
-                        </p>
-                      </div>
+                    {/* Input No Reservasi SAP & Non-SAP, Tanggal & Catatan Pengawas */}
+                    {(() => {
+                      const hasSapReserved = (reservationWo.materials || []).some((m) => (m.qtyReservedSap || 0) > 0);
+                      const hasNonSapReserved = (reservationWo.materials || []).some((m) => (m.qtyReservedNonSap || 0) > 0);
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Tanggal Terbit Reservasi <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          type="date"
-                          value={resDate}
-                          onChange={(e) => setResDate(e.target.value)}
-                          className="w-full px-3.5 py-2 text-xs bg-white border border-slate-300 rounded-xl font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs"
-                        />
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          Tanggal resmi penerbitan reservasi logistik.
-                        </p>
-                      </div>
+                      return (
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50/90 p-3.5 rounded-xl border border-slate-200">
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className={`block text-xs font-bold ${hasSapReserved ? 'text-blue-900' : 'text-slate-400'}`}>
+                                No. Reservasi SAP
+                              </label>
+                              <span className={`text-[9.5px] px-1.5 py-0.2 rounded font-bold ${hasSapReserved ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-500'}`}>
+                                Gudang
+                              </span>
+                            </div>
+                            <input
+                              type="text"
+                              disabled={!hasSapReserved}
+                              value={hasSapReserved ? resNumber : ''}
+                              onChange={(e) => setResNumber(e.target.value)}
+                              placeholder={hasSapReserved ? 'Contoh: RES-SAP/UP3-BTS/...' : '(Tidak ada Qty SAP diisi)'}
+                              className={`w-full px-3 py-2 text-xs rounded-xl font-mono font-bold transition shadow-2xs ${
+                                hasSapReserved
+                                  ? 'bg-white border border-slate-300 text-blue-950 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500'
+                                  : 'bg-slate-100/90 border border-slate-200 text-slate-400 cursor-not-allowed select-none'
+                              }`}
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              {hasSapReserved ? 'Untuk material stok gudang SAP.' : 'Otomatis aktif jika kolom QTY SAP terisi.'}
+                            </p>
+                          </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Catatan Pengawas Lapangan
-                        </label>
-                        <input
-                          type="text"
-                          value={resNotes}
-                          onChange={(e) => setResNotes(e.target.value)}
-                          placeholder="Catatan pengambilan / alokasi material..."
-                          className="w-full px-3.5 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs"
-                        />
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          Instruksi untuk petugas logistik & rekanan vendor.
-                        </p>
-                      </div>
-                    </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className={`block text-xs font-bold ${hasNonSapReserved ? 'text-indigo-900' : 'text-slate-400'}`}>
+                                No. Reservasi Non-SAP
+                              </label>
+                              <span className={`text-[9.5px] px-1.5 py-0.2 rounded font-bold ${hasNonSapReserved ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200 text-slate-500'}`}>
+                                Pabrikan/Luar
+                              </span>
+                            </div>
+                            <input
+                              type="text"
+                              disabled={!hasNonSapReserved}
+                              value={hasNonSapReserved ? resNumberNonStock : ''}
+                              onChange={(e) => setResNumberNonStock(e.target.value)}
+                              placeholder={hasNonSapReserved ? 'Contoh: RES-NONSAP/UP3-BTS/...' : '(Tidak ada Qty Non-SAP diisi)'}
+                              className={`w-full px-3 py-2 text-xs rounded-xl font-mono font-bold transition shadow-2xs ${
+                                hasNonSapReserved
+                                  ? 'bg-white border border-slate-300 text-indigo-950 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500'
+                                  : 'bg-slate-100/90 border border-slate-200 text-slate-400 cursor-not-allowed select-none'
+                              }`}
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              {hasNonSapReserved ? 'Untuk material pabrikan/tiang/non-SAP.' : 'Otomatis aktif jika kolom QTY NON-SAP terisi.'}
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">
+                              Tanggal Terbit <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="date"
+                              value={resDate}
+                              onChange={(e) => setResDate(e.target.value)}
+                              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs"
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              Tanggal penerbitan reservasi.
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">
+                              Catatan Pengawas Lapangan
+                            </label>
+                            <input
+                              type="text"
+                              value={resNotes}
+                              onChange={(e) => setResNotes(e.target.value)}
+                              placeholder="Catatan pengambilan material..."
+                              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-2xs"
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              Instruksi logistik & vendor.
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Tabel Input Material */}
                     {renderMaterialSectionTable(

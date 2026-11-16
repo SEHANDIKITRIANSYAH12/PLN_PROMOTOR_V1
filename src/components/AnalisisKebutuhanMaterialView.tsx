@@ -3,25 +3,18 @@
 import React, { useState, useMemo } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
 import { calculateRabFromSurvey } from '@/data/rabMasterData';
-import { 
-  Calculator, 
-  Search, 
-  Download, 
-  Printer, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Boxes, 
+import {
+  Search,
+  Download,
+  Printer,
+  AlertTriangle,
+  CheckCircle2,
+  Boxes,
   Package,
-  Layers,
-  Sparkles,
-  ArrowUpDown,
   FileSpreadsheet,
   Users,
   ChevronDown,
-  Building2,
-  X,
-  Check,
-  FileText,
+  X
 } from 'lucide-react';
 import { Pagination } from '@/components/Pagination';
 
@@ -784,7 +777,7 @@ export const AnalisisKebutuhanMaterialView: React.FC = () => {
               <select
                 value={statusFilter}
                 onChange={(e) => {
-                  setStatusFilter(e.target.value as any);
+                  setStatusFilter(e.target.value as typeof statusFilter);
                   setCurrentPageNum(1);
                 }}
                 className="w-full px-3 py-2 text-xs border border-slate-300 bg-white rounded-lg text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium cursor-pointer"

@@ -3,21 +3,17 @@
 import React, { useState, useMemo } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
 import { SupervisorRecord } from '@/types';
-import { 
-  UserCheck, 
-  Search, 
-  Plus, 
-  Edit3, 
-  Trash2, 
-  CheckCircle2, 
-  XCircle, 
-  Phone, 
-  Building, 
-  Briefcase,
+import {
+  UserCheck,
+  Search,
+  Plus,
+  Edit3,
+  Trash2,
+  CheckCircle2,
+  Phone,
+  Building,
   X,
-  Layers,
   ShieldCheck,
-  AlertCircle,
   HardHat,
   BadgeCheck
 } from 'lucide-react';
@@ -495,7 +491,7 @@ export const MasterPengawasView: React.FC = () => {
                   </label>
                   <select
                     value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value as any)}
+                    onChange={(e) => setFormCategory(e.target.value as typeof formCategory)}
                     className="w-full p-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 font-semibold cursor-pointer"
                   >
                     <option value="Pengawas 1">Pengawas 1 (TC Lola / Kinerja UP3)</option>

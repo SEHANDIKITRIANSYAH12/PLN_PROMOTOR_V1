@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useSyncExternalStore } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
-import { PoleData } from '@/types';
+import { PoleData, SurveyRecord } from '@/types';
 import { GeotagMap } from '@/components/GeotagMap';
 import { Pagination } from '@/components/Pagination';
-import { calculateRabFromSurvey } from '@/data/rabMasterData';
 import { RabDocumentModal } from '@/components/RabDocumentModal';
+import { getSurveyPackages, isNewPole, listSurveyDocs, parseDayaVA, resolvePerluasan, SurveyDocType } from '@/data/surveyRabCalculator';
 import {
   Plus,
   MapPin,
@@ -15,17 +15,11 @@ import {
   ArrowRight,
   ArrowLeft,
   Check,
-  ExternalLink,
   Search,
   Eye,
   X,
   Zap,
-  Home,
-  Building2,
-  Users,
   CheckCircle2,
-  Sparkles,
-  Calculator,
   RefreshCw,
   FileText,
   Wrench,
@@ -36,13 +30,33 @@ import {
   Upload,
   Radio,
   AlertTriangle,
-  Layers,
+  Layers
 } from 'lucide-react';
+
+/** Label & warna dokumen output RAB per paket survey. */
+const SURVEY_DOC_BADGES: Record<SurveyDocType, { long: string; className: string }> = {
+  paket1: { long: 'Paket 1 (JTM)', className: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100' },
+  paket2: { long: 'Paket 2 (JTR)', className: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' },
+  tiang: { long: 'WO Tiang', className: 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100' },
+};
+
+// Status koneksi browser dibaca lewat useSyncExternalStore (tanpa setState di effect).
+const subscribeOnlineStatus = (onChange: () => void) => {
+  window.addEventListener('online', onChange);
+  window.addEventListener('offline', onChange);
+  return () => {
+    window.removeEventListener('online', onChange);
+    window.removeEventListener('offline', onChange);
+  };
+};
+const getOnlineSnapshot = () => navigator.onLine;
+const getOnlineServerSnapshot = () => true;
 
 export const SurveyView: React.FC = () => {
   const { 
     surveys, 
     addSurvey, 
+    updateSurvey,
     updateSurveyStatus, 
     deleteSurvey, 
     syncOfflineSurvey,
@@ -50,24 +64,16 @@ export const SurveyView: React.FC = () => {
     showToast, 
     setCurrentPage,
     setActiveDaftungTab,
-    openRabForSurvey,
-    customKhsPrices,
     constructionRules
   } = usePromotorStore();
 
   // Connectivity & Offline (Blankspot) state
-  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const isOnline = useSyncExternalStore(subscribeOnlineStatus, getOnlineSnapshot, getOnlineServerSnapshot);
   const [isManualOfflineSim, setIsManualOfflineSim] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Detect initial online state
-    if (typeof window !== 'undefined') {
-      setIsOnline(navigator.onLine);
-    }
-
     const handleOnline = () => {
-      setIsOnline(true);
       showToast('📶 Jaringan terhubung kembali. Menyelaraskan draf survey...');
       // Auto-sync if not in manual simulation mode
       if (!isManualOfflineSim) {
@@ -76,7 +82,6 @@ export const SurveyView: React.FC = () => {
     };
 
     const handleOffline = () => {
-      setIsOnline(false);
       showToast('⚠️ Koneksi terputus. Beralih ke Mode Blankspot (Offline-First).');
     };
 
@@ -96,8 +101,7 @@ export const SurveyView: React.FC = () => {
   const [isDetailMode, setIsDetailMode] = useState(false);
   const [detailSurveyId, setDetailSurveyId] = useState<string | null>(null);
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
-  const [step5Tab, setStep5Tab] = useState<'rabPaket2' | 'rabPaket1' | 'poles'>('rabPaket2');
-  const [selectedRabDoc, setSelectedRabDoc] = useState<{ survey: any; paket: 'paket1' | 'paket2' } | null>(null);
+  const [selectedRabDoc, setSelectedRabDoc] = useState<{ survey: SurveyRecord; paket: SurveyDocType } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [surveyPage, setSurveyPage] = useState(1);
   const [surveyPageSize, setSurveyPageSize] = useState(10);
@@ -109,13 +113,14 @@ export const SurveyView: React.FC = () => {
   const [namaDasar, setNamaDasar] = useState('');
   const [jumlahUnit, setJumlahUnit] = useState('');
   const [dayaPerUnit, setDayaPerUnit] = useState('1.300');
-  const [isMultiUnit, setIsMultiUnit] = useState(false);
 
   // Daya & Tarif (Lama vs Baru)
   const [dayaLama, setDayaLama] = useState('');
   const [tarifLama, setTarifLama] = useState('');
   const [dayaBaru, setDayaBaru] = useState('1.300');
   const [tarifBaru, setTarifBaru] = useState('R1T');
+  // Ada daya lama berarti permohonan perubahan daya
+  const jobType = dayaLama ? 'Perubahan Daya' : 'Pasang Baru';
 
   // Alamat Terstruktur
   const [kampung, setKampung] = useState('');
@@ -126,7 +131,6 @@ export const SurveyView: React.FC = () => {
   const [name, setName] = useState('');
   const [idpel, setIdpel] = useState('');
   const [location, setLocation] = useState('');
-  const [jobType, setJobType] = useState('Pasang Baru');
   const [address, setAddress] = useState('');
   const [officer, setOfficer] = useState('');
 
@@ -151,7 +155,7 @@ export const SurveyView: React.FC = () => {
         setIsGettingLocation(false);
         showToast(`✓ Koordinat GPS terkunci: ${lat}, ${lng}`);
       },
-      (err) => {
+      () => {
         setIsGettingLocation(false);
         showToast('⚠️ Gagal mengambil koordinat GPS. Pastikan izin lokasi aktif.');
       },
@@ -178,9 +182,9 @@ export const SurveyView: React.FC = () => {
   const [ulp, setUlp] = useState('ULP Rangkasbitung'); // Baris 24
 
   const [perluasanJTM, setPerluasanJTM] = useState(''); // Baris 26
-  const [tipeGardu, setTipeGardu] = useState('Portal'); // Baris 27
-  const [kapasitasTrafo, setKapasitasTrafo] = useState('250'); // Baris 28
-  const [jumlahKabelNaik, setJumlahKabelNaik] = useState('2 Jurusan'); // Baris 29
+  const [tipeGardu, setTipeGardu] = useState(''); // Baris 27
+  const [kapasitasTrafo, setKapasitasTrafo] = useState(''); // Baris 28
+  const [jumlahKabelNaik, setJumlahKabelNaik] = useState(''); // Baris 29
   const [perluasanJTR, setPerluasanJTR] = useState(''); // Baris 30
 
   // Mutasi Trafo Distribusi (Baris 32)
@@ -192,11 +196,11 @@ export const SurveyView: React.FC = () => {
   const [jumlahKubikelLBS, setJumlahKubikelLBS] = useState(''); // Baris 38
 
   // Form Step 3 & 4: Sub-Tab Tipe Jaringan JTM & JTR
+  // Saat ini yang aktif digunakan hanya SUTM (JTM) dan SKUTR (JTR).
   const [jtmTypeTab, setJtmTypeTab] = useState<'SUTM' | 'SKTM' | 'SKUTM'>('SUTM');
-  const [jtrTypeTab, setJtrTypeTab] = useState<'SUTR' | 'SKUTR' | 'SKTR'>('SUTR');
+  const [jtrTypeTab, setJtrTypeTab] = useState<'SUTR' | 'SKUTR' | 'SKTR'>('SKUTR');
 
   // Form Step 3: Data Survey Lapangan (Pilihan Sub-Tab: JTM, JTR, dan Upload Foto Lokasi)
-  const [networkTab, setNetworkTab] = useState<'JTM' | 'JTR' | 'FOTO'>('JTM');
   const [locationPhotos, setLocationPhotos] = useState<Array<{ id: string; url: string; caption: string; date: string }>>([]);
 
   const handleLocationPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -231,137 +235,14 @@ export const SurveyView: React.FC = () => {
   const [tmPoles, setTmPoles] = useState<PoleData[]>([]);
   const [trPoles, setTrPoles] = useState<PoleData[]>([]);
 
-  // Gabungan semua tiang untuk Peta & Review
-  const allPoles = [...tmPoles, ...trPoles];
+  // Gabungan semua tiang untuk Peta & Review (di-memo agar peta tidak menggambar ulang tiap render)
+  const allPoles = useMemo(() => [...tmPoles, ...trPoles], [tmPoles, trPoles]);
+  // Perluasan yang dipakai untuk review, output paket & penyimpanan (terisi otomatis bila ada tiang).
+  const effectivePerluasan = resolvePerluasan(perluasanJTM, perluasanJTR, allPoles);
 
-  // Real-time Live RAB preview from current survey form inputs
-  const previewSurveyObj = useMemo(() => {
-    return {
-      id: 'DRAFT',
-      customerName: (name.trim() || computedCustomerName || 'Survey Baru').trim(),
-      namaDasar: (name.trim() || computedCustomerName || 'Survey Baru').trim(),
-      location: (address.trim() || computedLocation || location || '-').trim(),
-      jobType: dayaLama ? 'Perubahan Daya' : 'Pasang Baru',
-      poles: allPoles,
-      jumlahUnit: parseInt(jumlahUnit) || 1,
-      dayaPerUnit: dayaBaru || daya || '1.300',
-      dayaBaru: dayaBaru || daya,
-      tarifBaru: tarifBaru || tarif,
-      garduInduk,
-      penyulang,
-      gardu,
-      ulp,
-      tipePembangunanGardu: tipeGardu,
-      tipeGardu,
-      kapasitasTrafo,
-      locationPhotos: locationPhotos.map((p) => p.url),
-      status: 'Menunggu verifikasi Daftung' as const,
-      createdAt: 'Baru saja',
-    };
-  }, [
-    name,
-    computedCustomerName,
-    address,
-    computedLocation,
-    location,
-    dayaLama,
-    allPoles,
-    jumlahUnit,
-    dayaBaru,
-    daya,
-    tarifBaru,
-    tarif,
-    garduInduk,
-    penyulang,
-    gardu,
-    ulp,
-    tipeGardu,
-    kapasitasTrafo,
-    locationPhotos,
-  ]);
-
-  const liveRabP2 = useMemo(() => calculateRabFromSurvey(previewSurveyObj, 'paket2', customKhsPrices), [previewSurveyObj, customKhsPrices]);
-  const liveRabP1 = useMemo(() => calculateRabFromSurvey(previewSurveyObj, 'paket1', customKhsPrices), [previewSurveyObj, customKhsPrices]);
-
-  const liveRabTotals = useMemo(() => {
-    const calc = (items: typeof liveRabP2) => {
-      let mat = 0;
-      let jas = 0;
-      items.forEach((it) => {
-        if (!it.isHeader) {
-          if (it.section === 'MATERIAL') mat += it.rencanaTotal;
-          else jas += it.rencanaTotal;
-        }
-      });
-      const tot = mat + jas;
-      const ppn = Math.round(tot * 0.11);
-      const grand = tot + ppn;
-      return {
-        mat,
-        jas,
-        tot,
-        ppn,
-        grand,
-        dibulatkan: Math.round(grand / 1000) * 1000,
-        activeItems: items.filter((x) => !x.isHeader && x.rencanaVol > 0),
-      };
-    };
-    return {
-      p1: calc(liveRabP1),
-      p2: calc(liveRabP2),
-    };
-  }, [liveRabP1, liveRabP2]);
-
-  const addPoleRow = () => {
-    if (networkTab === 'JTM') {
-      const nextIdx = tmPoles.length + 1;
-      setTmPoles([
-        ...tmPoles,
-        {
-          id: `TM ${nextIdx}`,
-          name: `Tiang TM #${nextIdx}`,
-          std: 'Tiang 12/200',
-          networkType: 'JTM',
-          poleStatus: 'RENCANA',
-          poleType: '12/200',
-          tmConstruction: 'TM - 1B',
-          a3cs: '50 m',
-          conductorLength: 50,
-          qty: 1,
-          coordStr: '',
-          lat: null,
-          lng: null,
-          note: '',
-          photo: '',
-        },
-      ]);
-    } else {
-      const nextIdx = trPoles.length + 1;
-      setTrPoles([
-        ...trPoles,
-        {
-          id: `TR ${nextIdx}`,
-          name: `Tiang TR #${nextIdx}`,
-          std: 'Tiang 9/200',
-          networkType: 'JTR',
-          poleStatus: 'RENCANA',
-          poleType: '9/200',
-          trConstruction: 'TR - 1B',
-          lvTwisted: '45 m',
-          conductorLength: 45,
-          qty: 1,
-          coordStr: '',
-          lat: null,
-          lng: null,
-          note: '',
-          photo: '',
-        },
-      ]);
-    }
-  };
-
-  // Fungsi khusus tambah baris JTR — tidak bergantung pada networkTab (menghindari race condition async state)
+  // Fungsi khusus tambah baris JTR (mengisi Perluasan JTR bila belum dipilih)
   const addTrPoleRow = () => {
+    if (!perluasanJTR) setPerluasanJTR(jtrTypeTab);
     const nextIdx = trPoles.length + 1;
     setTrPoles([
       ...trPoles,
@@ -385,8 +266,9 @@ export const SurveyView: React.FC = () => {
     ]);
   };
 
-  // Fungsi khusus tambah baris JTM — tidak bergantung pada networkTab
+  // Fungsi khusus tambah baris JTM (mengisi Perluasan JTM bila belum dipilih)
   const addTmPoleRow = () => {
+    if (!perluasanJTM) setPerluasanJTM(jtmTypeTab === 'SKUTM' ? 'SKUTM (MVTIC)' : jtmTypeTab);
     const nextIdx = tmPoles.length + 1;
     setTmPoles([
       ...tmPoles,
@@ -479,25 +361,20 @@ export const SurveyView: React.FC = () => {
     }
   };
 
-  const handlePhotoUpload = (index: number, type: 'JTM' | 'JTR', e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const base64 = uploadEvent.target?.result as string;
-      if (type === 'JTM') {
-        const updated = [...tmPoles];
-        updated[index].photo = base64;
-        setTmPoles(updated);
-      } else {
-        const updated = [...trPoles];
-        updated[index].photo = base64;
-        setTrPoles(updated);
-      }
-      showToast(`✓ Foto tiang #${index + 1} berhasil dilampirkan`);
-    };
-    reader.readAsDataURL(file);
+  // Tiang digeser manual di peta: perbarui koordinat GPS-nya (mode detail langsung tersimpan ke survey).
+  const handlePoleMove = (poleId: string, rawLat: number, rawLng: number) => {
+    const lat = parseFloat(rawLat.toFixed(6));
+    const lng = parseFloat(rawLng.toFixed(6));
+    const move = (list: PoleData[]) =>
+      list.map((p) => (p.id === poleId ? { ...p, lat, lng, coordStr: `${lat}, ${lng}` } : p));
+    const nextTm = move(tmPoles);
+    const nextTr = move(trPoles);
+    setTmPoles(nextTm);
+    setTrPoles(nextTr);
+    if (isDetailMode && detailSurveyId) {
+      updateSurvey(detailSurveyId, { poles: [...nextTm, ...nextTr] });
+    }
+    showToast(`📍 ${poleId} dipindahkan ke ${lat}, ${lng}`);
   };
 
   const handleSaveSurvey = () => {
@@ -525,7 +402,7 @@ export const SurveyView: React.FC = () => {
       tarifBaru: tarifBaru || tarif,
       idpel: idpel || undefined,
       location: finalLocation,
-      jobType: dayaLama ? 'Perubahan Daya' : 'Pasang Baru',
+      jobType,
       address: finalLocation,
       officerName: officer || 'Petugas Lapangan',
       daya: dayaBaru || daya,
@@ -534,12 +411,12 @@ export const SurveyView: React.FC = () => {
       penyulang,
       gardu,
       ulp,
-      perluasanJTM,
+      perluasanJTM: effectivePerluasan.jtm,
       tipePembangunanGardu: tipeGardu,
       tipeGardu,
       kapasitasTrafo,
       jumlahKabelNaik,
-      perluasanJTR,
+      perluasanJTR: effectivePerluasan.jtr,
       trafoLama: trafoLama || undefined,
       trafoBaru: trafoBaru || undefined,
       jenisPekerjaanGardu: jenisPekerjaanGardu || undefined,
@@ -561,7 +438,6 @@ export const SurveyView: React.FC = () => {
     setNamaDasar('');
     setJumlahUnit('');
     setDayaPerUnit('1.300');
-    setIsMultiUnit(false);
     setDayaLama('');
     setTarifLama('');
     setDayaBaru('1.300');
@@ -580,9 +456,15 @@ export const SurveyView: React.FC = () => {
     setDaya('197,000');
     setTarif('I2');
     setPenyulang('GI Rangkasbitung Baru (ONA) ; P. Leuwidamar');
-    setTipeGardu('Portal');
-    setKapasitasTrafo('250');
-    setJumlahKabelNaik('2 Jurusan');
+    setPerluasanJTM('');
+    setTipeGardu('');
+    setKapasitasTrafo('');
+    setJumlahKabelNaik('');
+    setPerluasanJTR('');
+    setTrafoLama('');
+    setTrafoBaru('');
+    setJenisPekerjaanGardu('');
+    setJumlahKubikelLBS('');
     setLocationPhotos([]);
     setTmPoles([]);
     setTrPoles([]);
@@ -616,7 +498,7 @@ export const SurveyView: React.FC = () => {
         const importedData = JSON.parse(event.target?.result as string);
         if (Array.isArray(importedData)) {
           let count = 0;
-          importedData.forEach((item: any) => {
+          importedData.forEach((item: Parameters<typeof addSurvey>[0]) => {
             if (item.customerName) {
               addSurvey({
                 ...item,
@@ -629,7 +511,7 @@ export const SurveyView: React.FC = () => {
         } else {
           showToast('⚠️ Format file cadangan JSON tidak sesuai.');
         }
-      } catch (err) {
+      } catch {
         showToast('⚠️ Gagal membaca file cadangan survey.');
       }
     };
@@ -948,7 +830,6 @@ export const SurveyView: React.FC = () => {
                           setNamaDasar(s.namaDasar || s.customerName);
                           setJumlahUnit(s.jumlahUnit ? String(s.jumlahUnit) : '');
                           setDayaPerUnit(s.dayaPerUnit || '1.300');
-                          setIsMultiUnit(Boolean(s.jumlahUnit));
                           setDayaLama(s.dayaLama || '');
                           setTarifLama(s.tarifLama || '');
                           setDayaBaru(s.dayaBaru || s.daya || '1.300');
@@ -966,9 +847,16 @@ export const SurveyView: React.FC = () => {
                           setDaya(s.daya || '197,000');
                           setTarif(s.tarif || 'I2');
                           setPenyulang(s.penyulang || 'GI Rangkasbitung Baru (ONA) ; P. Leuwidamar');
-                          setTipeGardu(s.tipeGardu || 'Portal');
-                          setKapasitasTrafo(s.kapasitasTrafo || '250');
-                          setJumlahKabelNaik(s.jumlahKabelNaik || '2 Jurusan');
+                          setTipeGardu(s.tipePembangunanGardu || s.tipeGardu || '');
+                          setKapasitasTrafo(s.kapasitasTrafo || '');
+                          setJumlahKabelNaik(s.jumlahKabelNaik || '');
+                          const loadedPerluasan = resolvePerluasan(s.perluasanJTM, s.perluasanJTR, s.poles);
+                          setPerluasanJTM(loadedPerluasan.jtm);
+                          setPerluasanJTR(loadedPerluasan.jtr);
+                          setTrafoLama(s.trafoLama || '');
+                          setTrafoBaru(s.trafoBaru || '');
+                          setJenisPekerjaanGardu(s.jenisPekerjaanGardu || '');
+                          setJumlahKubikelLBS(s.jumlahKubikelLBS || '');
                           setLocationPhotos((s.locationPhotos || []).map((url, idx) => ({
                             id: `FOTO-DETAIL-${idx}`,
                             url,
@@ -1519,8 +1407,9 @@ export const SurveyView: React.FC = () => {
                         >
                           <option value="">— Kosongkan / Tidak Ada —</option>
                           <option value="SUTM">SUTM (Saluran Udara Tegangan Menengah)</option>
-                          <option value="SKUTM (MVTIC)">SKUTM (MVTIC)</option>
-                          <option value="SKTM">SKTM (Saluran Kabel Tegangan Menengah)</option>
+                          {perluasanJTM && perluasanJTM !== 'SUTM' && (
+                            <option value={perluasanJTM}>{perluasanJTM} (data lama)</option>
+                          )}
                         </select>
                       </div>
 
@@ -1594,9 +1483,10 @@ export const SurveyView: React.FC = () => {
                           className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition"
                         >
                           <option value="">— Kosongkan / Tidak Ada —</option>
-                          <option value="SUTR">SUTR (Saluran Udara Tegangan Rendah)</option>
-                          <option value="SKUTR">SKUTR</option>
-                          <option value="SKTR">SKTR (Saluran Kabel Tegangan Rendah)</option>
+                          <option value="SKUTR">SKUTR (Saluran Kabel Udara Tegangan Rendah)</option>
+                          {perluasanJTR && perluasanJTR !== 'SKUTR' && (
+                            <option value={perluasanJTR}>{perluasanJTR} (data lama)</option>
+                          )}
                         </select>
                       </div>
                     </div>
@@ -1751,10 +1641,7 @@ export const SurveyView: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => {
-                        setJtmTypeTab('SKTM');
-                        setPerluasanJTM('SKTM');
-                      }}
+                      onClick={() => setJtmTypeTab('SKTM')}
                       className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
                         jtmTypeTab === 'SKTM'
                           ? 'bg-white text-blue-700 shadow-xs border border-blue-200'
@@ -1769,10 +1656,7 @@ export const SurveyView: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => {
-                        setJtmTypeTab('SKUTM');
-                        setPerluasanJTM('SKUTM (MVTIC)');
-                      }}
+                      onClick={() => setJtmTypeTab('SKUTM')}
                       className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
                         jtmTypeTab === 'SKUTM'
                           ? 'bg-white text-blue-700 shadow-xs border border-blue-200'
@@ -1822,7 +1706,7 @@ export const SurveyView: React.FC = () => {
                                       >
                                         <option value="Tanpa Tiang">— Tanpa Tiang (Tiang Eksisting / Tidak Tambah Tiang) —</option>
                                         <optgroup label="Tiang Beton TM (Standar Konstruksi)">
-                                          {(constructionRules?.jtm?.tiangList || ['12/200', '12/350', '12/350 (GARDU)', '11/200', '11/350']).map((t) => (
+                                          {(constructionRules?.jtm?.tiangList || ['12/200', '12/350']).map((t) => (
                                             <option key={t} value={t}>{t}</option>
                                           ))}
                                         </optgroup>
@@ -1846,7 +1730,14 @@ export const SurveyView: React.FC = () => {
                                         className="w-full p-2 border border-slate-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-medium"
                                       >
                                         <option value="">Pilih Konstruksi TM</option>
-                                        {(constructionRules?.jtm?.konstruksiList || ['TM - 1B', 'TM - 2B', 'TM - 3B', 'TM - 4B', 'TM - 5B', 'GARDU PORTAL DISTRIBUSI']).map((k) => (
+                                        {(constructionRules?.jtm?.konstruksiList || [
+                                          'TM - 1B', 'TM - 2B', 'TM - 3B', 'TM - 4B', 'TM - 5B', 'TM - 6B',
+                                          'TM - 7B', 'TM - 8B', 'TM - 9B', 'TM - 10B', 'TM - 11B', 'TM - 12B',
+                                          'GARDU CANTOL DISTRIBUSI', 'GARDU CANTOL KHUSUS',
+                                          'GARDU PORTAL DISTRIBUSI', 'GARDU PORTAL KHUSUS',
+                                          'GARDU PORTAL RMU', 'GARDU BETON',
+                                          'STAYSET', 'KONTRAMASK', 'CO AFTAK'
+                                        ]).map((k) => (
                                           <option key={k} value={k}>{k}</option>
                                         ))}
                                       </select>
@@ -2040,30 +1931,8 @@ export const SurveyView: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Pilihan Sub-Tab Tipe Jaringan JTR: SUTR | SKUTR | SKTR */}
+                  {/* Pilihan Sub-Tab Tipe Jaringan JTR: SKUTR (aktif) | SUTR | SKTR */}
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/90 shadow-2xs">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setJtrTypeTab('SUTR');
-                        setPerluasanJTR('SUTR');
-                      }}
-                      className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
-                        jtrTypeTab === 'SUTR'
-                          ? 'bg-white text-emerald-700 shadow-xs border border-emerald-200'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                      }`}
-                    >
-                      <span>SUTR (Saluran Udara TIC)</span>
-                      <span className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-bold border ${
-                        jtrTypeTab === 'SUTR'
-                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      }`}>
-                        ● Aktif Digunakan
-                      </span>
-                    </button>
-
                     <button
                       type="button"
                       onClick={() => {
@@ -2077,6 +1946,25 @@ export const SurveyView: React.FC = () => {
                       }`}
                     >
                       <span>SKUTR (Kabel Udara TR)</span>
+                      <span className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-bold border ${
+                        jtrTypeTab === 'SKUTR'
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      }`}>
+                        ● Aktif Digunakan
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setJtrTypeTab('SUTR')}
+                      className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
+                        jtrTypeTab === 'SUTR'
+                          ? 'bg-white text-emerald-700 shadow-xs border border-emerald-200'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                      }`}
+                    >
+                      <span>SUTR (Saluran Udara TIC)</span>
                       <span className="text-[9.5px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-600 font-medium">
                         Belum Digunakan
                       </span>
@@ -2084,10 +1972,7 @@ export const SurveyView: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => {
-                        setJtrTypeTab('SKTR');
-                        setPerluasanJTR('SKTR');
-                      }}
+                      onClick={() => setJtrTypeTab('SKTR')}
                       className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
                         jtrTypeTab === 'SKTR'
                           ? 'bg-white text-emerald-700 shadow-xs border border-emerald-200'
@@ -2101,7 +1986,7 @@ export const SurveyView: React.FC = () => {
                     </button>
                   </div>
 
-                  {jtrTypeTab === 'SUTR' ? (
+                  {jtrTypeTab === 'SKUTR' ? (
                     <>
                       {/* Tombol Cepat: Ambil Data Tiang dari JTM jika ada */}
                       {tmPoles.length > 0 && (
@@ -2136,6 +2021,7 @@ export const SurveyView: React.FC = () => {
                             };
                           });
                           setTrPoles((prev) => [...prev, ...newTrPoles]);
+                          if (!perluasanJTR) setPerluasanJTR(jtrTypeTab);
                           showToast(`✓ Berhasil menambahkan ${newTrPoles.length} tiang terusan dari JTM ke JTR`);
                         }}
                         className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition shrink-0 shadow-2xs flex items-center gap-1.5 cursor-pointer text-xs"
@@ -2364,28 +2250,28 @@ export const SurveyView: React.FC = () => {
                     </div>
                   )}
                     </>
-                  ) : jtrTypeTab === 'SKUTR' ? (
+                  ) : jtrTypeTab === 'SUTR' ? (
                     <div className="p-8 text-center bg-white border border-slate-200 rounded-2xl shadow-2xs space-y-3">
                       <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto">
                         <Layers className="w-6 h-6" />
                       </div>
                       <h4 className="font-bold text-slate-900 text-sm">
-                        Konstruksi SKUTR (Saluran Kabel Udara Tegangan Rendah)
+                        Konstruksi SUTR (Saluran Udara Tegangan Rendah)
                       </h4>
                       <p className="text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
-                        Konstruksi SKUTR menggunakan kabel pilin udara berisolasi penuh khusus. Saat ini, <b>standar survey yang aktif digunakan di wilayah kerja adalah SUTR (Saluran Udara Kabel Twisted/TIC)</b>.
+                        Konstruksi SUTR menggunakan saluran udara kabel twisted/TIC. Saat ini, <b>standar survey yang aktif digunakan di wilayah kerja adalah SKUTR (Saluran Kabel Udara Tegangan Rendah)</b>.
                       </p>
                       <div className="pt-2">
                         <button
                           type="button"
                           onClick={() => {
-                            setJtrTypeTab('SUTR');
-                            setPerluasanJTR('SUTR');
+                            setJtrTypeTab('SKUTR');
+                            setPerluasanJTR('SKUTR');
                           }}
                           className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs inline-flex items-center gap-1.5 cursor-pointer transition"
                         >
                           <Zap className="w-3.5 h-3.5" />
-                          <span>Beralih ke Form SUTR (Aktif Digunakan)</span>
+                          <span>Beralih ke Form SKUTR (Aktif Digunakan)</span>
                         </button>
                       </div>
                     </div>
@@ -2398,19 +2284,19 @@ export const SurveyView: React.FC = () => {
                         Konstruksi SKTR (Saluran Kabel Tanah Tegangan Rendah)
                       </h4>
                       <p className="text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
-                        Konstruksi SKTR menggunakan penanaman kabel tanah TR (NYFGBY/Underground). Saat ini, <b>standar survey yang aktif digunakan adalah SUTR (Saluran Udara TIC)</b>. Fitur isian teknis SKTR disiapkan untuk proyek jaringan bawah tanah mendatang.
+                        Konstruksi SKTR menggunakan penanaman kabel tanah TR (NYFGBY/Underground). Saat ini, <b>standar survey yang aktif digunakan adalah SKUTR (Saluran Kabel Udara TR)</b>. Fitur isian teknis SKTR disiapkan untuk proyek jaringan bawah tanah mendatang.
                       </p>
                       <div className="pt-2">
                         <button
                           type="button"
                           onClick={() => {
-                            setJtrTypeTab('SUTR');
-                            setPerluasanJTR('SUTR');
+                            setJtrTypeTab('SKUTR');
+                            setPerluasanJTR('SKUTR');
                           }}
                           className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs inline-flex items-center gap-1.5 cursor-pointer transition"
                         >
                           <Zap className="w-3.5 h-3.5" />
-                          <span>Beralih ke Form SUTR (Aktif Digunakan)</span>
+                          <span>Beralih ke Form SKUTR (Aktif Digunakan)</span>
                         </button>
                       </div>
                     </div>
@@ -2434,7 +2320,7 @@ export const SurveyView: React.FC = () => {
                     </div>
                     <div>
                       <span className="text-[11px] text-slate-500 block font-semibold mb-0.5">Jenis Permohonan:</span>
-                      <b className="text-slate-800 text-xs block">{jobType || 'Pasang Baru'}</b>
+                      <b className="text-slate-800 text-xs block">{jobType}</b>
                     </div>
 
                     {/* Baris 2: Lokasi & Koordinat */}
@@ -2500,9 +2386,71 @@ export const SurveyView: React.FC = () => {
                     </div>
                     <div>
                       <span className="text-[10px] text-blue-900/60 font-semibold uppercase tracking-wider block mb-0.5">Perluasan JTM / JTR</span>
-                      <b className="text-slate-900 text-xs">{[perluasanJTM, perluasanJTR].filter(Boolean).join(' • ') || '-'}</b>
+                      <b className="text-slate-900 text-xs">{[effectivePerluasan.jtm, effectivePerluasan.jtr].filter(Boolean).join(' • ') || '-'}</b>
                     </div>
                   </div>
+
+                  {/* Output Paket Pekerjaan (mengikuti isian survey) */}
+                  {(() => {
+                    const draftSurvey = {
+                      perluasanJTM,
+                      perluasanJTR,
+                      tipePembangunanGardu: tipeGardu,
+                      trafoLama,
+                      trafoBaru,
+                      jenisPekerjaanGardu,
+                      dayaLama,
+                      dayaBaru: dayaBaru || daya,
+                      poles: allPoles,
+                    };
+                    const docs = listSurveyDocs(getSurveyPackages(draftSurvey));
+                    const savedSurvey = isDetailMode ? surveys.find((x) => x.id === detailSurveyId) : undefined;
+                    const reasons: Record<SurveyDocType, string> = {
+                      paket1: [
+                        effectivePerluasan.jtm && `Perluasan ${effectivePerluasan.jtm}`,
+                        tipeGardu && `Gardu ${tipeGardu}`,
+                        (trafoLama || trafoBaru) && 'Mutasi Trafo',
+                        jenisPekerjaanGardu && 'Gardu Beton',
+                      ].filter(Boolean).join(' • '),
+                      paket2: [
+                        parseDayaVA(dayaBaru || daya) >= 53000 && `Daya Baru ${dayaBaru || daya} VA ≥ 53.000 VA`,
+                        parseDayaVA(dayaLama) >= 53000 && `Daya Lama ${dayaLama} VA ≥ 53.000 VA`,
+                        effectivePerluasan.jtr && `Perluasan ${effectivePerluasan.jtr}`,
+                      ].filter(Boolean).join(' • '),
+                      tiang: `${allPoles.filter(isNewPole).length} tiang baru JTM/JTR`,
+                    };
+                    return (
+                      <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2.5">
+                        <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                          <FileText className="w-4 h-4 text-blue-600" />
+                          <span className="font-bold text-slate-800 text-xs">Output Paket Pekerjaan (RAB)</span>
+                        </div>
+                        {docs.length === 0 ? (
+                          <p className="text-[11px] text-slate-500">
+                            Belum ada paket. Isi Perluasan JTM / Tipe Gardu / Mutasi Trafo / Gardu Beton (Paket 1), Daya Baru / Daya Lama ≥ 53.000 VA / Perluasan JTR (Paket 2), atau tambah tiang baru (WO Tiang).
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {docs.map((doc) => (
+                              <div key={doc} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs ${SURVEY_DOC_BADGES[doc].className}`}>
+                                <span className="font-bold">{SURVEY_DOC_BADGES[doc].long}</span>
+                                <span className="text-[11px] opacity-80">{reasons[doc]}</span>
+                                {savedSurvey && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedRabDoc({ survey: savedSurvey, paket: doc })}
+                                    className="ml-1 px-1.5 py-0.5 rounded bg-white/80 border border-current text-[10px] font-bold cursor-pointer"
+                                  >
+                                    Lihat RAB
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Peta Jalur & Hasil Geotagging Tiang */}
                   <div className="space-y-3 p-4 bg-white border border-slate-200 rounded-xl shadow-2xs">
@@ -2522,8 +2470,7 @@ export const SurveyView: React.FC = () => {
                     <div className="rounded-xl overflow-hidden border border-slate-200">
                       <GeotagMap
                         poles={allPoles}
-                        customerName={name || computedCustomerName}
-                        onViewPhoto={(url, title, caption) => setPreviewPhoto({ url, title, caption })}
+                        onPoleMove={handlePoleMove}
                       />
                     </div>
 
@@ -2533,7 +2480,6 @@ export const SurveyView: React.FC = () => {
                         <table className="w-full text-left text-xs border-collapse">
                           <thead className="bg-slate-50 text-slate-700 font-semibold text-[11px] border-b border-slate-200">
                             <tr className="divide-x divide-slate-200">
-                              <th className="p-2.5">No</th>
                               <th className="p-2.5">Jaringan & Tiang</th>
                               <th className="p-2.5">Konstruksi</th>
                               <th className="p-2.5">Panjang Konduktor (m)</th>
@@ -2541,9 +2487,8 @@ export const SurveyView: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200">
-                            {allPoles.map((p, idx) => (
-                              <tr key={idx} className="divide-x divide-slate-200 hover:bg-slate-50/60 transition">
-                                <td className="p-2.5 font-bold text-slate-800">{p.id}</td>
+                            {allPoles.map((p) => (
+                              <tr key={p.id} className="divide-x divide-slate-200 hover:bg-slate-50/60 transition">
                                 <td className="p-2.5">
                                   <div className="font-semibold text-slate-800">{p.poleType || 'Tiang Beton 11m'}</div>
                                   <span className={`inline-block mt-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold ${
@@ -2627,7 +2572,7 @@ export const SurveyView: React.FC = () => {
               {step > 1 ? (
                 <button
                   type="button"
-                  onClick={() => setStep((step - 1) as any)}
+                  onClick={() => setStep((step - 1) as typeof step)}
                   className="px-4 py-2 border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" /> Sebelumnya
@@ -2647,7 +2592,7 @@ export const SurveyView: React.FC = () => {
               {step < 5 ? (
                 <button
                   type="button"
-                  onClick={() => setStep((step + 1) as any)}
+                  onClick={() => setStep((step + 1) as typeof step)}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   Lanjut Tahap Berikutnya <ArrowRight className="w-3.5 h-3.5" />

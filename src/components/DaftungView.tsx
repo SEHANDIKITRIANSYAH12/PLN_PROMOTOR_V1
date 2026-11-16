@@ -2,29 +2,16 @@
 
 import React, { useState } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
-import { 
-  CheckCircle2, 
-  AlertCircle, 
-  ArrowRight, 
-  X, 
-  Search, 
-  Printer, 
-  Clock, 
-  Calculator, 
+import {
+  CheckCircle2,
+  ArrowRight,
+  Search,
+  Clock,
   FileText,
-  Eye,
-  MapPin,
   Zap,
-  Layers,
-  Wrench,
-  ShieldCheck,
-  Building,
-  Activity,
-  HardHat,
-  ChevronRight,
-  ExternalLink
+  ChevronRight
 } from 'lucide-react';
-import { DaftungRecord, WorkOrderRecord } from '@/types';
+import { DaftungRecord, SurveyRecord, WorkOrderRecord } from '@/types';
 import { Pagination } from '@/components/Pagination';
 import { RabDocumentModal } from '@/components/RabDocumentModal';
 
@@ -41,8 +28,7 @@ export const DaftungView: React.FC = () => {
     daftungs, 
     surveys, 
     workOrders,
-    setCurrentPage, 
-    showToast 
+    setCurrentPage,
   } = usePromotorStore();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -52,7 +38,7 @@ export const DaftungView: React.FC = () => {
 
   // Modal Dokumen WO / RAB
   const [selectedDocModal, setSelectedDocModal] = useState<{
-    survey: any;
+    survey: SurveyRecord | null;
     wo?: WorkOrderRecord;
     paket: 'paket1' | 'paket2';
     mode: 'rab' | 'wo';
@@ -73,7 +59,7 @@ export const DaftungView: React.FC = () => {
     
     if (!matchesSearch) return false;
 
-    const allCompleted = relWos.every((w) => w.status === 'Selesai' || w.progress === 100);
+    const allCompleted = relWos.every((w) => w.status === 'Selesai' || w.status === 'Closeout' || w.progress === 100);
 
     if (statusFilter === 'SELESAI') return allCompleted;
     if (statusFilter === 'KONSTRUKSI') return !allCompleted;
@@ -101,7 +87,7 @@ export const DaftungView: React.FC = () => {
   const totalDaftung = approvedDaftungs.length;
   const countSelesai = approvedDaftungs.filter((d) => {
     const wos = getCustomerWorkOrders(d);
-    return wos.length > 0 && wos.every(w => w.status === 'Selesai' || w.progress === 100);
+    return wos.length > 0 && wos.every(w => w.status === 'Selesai' || w.status === 'Closeout' || w.progress === 100);
   }).length;
   const countKonstruksi = totalDaftung - countSelesai;
 
@@ -206,7 +192,7 @@ export const DaftungView: React.FC = () => {
             <select
               value={statusFilter}
               onChange={(e) => {
-                setStatusFilter(e.target.value as any);
+                setStatusFilter(e.target.value as typeof statusFilter);
                 setPage(1);
               }}
               className="p-2 border border-slate-200 rounded-lg text-xs font-semibold bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
@@ -302,7 +288,7 @@ export const DaftungView: React.FC = () => {
                                 key={w.id}
                                 onClick={() => {
                                   setSelectedDocModal({
-                                    survey: matchedSurvey,
+                                    survey: matchedSurvey ?? null,
                                     wo: w,
                                     paket: w.category === 'WO Paket 1' ? 'paket1' : 'paket2',
                                     mode: 'wo',

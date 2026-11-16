@@ -1,21 +1,15 @@
 import { usePromotorStore } from '@/store/usePromotorStore';
 
 // ============================================================================
-//  SINKRONISASI STATE <-> DATABASE DI SISI BROWSER
+//  SINKRONISASI STATE <-> DATABASE & LOCAL STORAGE (HYBRID RESILIENT)
 //
 //  Alur:
-//    1. Halaman dibuka -> GET /api/state/bootstrap -> data dari PostgreSQL
-//       menggantikan seed in-memory.
-//    2. Store dipantau lewat subscribe(). Begitu sebuah slice berubah
-//       referensi, slice itu dikirim ke POST /api/state/sync (dijeda supaya
-//       satu aksi yang mengubah banyak hal tidak menulis berkali-kali).
-//       Antrean yang masih tertunda ikut dipaksa keluar saat halaman
-//       ditutup/di-refresh (event pagehide).
-//    3. Database kosong -> seed dimuat otomatis sekali, lalu dibaca ulang.
-//
-//  Tidak ada satu pun dari 52 action store yang perlu diubah: write-through
-//  terjadi di luar aksi. Kalau database mati, aplikasi tetap jalan penuh
-//  dengan seed in-memory dan kegagalan dicatat sekali saja ke Log Audit.
+//    1. Browser dibuka -> Muat cache darurat dari LocalStorage (jika ada).
+//    2. Hidrasi database -> GET /api/state/bootstrap -> satukan data dari PostgreSQL.
+//    3. Store dipantau lewat subscribe() -> Simpan ke LocalStorage seketika (0ms),
+//       lalu jadwalkan sinkronisasi ke PostgreSQL (debounce 600ms).
+//    4. Mendukung flush instan (`flushSyncNow`) saat user membuat data penting (Survey, WO)
+//       agar data tidak pernah hilang walau browser langsung di-refresh.
 // ============================================================================
 
 /** Slice yang ikut disimpan. UI state (peranan, halaman aktif, toast) tidak. */
@@ -27,9 +21,10 @@ export const SYNCED_KEYS = [
 ] as const;
 
 const DEBOUNCE_MS = 600;
+const STORAGE_PREFIX = 'promotor_pln_slice_';
 
 type StoreState = ReturnType<typeof usePromotorStore.getState>;
-type SyncedKey = (typeof SYNCED_KEYS)[number];
+export type SyncedKey = (typeof SYNCED_KEYS)[number];
 
 let started = false;
 let applyingRemote = false;
@@ -39,10 +34,6 @@ const timers = new Map<SyncedKey, ReturnType<typeof setTimeout>>();
 export type SyncStatus = 'off' | 'hydrating' | 'live' | 'unavailable';
 let status: SyncStatus = 'off';
 const listeners = new Set<(s: SyncStatus) => void>();
-
-export function getSyncStatus() {
-  return status;
-}
 
 /** Dipakai UI mana pun yang ingin menampilkan status koneksi database. */
 export function onSyncStatusChange(fn: (s: SyncStatus) => void) {
@@ -67,27 +58,35 @@ function logOnce(message: string) {
   }
 }
 
-function queueSlice(key: SyncedKey) {
-  const existing = timers.get(key);
-  if (existing) clearTimeout(existing);
-  timers.set(
-    key,
-    setTimeout(() => {
-      timers.delete(key);
-      void flushSlice(key);
-    }, DEBOUNCE_MS)
-  );
+/** Backup instan ke LocalStorage untuk mencegah data hilang saat refresh tiba-tiba */
+function saveLocalBackup(key: SyncedKey, payload: unknown) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(payload));
+  } catch {
+    // Kuota localStorage penuh atau private browsing, lanjutkan tanpa crash
+  }
 }
 
-async function flushSlice(key: SyncedKey, keepalive = false) {
+function loadLocalBackup(key: SyncedKey): unknown | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function flushSlice(key: SyncedKey) {
   const payload = usePromotorStore.getState()[key];
+  saveLocalBackup(key, payload);
+
   try {
     const res = await fetch('/api/state/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slice: key, payload }),
-      // keepalive: request boleh menyelesaikan diri walaupun halaman ditutup.
-      keepalive,
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
@@ -102,15 +101,28 @@ async function flushSlice(key: SyncedKey, keepalive = false) {
   }
 }
 
+function queueSlice(key: SyncedKey) {
+  // Selalu simpan lokal segera (0ms)
+  saveLocalBackup(key, usePromotorStore.getState()[key]);
+
+  const existing = timers.get(key);
+  if (existing) clearTimeout(existing);
+  timers.set(
+    key,
+    setTimeout(() => {
+      timers.delete(key);
+      void flushSlice(key);
+    }, DEBOUNCE_MS)
+  );
+}
+
 /**
- * Tulis segera semua slice yang masih mengantre. Dipanggil saat halaman akan
- * ditutup/di-refresh: tanpa ini, perubahan yang dibuat kurang dari
- * DEBOUNCE_MS sebelum refresh akan ikut hilang bersama tab-nya.
+ * Tulis segera semua slice yang masih mengantre (dipanggil saat refresh / unload).
  */
-function flushPendingNow() {
+export function flushPendingNow() {
   for (const [key, t] of timers) {
     clearTimeout(t);
-    void flushSlice(key, true);
+    void flushSlice(key);
   }
   timers.clear();
 }
@@ -129,15 +141,31 @@ export async function startDbSync() {
   started = true;
   setStatus('hydrating');
 
-  // pagehide = satu-satunya event yang andal saat tab ditutup atau di-refresh.
+  // Listeners untuk refresh & penutupan tab
+  window.addEventListener('beforeunload', flushPendingNow);
   window.addEventListener('pagehide', flushPendingNow);
 
-  let remote: Record<string, unknown> | null = null;
-
+  // 1. Pulihkan cadangan lokal yang belum tersinkronisasi jika ada (Fast Offline Recovery)
   try {
-    // cache: 'no-store' -- respons bootstrap tidak dikirim dengan Cache-Control
-    // apa pun, jadi browser bebas menyajikannya dari cache dan hidrasi akan
-    // memakai data lama. Permintaan ini harus selalu ke server.
+    const localPatch: Partial<StoreState> = {};
+    for (const key of SYNCED_KEYS) {
+      const cached = loadLocalBackup(key);
+      if (cached !== null) {
+        (localPatch as Record<string, unknown>)[key] = cached;
+      }
+    }
+    if (Object.keys(localPatch).length > 0) {
+      applyingRemote = true;
+      usePromotorStore.setState(localPatch);
+      applyingRemote = false;
+    }
+  } catch {
+    // Lewati jika local recovery gagal
+  }
+
+  // 2. Hidrasi database PostgreSQL
+  let remote: Record<string, unknown> | null = null;
+  try {
     const res = await fetch('/api/state/bootstrap', { cache: 'no-store' });
     const json = (await res.json()) as { success?: boolean; data?: Record<string, unknown> };
     if (res.ok && json.success && json.data) remote = json.data;
@@ -151,8 +179,7 @@ export async function startDbSync() {
     return;
   }
 
-  // Database masih kosong: muat seed sekali saja, lalu baca ulang supaya
-  // isinya sama persis dengan seed in-memory.
+  // Database masih kosong: muat seed sekali saja, lalu baca ulang
   if (remote && looksEmpty(remote)) {
     try {
       await fetch('/api/admin/seed', {
@@ -172,9 +199,8 @@ export async function startDbSync() {
     const patch: Partial<StoreState> = {};
     for (const key of SYNCED_KEYS) {
       if (remote[key] !== undefined) {
-        // Semua SYNCED_KEYS adalah kunci sah StoreState, jadi penulisan dinamis
-        // ini aman; kompilasi akan menolak kalau ada kunci yang bocor.
         (patch as Record<string, unknown>)[key] = remote[key];
+        saveLocalBackup(key, remote[key]);
       }
     }
     applyingRemote = true;
@@ -183,11 +209,13 @@ export async function startDbSync() {
     setStatus('live');
   }
 
-  // Write-through otomatis.
+  // 3. Write-through otomatis dengan debounce + backup lokal
   usePromotorStore.subscribe((state, prev) => {
     if (applyingRemote || status === 'unavailable') return;
     for (const key of SYNCED_KEYS) {
-      if (state[key] !== prev[key]) queueSlice(key);
+      if (state[key] !== prev[key]) {
+        queueSlice(key);
+      }
     }
   });
 }

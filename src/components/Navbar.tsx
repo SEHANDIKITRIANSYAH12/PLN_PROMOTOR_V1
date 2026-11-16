@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
 import { Role } from '@/types';
-import { RefreshCw, ChevronDown, Check, LogOut, Zap, Shield, User, Menu } from 'lucide-react';
+import { RefreshCw, ChevronDown, Check, LogOut, Menu } from 'lucide-react';
 
 interface NavbarProps {
   onToggleSidebar: () => void;

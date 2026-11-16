@@ -2,16 +2,15 @@
 
 import React, { useState } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
-import { 
-  LayoutGrid, 
-  Crosshair, 
+import {
+  LayoutGrid,
+  Crosshair,
   FileText,
-  Layers, 
+  Layers,
   Minus,
   Plus,
   LogOut,
   X,
-  Building2,
   HardHat,
   UserCheck,
   ShieldCheck,
@@ -20,16 +19,13 @@ import {
   FileCheck2,
   Warehouse,
   Boxes,
-  Sigma,
   Settings,
   FileSpreadsheet,
   History,
   Calculator,
-  ClipboardList,
-  FileClock,
   ClipboardCheck,
   PanelLeftClose,
-  PanelLeftOpen,
+  PanelLeftOpen
 } from 'lucide-react';
 
 interface SidebarProps {

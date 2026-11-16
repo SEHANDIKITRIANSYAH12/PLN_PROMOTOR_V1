@@ -14,16 +14,10 @@ import {
   FileCheck2,
   Edit3,
   Trash2,
-  Eye,
   X,
   Clock,
   Coins,
   TrendingDown,
-  CheckCircle2,
-  Layers,
-  ArrowRight,
-  Package,
-  Sparkles,
   Info
 } from 'lucide-react';
 import { Pagination } from '@/components/Pagination';
@@ -251,7 +245,7 @@ export const MasterMaterialView: React.FC = () => {
   const handleMaterialFieldChange = (
     idx: number,
     field: 'kode' | 'deskripsi' | 'satuan' | 'volume' | 'hargaSatuan' | 'keterangan',
-    value: any
+    value: string
   ) => {
     const updated = [...contractForm.rincianMaterial];
     updated[idx] = {
@@ -425,7 +419,7 @@ export const MasterMaterialView: React.FC = () => {
           <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             className="px-3 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700 font-medium cursor-pointer text-xs"
           >
             <option value="ALL">Semua Status Kontrak</option>
@@ -925,7 +919,7 @@ export const MasterMaterialView: React.FC = () => {
                     </label>
                     <select
                       value={contractForm.status}
-                      onChange={(e) => setContractForm({ ...contractForm, status: e.target.value as any })}
+                      onChange={(e) => setContractForm({ ...contractForm, status: e.target.value as typeof contractForm.status })}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-800 bg-white font-semibold cursor-pointer focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     >
                       <option value="AKTIF">AKTIF</option>

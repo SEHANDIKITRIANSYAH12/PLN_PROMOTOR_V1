@@ -1,26 +1,19 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { 
-  ArrowLeftRight, 
-  Search, 
-  Filter, 
-  CheckCircle2, 
-  AlertTriangle, 
-  Clock, 
-  FileText, 
-  Boxes, 
-  Building2, 
-  Calendar, 
-  Edit3, 
-  Info, 
-  X, 
+import {
+  ArrowLeftRight,
+  Search,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  Boxes,
+  Building2,
+  Calendar,
+  Edit3,
+  X,
   Database,
-  ExternalLink,
-  Tag,
   Check,
-  FileCheck,
-  ShieldCheck,
   AlertCircle
 } from 'lucide-react';
 import { usePromotorStore } from '@/store/usePromotorStore';
@@ -31,7 +24,7 @@ export const MutasiMaterialView: React.FC = () => {
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'ALL' | 'BELUM_GI' | 'SISTEM' | 'NON_SISTEM'>('ALL');
+  const [activeTab, setActiveTab] = useState<'ALL' | 'BELUM_GI' | 'SISTEM' | 'NON_SISTEM' | 'RETUR'>('ALL');
   const [selectedVendor, setSelectedVendor] = useState<string>('ALL');
 
   // Modal Input / Edit GI state
@@ -73,6 +66,12 @@ export const MutasiMaterialView: React.FC = () => {
       return acc + takenCount;
     }, 0);
 
+    const totalReturWo = mutasiWos.filter((w) => (w.materials || []).some((m) => (m.qtyReturned || 0) > 0)).length;
+    const totalItemRetur = mutasiWos.reduce((acc, wo) => {
+      const retCount = (wo.materials || []).reduce((sum, m) => sum + (m.qtyReturned || 0), 0);
+      return acc + retCount;
+    }, 0);
+
     return {
       total,
       sudahGiCount: sudahGi.length,
@@ -80,6 +79,8 @@ export const MutasiMaterialView: React.FC = () => {
       sistemCount,
       nonSistemCount,
       totalItemKeluar,
+      totalReturWo,
+      totalItemRetur,
     };
   }, [mutasiWos]);
 
@@ -94,6 +95,7 @@ export const MutasiMaterialView: React.FC = () => {
       if (activeTab === 'BELUM_GI' && hasGi) return false;
       if (activeTab === 'SISTEM' && !isSistem) return false;
       if (activeTab === 'NON_SISTEM' && !isNonSistem) return false;
+      if (activeTab === 'RETUR' && !(wo.materials || []).some((m) => (m.qtyReturned || 0) > 0)) return false;
 
       // Vendor filter
       if (selectedVendor !== 'ALL' && wo.vendor !== selectedVendor) return false;
@@ -173,7 +175,7 @@ export const MutasiMaterialView: React.FC = () => {
       </div>
 
       {/* 2. Summary KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
         <div 
           onClick={() => setActiveTab('ALL')}
           className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
@@ -245,6 +247,24 @@ export const MutasiMaterialView: React.FC = () => {
           <div className="text-2xl font-black text-amber-800 font-mono mt-2">{stats.nonSistemCount}</div>
           <div className="text-[10px] text-amber-600 font-medium mt-1">Keluar fisik belum posting SAP</div>
         </div>
+
+        <div 
+          onClick={() => setActiveTab('RETUR')}
+          className={`p-4 rounded-2xl border transition cursor-pointer shadow-2xs ${
+            activeTab === 'RETUR' 
+              ? 'bg-indigo-50/80 border-indigo-300 ring-2 ring-indigo-500/20' 
+              : 'bg-white border-slate-200 hover:border-slate-300'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-indigo-800">Barang Masuk (Retur)</span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+              <ArrowLeftRight className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-indigo-800 font-mono mt-2">{stats.totalReturWo}</div>
+          <div className="text-[10px] text-indigo-600 font-medium mt-1">{stats.totalItemRetur} unit/mtr diretur ke gudang</div>
+        </div>
       </div>
 
       {/* 3. Filter Bar & Tabs */}
@@ -298,6 +318,18 @@ export const MutasiMaterialView: React.FC = () => {
             >
               <Clock className="w-3.5 h-3.5" />
               <span>Non-Sistem ({stats.nonSistemCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('RETUR')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                activeTab === 'RETUR'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-indigo-50 text-indigo-800 hover:bg-indigo-100 border border-indigo-200'
+              }`}
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              <span>Barang Masuk / Retur ({stats.totalReturWo})</span>
             </button>
           </div>
 
@@ -357,6 +389,7 @@ export const MutasiMaterialView: React.FC = () => {
                 <th className="py-3 px-3.5 min-w-[150px]">NO. RESERVASI ERP</th>
                 <th className="py-3 px-3.5 min-w-[150px]">SURAT JALAN (SJ)</th>
                 <th className="py-3 px-3.5 min-w-[200px]">MATERIAL KELUAR</th>
+                <th className="py-3 px-3.5 min-w-[200px] bg-indigo-50/40">BARANG MASUK (RETUR)</th>
                 <th className="py-3 px-3.5 min-w-[160px] bg-blue-50/50">NOMOR GOOD ISSUE (GI)</th>
                 <th className="py-3 px-3 text-center min-w-[120px] w-32">STATUS</th>
                 <th className="py-3 px-3 min-w-[150px]">KETERANGAN POSTING</th>
@@ -366,7 +399,7 @@ export const MutasiMaterialView: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400">
+                  <td colSpan={11} className="py-12 text-center text-slate-400">
                     <ArrowLeftRight className="w-10 h-10 mx-auto mb-2 opacity-30 text-blue-500" />
                     Tidak ada data mutasi material sesuai filter
                   </td>
@@ -491,6 +524,43 @@ export const MutasiMaterialView: React.FC = () => {
                             </div>
                           )}
                         </div>
+                      </td>
+
+                      {/* 6b. BARANG MASUK (RETUR DARI VENDOR) */}
+                      <td className="py-3 px-3.5 align-top bg-indigo-50/20">
+                        {(() => {
+                          const returnedMats = mats.filter((m) => (m.qtyReturned || 0) > 0);
+                          if (returnedMats.length === 0) {
+                            return (
+                              <span className="text-slate-400 italic text-[10.5px]">
+                                Nihil Retur
+                              </span>
+                            );
+                          }
+                          return (
+                            <div className="space-y-1">
+                              <div className="text-[9.5px] font-bold text-indigo-700 mb-1 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
+                                <span>{returnedMats.length} Material Diretur</span>
+                              </div>
+                              {returnedMats.map((m, idx) => (
+                                <div key={idx} className="text-[10px] flex items-start justify-between gap-2 border-b border-indigo-100/60 pb-0.5 last:border-0">
+                                  <span className="text-slate-700 truncate max-w-[140px]" title={m.material}>
+                                    ↩ {m.material}
+                                  </span>
+                                  <span className="font-mono font-bold text-indigo-900 shrink-0">
+                                    {m.qtyReturned} {m.unit || 'bh'}
+                                  </span>
+                                </div>
+                              ))}
+                              {wo.slipReturNumber && (
+                                <div className="text-[9px] font-mono font-semibold text-indigo-600 mt-1 truncate" title={`Slip Retur: ${wo.slipReturNumber}`}>
+                                  Slip: {wo.slipReturNumber}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* 7. NOMOR GOOD ISSUE (GI SAP) */}
@@ -657,7 +727,7 @@ export const MutasiMaterialView: React.FC = () => {
                   <option value="Non-Sistem">⏱ Non-Sistem (Pengeluaran Fisik / Belum Ter-posting)</option>
                 </select>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Pilih "Sistem" jika dokumen GI sudah berhasil di-posting di SAP, atau "Non-Sistem" jika masih manual.
+                  Pilih &quot;Sistem&quot; jika dokumen GI sudah berhasil di-posting di SAP, atau &quot;Non-Sistem&quot; jika masih manual.
                 </p>
               </div>
 

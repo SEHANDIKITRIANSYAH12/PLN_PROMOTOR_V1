@@ -1,38 +1,29 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  ShieldCheck, 
-  Clock, 
-  CheckCircle2, 
-  XCircle, 
-  Eye, 
-  FileText, 
+import React, { useState } from 'react';
+import {
+  ShieldCheck,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Eye,
+  FileText,
   AlertCircle,
   Building2,
   HardHat,
   Search,
-  Filter,
-  DollarSign,
   ChevronRight,
-  ExternalLink,
-  MessageSquare,
   PenTool,
   Check,
-  X,
-  Edit3,
-  Save,
-  Plus,
-  Trash2,
-  Package
+  X
 } from 'lucide-react';
-import { usePromotorStore } from '@/store/usePromotorStore';
-import { WorkOrderRecord, WoMaterialItem } from '@/types';
+import { usePromotorStore, isWoPendingApproval } from '@/store/usePromotorStore';
+import { WorkOrderRecord } from '@/types';
 import { RabDocumentModal } from '@/components/RabDocumentModal';
 import { SignaturePadModal } from '@/components/SignaturePadModal';
 
 export const PersetujuanWoView: React.FC = () => {
-  const { workOrders, approveWorkOrder, rejectWorkOrder, updateWorkOrderFields, setCurrentPage } = usePromotorStore();
+  const { workOrders, approveWorkOrder, rejectWorkOrder, setCurrentPage } = usePromotorStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedWoForRab, setSelectedWoForRab] = useState<WorkOrderRecord | null>(null);
   
@@ -44,18 +35,12 @@ export const PersetujuanWoView: React.FC = () => {
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [isSignPadOpen, setIsSignPadOpen] = useState(false);
 
-  // State Edit WO (Asman dapat edit sebelum menyetujui)
-  const [editingWo, setEditingWo] = useState<WorkOrderRecord | null>(null);
-  const [editFields, setEditFields] = useState<Partial<WorkOrderRecord>>({});
-
   // Modal Rejection state
   const [rejectingWoId, setRejectingWoId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
   // Filter WOs
-  const pending = workOrders.filter(
-    (w) => w.status === 'Menunggu Persetujuan Asman' || w.approvalStatus === 'PENDING'
-  );
+  const pending = workOrders.filter(isWoPendingApproval);
   const approved = workOrders.filter((w) => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi');
   const rejected = workOrders.filter((w) => w.approvalStatus === 'REJECTED' || w.status === 'Dikembalikan');
 
@@ -65,6 +50,18 @@ export const PersetujuanWoView: React.FC = () => {
       w.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       w.vendor.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Saudara WO milik pelanggan yang sama, dipakai sebagai tab di dalam modal RAB.
+  const WO_ORDER = ['WO Paket 1', 'WO Paket 2', 'WO Tiang'];
+  const woRank = (category?: string) => {
+    const idx = WO_ORDER.indexOf(category || '');
+    return idx === -1 ? WO_ORDER.length : idx;
+  };
+
+  const rabSiblingWos = (wo: WorkOrderRecord) =>
+    pending
+      .filter((w) => (w.idpel || w.customerName) === (wo.idpel || wo.customerName))
+      .sort((a, b) => woRank(a.category) - woRank(b.category));
 
   const handleOpenApproveModal = (wo: WorkOrderRecord) => {
     setApprovingWo(wo);
@@ -108,75 +105,6 @@ export const PersetujuanWoView: React.FC = () => {
     rejectWorkOrder(rejectingWoId, rejectReason.trim());
     setRejectingWoId(null);
     setRejectReason('');
-  };
-
-  // Handler Edit WO (sebelum disetujui)
-  const handleOpenEditWo = (wo: WorkOrderRecord) => {
-    setEditingWo(wo);
-    setEditFields({
-      vendor: wo.vendor,
-      supervisor1: wo.supervisor1 || wo.supervisor,
-      supervisor2: wo.supervisor2 || '',
-      validFrom: wo.validFrom || '',
-      validTo: wo.validTo || '',
-      catatan: wo.catatan || '',
-      materials: (wo.materials || []).map((m) => ({ ...m })),
-    });
-  };
-
-  const handleMaterialQtyChange = (idx: number, newQty: number) => {
-    setEditFields((prev) => {
-      const updatedMats = [...(prev.materials || [])];
-      if (updatedMats[idx]) {
-        updatedMats[idx] = {
-          ...updatedMats[idx],
-          qtyAllocated: newQty,
-          qtyReksis: newQty,
-        };
-      }
-      return { ...prev, materials: updatedMats };
-    });
-  };
-
-  const handleMaterialFieldChange = (idx: number, field: keyof WoMaterialItem, val: any) => {
-    setEditFields((prev) => {
-      const updatedMats = [...(prev.materials || [])];
-      if (updatedMats[idx]) {
-        updatedMats[idx] = {
-          ...updatedMats[idx],
-          [field]: val,
-        };
-      }
-      return { ...prev, materials: updatedMats };
-    });
-  };
-
-  const handleRemoveMaterial = (idx: number) => {
-    setEditFields((prev) => ({
-      ...prev,
-      materials: (prev.materials || []).filter((_, i) => i !== idx),
-    }));
-  };
-
-  const handleAddMaterial = () => {
-    const newItem: WoMaterialItem = {
-      material: '',
-      qtyAllocated: 1,
-      qtyReksis: 1,
-      unit: 'Buah',
-      kategori: 'KELOMPOK MATERIAL',
-      kode: '',
-    };
-    setEditFields((prev) => ({
-      ...prev,
-      materials: [...(prev.materials || []), newItem],
-    }));
-  };
-
-  const handleSaveEditWo = () => {
-    if (!editingWo) return;
-    updateWorkOrderFields(editingWo.id, editFields);
-    setEditingWo(null);
   };
 
   return (
@@ -275,7 +203,7 @@ export const PersetujuanWoView: React.FC = () => {
                 <th className="py-3 px-4">PENGAWAS PLN</th>
                 <th className="py-3 px-4 text-right">VOLUME MATERIAL</th>
                 <th className="py-3 px-4 text-center">STATUS</th>
-                <th className="py-3 px-4 text-center w-40">AKSI KEPUTUSAN</th>
+                <th className="py-3 px-4 text-center w-44">AKSI KEPUTUSAN</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -329,7 +257,16 @@ export const PersetujuanWoView: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <span className="font-semibold text-slate-700">{totalItems} Item</span>
-                        <div className="text-[10px] text-slate-400">Siap dialokasikan</div>
+                        {wo.volumeEditedAt ? (
+                          <div
+                            className="text-[10px] font-semibold text-indigo-700"
+                            title={`Direvisi ${wo.volumeEditedBy || 'Asman'} • ${wo.volumeEditedAt}`}
+                          >
+                            Volume direvisi Asman
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-slate-400">Siap dialokasikan</div>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
@@ -339,12 +276,12 @@ export const PersetujuanWoView: React.FC = () => {
                       </td>
                       <td className="py-3 px-4 text-center">
                         <div className="inline-flex items-center gap-1.5 p-1 bg-slate-50 border border-slate-200/80 rounded-xl shadow-2xs">
-                          {/* 1. Review RAB */}
+                          {/* 1. Review RAB (volume rencana dapat diedit langsung di dokumen) */}
                           <button
                             type="button"
                             onClick={() => setSelectedWoForRab(wo)}
                             className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200/80 transition flex items-center gap-1.5 cursor-pointer shadow-2xs hover:text-slate-900"
-                            title="Review RAB & Spesifikasi Material"
+                            title="Review RAB & Edit Volume Material / Jasa"
                           >
                             <Eye className="w-3.5 h-3.5 text-slate-500" />
                             <span>RAB</span>
@@ -691,239 +628,10 @@ export const PersetujuanWoView: React.FC = () => {
           isOpen={true}
           onClose={() => setSelectedWoForRab(null)}
           woData={selectedWoForRab}
+          woList={rabSiblingWos(selectedWoForRab)}
           mode="wo"
+          allowVolumeEdit
         />
-      )}
-
-      {/* ===================================================================== */}
-      {/* MODAL EDIT WO (Asman dapat edit data WO sebelum approval)             */}
-      {/* ===================================================================== */}
-      {editingWo && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
-            {/* Header */}
-            <div className="p-4 px-5 bg-blue-600 text-white flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5">
-                <Edit3 className="w-4 h-4" />
-                <div>
-                  <div className="font-bold text-sm">Edit Work Order Sebelum Approval</div>
-                  <div className="text-[11px] text-blue-200 font-mono">{editingWo.id}</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingWo(null)}
-                className="text-blue-200 hover:text-white p-1 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="overflow-y-auto flex-1 p-5 space-y-4">
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <span>
-                  Asman dapat mengubah data vendor pelaksana, pengawas, masa berlaku, alokasi material gudang, dan catatan WO sebelum menyetujuinya. Perubahan ini akan tercatat di audit log.
-                </span>
-              </div>
-
-              {/* Vendor Pelaksana */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Vendor Pelaksana
-                </label>
-                <input
-                  type="text"
-                  value={editFields.vendor || ''}
-                  onChange={(e) => setEditFields((f) => ({ ...f, vendor: e.target.value }))}
-                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Pengawas 1 */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Pengawas PLN 1 (TC Lola / Officer Kinerja)
-                </label>
-                <input
-                  type="text"
-                  value={editFields.supervisor1 || ''}
-                  onChange={(e) => setEditFields((f) => ({ ...f, supervisor1: e.target.value, supervisor: e.target.value }))}
-                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Pengawas 2 */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Pengawas PLN 2 (TL Teknik ULP)
-                </label>
-                <input
-                  type="text"
-                  value={editFields.supervisor2 || ''}
-                  onChange={(e) => setEditFields((f) => ({ ...f, supervisor2: e.target.value }))}
-                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Masa Berlaku */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Berlaku Mulai</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: 02 Jan 2026"
-                    value={editFields.validFrom || ''}
-                    onChange={(e) => setEditFields((f) => ({ ...f, validFrom: e.target.value }))}
-                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Berlaku Hingga</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: 31 Des 2026"
-                    value={editFields.validTo || ''}
-                    onChange={(e) => setEditFields((f) => ({ ...f, validTo: e.target.value }))}
-                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* Rincian & Alokasi Kelompok Material */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-800">
-                      Rincian Kelompok Material Fisik
-                    </label>
-                    <p className="text-[11px] text-slate-400">
-                      Sesuaikan volume atau daftar material yang akan diambil vendor di gudang
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddMaterial}
-                    className="px-2.5 py-1 text-xs font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center gap-1 cursor-pointer transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Tambah Baris Material</span>
-                  </button>
-                </div>
-
-                <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-[10.5px] font-semibold text-slate-500 uppercase tracking-wider">
-                      <tr className="divide-x divide-slate-200">
-                        <th className="py-2.5 px-3">NAMA MATERIAL</th>
-                        <th className="py-2.5 px-2 w-24">KODE / KATEGORI</th>
-                        <th className="py-2.5 px-2 text-center w-20">VOLUME</th>
-                        <th className="py-2.5 px-2 w-20">SATUAN</th>
-                        <th className="py-2.5 px-2 text-center w-12">AKSI</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {(editFields.materials || []).length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="py-6 text-center text-slate-400 text-xs">
-                            <Package className="w-6 h-6 mx-auto mb-1 opacity-40 text-blue-500" />
-                            Belum ada material terdaftar. Klik &quot;Tambah Baris Material&quot;.
-                          </td>
-                        </tr>
-                      ) : (
-                        (editFields.materials || []).map((m, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/70 divide-x divide-slate-200">
-                            <td className="py-2 px-3">
-                              <input
-                                type="text"
-                                placeholder="Nama spesifikasi material..."
-                                value={m.material}
-                                onChange={(e) => handleMaterialFieldChange(idx, 'material', e.target.value)}
-                                className="w-full text-xs p-1.5 border border-slate-200 rounded bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </td>
-                            <td className="py-2 px-2">
-                              <input
-                                type="text"
-                                placeholder="Kode / Kategori"
-                                value={m.kategori || m.kode || ''}
-                                onChange={(e) => handleMaterialFieldChange(idx, 'kategori', e.target.value)}
-                                className="w-full text-[11px] p-1.5 border border-slate-200 rounded bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </td>
-                            <td className="py-2 px-2 text-center">
-                              <input
-                                type="number"
-                                min={0}
-                                step="any"
-                                value={m.qtyAllocated ?? m.qtyReksis ?? 0}
-                                onChange={(e) => handleMaterialQtyChange(idx, parseFloat(e.target.value) || 0)}
-                                className="w-full text-xs font-mono font-bold text-center p-1.5 border border-slate-200 rounded bg-white text-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </td>
-                            <td className="py-2 px-2">
-                              <input
-                                type="text"
-                                placeholder="Batang/Unit/m"
-                                value={m.unit}
-                                onChange={(e) => handleMaterialFieldChange(idx, 'unit', e.target.value)}
-                                className="w-full text-xs p-1.5 border border-slate-200 rounded bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </td>
-                            <td className="py-2 px-2 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveMaterial(idx)}
-                                className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
-                                title="Hapus Material"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Catatan Khusus */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Catatan / Arahan Khusus
-                </label>
-                <textarea
-                  rows={3}
-                  value={editFields.catatan || ''}
-                  onChange={(e) => setEditFields((f) => ({ ...f, catatan: e.target.value }))}
-                  placeholder="Catatan pelaksanaan untuk vendor dan pengawas..."
-                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-slate-50 text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                />
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 px-5 border-t border-slate-100 flex items-center justify-end gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setEditingWo(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveEditWo}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1.5"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>Simpan Perubahan WO</span>
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

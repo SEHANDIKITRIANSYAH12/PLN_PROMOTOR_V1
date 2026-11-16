@@ -2,25 +2,20 @@
 
 import React, { useState, useMemo } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
-import { 
-  CheckCircle2, 
-  ArrowRight, 
-  X, 
-  Search, 
-  Trash2, 
+import {
+  CheckCircle2,
+  ArrowRight,
+  X,
+  Search,
+  Trash2,
   FileText,
-  Building,
-  Check,
   ShieldCheck,
-  Clock,
-  HardHat,
-  Boxes,
-  Zap,
-  Info
+  Clock
 } from 'lucide-react';
 import { SurveyRecord } from '@/types';
 import { Pagination } from '@/components/Pagination';
 import { RabDocumentModal } from '@/components/RabDocumentModal';
+import { getSurveyPackages, listSurveyDocs, SurveyDocType } from '@/data/surveyRabCalculator';
 
 export const PraDaftungView: React.FC = () => {
   const { 
@@ -38,12 +33,14 @@ export const PraDaftungView: React.FC = () => {
   const [finalName, setFinalName] = useState('');
   const [isNameChanged, setIsNameChanged] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
+  const [dayaBaruVal, setDayaBaruVal] = useState('');
+  const [alamatVal, setAlamatVal] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'Sudah Bayar' | 'Belum Bayar'>('Sudah Bayar');
   const [nidiVal, setNidiVal] = useState(true);
   const [sloVal, setSloVal] = useState(true);
   
   // Modal RAB Preview
-  const [selectedRabDoc, setSelectedRabDoc] = useState<{ survey: SurveyRecord; paket: 'paket1' | 'paket2' } | null>(null);
+  const [selectedRabDoc, setSelectedRabDoc] = useState<{ survey: SurveyRecord; paket: SurveyDocType } | null>(null);
 
   // Search & Pagination: Verifikasi AP2T
   const [searchAp2t, setSearchAp2t] = useState('');
@@ -70,6 +67,8 @@ export const PraDaftungView: React.FC = () => {
     setFinalName(s.customerName);
     setIsNameChanged(Boolean(s.isNameChanged));
     setNewCustomerName(s.isNameChanged ? s.customerName : '');
+    setDayaBaruVal(s.dayaBaru || s.daya || '');
+    setAlamatVal(s.location || s.address || '');
     setPaymentStatus(s.paymentStatus === 'Sudah Bayar' ? 'Sudah Bayar' : 'Sudah Bayar');
     setNidiVal(s.nidi !== undefined ? s.nidi : true);
     setSloVal(s.slo !== undefined ? s.slo : true);
@@ -80,19 +79,29 @@ export const PraDaftungView: React.FC = () => {
     e.preventDefault();
     if (!verifyingSurvey) return;
 
-    // Tentukan nama pelanggan akhir: jika dicentang ganti nama dan diisi nama baru, pakai nama baru
+    // Tentukan nama pelanggan akhir: jika dicentang ada perubahan dan diisi nama baru, pakai nama baru
     const effectiveCustomerName = isNameChanged && newCustomerName.trim()
       ? newCustomerName.trim()
       : finalName.trim();
 
     const originalName = verifyingSurvey.originalCustomerName || verifyingSurvey.customerName;
+    // Tanda "Semula" hanya bila nama benar-benar berganti (perubahan bisa saja hanya daya/alamat).
+    const nameDiffers = isNameChanged && effectiveCustomerName !== originalName;
 
     const nextStatus = paymentStatus === 'Sudah Bayar' ? 'Siap Apply WO' : 'Masuk Antrean AP2T';
+    const effectiveDaya = dayaBaruVal.trim() || verifyingSurvey.dayaBaru || verifyingSurvey.daya;
+    const effectiveAlamat = alamatVal.trim() || verifyingSurvey.location;
     
     updateSurvey(verifyingSurvey.id, {
       customerName: effectiveCustomerName,
-      originalCustomerName: isNameChanged ? originalName : undefined,
-      isNameChanged: isNameChanged,
+      originalCustomerName: nameDiffers ? originalName : undefined,
+      isNameChanged: nameDiffers,
+      ...(isNameChanged && {
+        dayaBaru: effectiveDaya,
+        daya: effectiveDaya,
+        location: effectiveAlamat,
+        address: effectiveAlamat,
+      }),
       paymentStatus: paymentStatus,
       status: nextStatus,
       nidi: nidiVal,
@@ -203,7 +212,8 @@ export const PraDaftungView: React.FC = () => {
                 <tr className="divide-x divide-slate-200">
                   <th className="py-3 px-3.5 whitespace-nowrap">ID SURVEY</th>
                   <th className="py-3 px-4 min-w-[220px]">NAMA PELANGGAN</th>
-                  <th className="py-3 px-3.5 min-w-[130px] whitespace-nowrap">DAYA & TARIF</th>
+                  <th className="py-3 px-3.5 min-w-[130px] whitespace-nowrap">DAYA & TARIF BARU</th>
+                  <th className="py-3 px-3.5 min-w-[130px] whitespace-nowrap">DAYA & TARIF LAMA</th>
                   <th className="py-3 px-3.5 min-w-[220px]">LOKASI & ULP</th>
                   <th className="py-3 px-3 text-center whitespace-nowrap">STATUS BAYAR</th>
                   <th className="py-3 px-3 text-center whitespace-nowrap">NIDI / SLO</th>
@@ -214,7 +224,7 @@ export const PraDaftungView: React.FC = () => {
               <tbody className="divide-y divide-slate-200">
                 {paginatedAp2t.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-8 text-center text-slate-400">
+                    <td colSpan={9} className="py-8 text-center text-slate-400">
                       Tidak ada data verifikasi AP2T.
                     </td>
                   </tr>
@@ -231,7 +241,7 @@ export const PraDaftungView: React.FC = () => {
                       );
                     });
                     const isWoApplied = relatedWos.length > 0;
-                    const isWoApproved = relatedWos.some((w) => w.status === 'Konstruksi' || w.status === 'Selesai');
+                    const isWoApproved = relatedWos.some((w) => w.status === 'Konstruksi' || w.status === 'Selesai' || w.status === 'Closeout');
 
                     return (
                       <tr key={s.id} className="hover:bg-slate-50/80 transition-colors divide-x divide-slate-200">
@@ -262,6 +272,21 @@ export const PraDaftungView: React.FC = () => {
                           <span className="text-[11px] text-slate-500 font-medium">
                             Tarif {s.tarifBaru || s.tarif || 'I2'}
                           </span>
+                        </td>
+
+                        <td className="py-3.5 px-3.5 align-middle whitespace-nowrap">
+                          {s.dayaLama || s.tarifLama ? (
+                            <>
+                              <span className="font-mono font-bold text-slate-700 text-xs block">
+                                {s.dayaLama || '-'} VA
+                              </span>
+                              <span className="text-[11px] text-slate-500 font-medium">
+                                Tarif {s.tarifLama || '-'}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">— (Pasang Baru)</span>
+                          )}
                         </td>
 
                         <td className="py-3.5 px-3.5 align-middle text-xs">
@@ -302,9 +327,7 @@ export const PraDaftungView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              const initialPaket = s.poles?.some((p) => p.networkType === 'JTM' || p.id.startsWith('TM'))
-                                ? 'paket1'
-                                : 'paket2';
+                              const [initialPaket = 'paket2'] = listSurveyDocs(getSurveyPackages(s));
                               setSelectedRabDoc({ survey: s, paket: initialPaket });
                             }}
                             className="px-2.5 py-1 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 font-semibold rounded-lg transition border border-blue-200 inline-flex items-center gap-1 cursor-pointer"
@@ -450,15 +473,41 @@ export const PraDaftungView: React.FC = () => {
                   <input
                     type="text"
                     value={finalName}
-                    onChange={(e) => setFinalName(e.target.value)}
-                    disabled={isNameChanged}
-                    className={`w-full p-2.5 border rounded-xl font-bold transition focus:outline-none ${
-                      isNameChanged 
-                        ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed' 
-                        : 'bg-white text-slate-900 border-slate-300 focus:ring-2 focus:ring-blue-500/20'
-                    }`}
-                    required={!isNameChanged}
+                    readOnly
+                    disabled
+                    title="Centang 'Ada Perubahan Data Pelanggan di AP2T' untuk mengubah"
+                    className="w-full p-2.5 border rounded-xl font-bold transition focus:outline-none bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed"
                   />
+                </div>
+
+                {/* Data daya & alamat hasil survey (hanya bisa diubah lewat centang perubahan) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      {isNameChanged ? 'Daya Semula (VA):' : 'Daya Baru (VA):'}
+                    </label>
+                    <input
+                      type="text"
+                      value={verifyingSurvey.dayaBaru || verifyingSurvey.daya || '-'}
+                      readOnly
+                      disabled
+                      title="Centang 'Ada Perubahan Data Pelanggan di AP2T' untuk mengubah"
+                      className="w-full p-2.5 border rounded-xl font-bold font-mono bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block font-bold text-slate-700 mb-1">
+                      {isNameChanged ? 'Alamat Semula:' : 'Alamat Lokasi:'}
+                    </label>
+                    <input
+                      type="text"
+                      value={verifyingSurvey.location || verifyingSurvey.address || '-'}
+                      readOnly
+                      disabled
+                      title="Centang 'Ada Perubahan Data Pelanggan di AP2T' untuk mengubah"
+                      className="w-full p-2.5 border rounded-xl font-semibold bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed"
+                    />
+                  </div>
                 </div>
 
                 {/* Trigger Checkbox: Ada Perubahan / Balik Nama Pelanggan di AP2T */}
@@ -478,30 +527,60 @@ export const PraDaftungView: React.FC = () => {
                     />
                     <div>
                       <span className="font-bold text-slate-800 text-xs block">
-                        Ada Perubahan / Ganti Nama Pelanggan di AP2T
+                        Ada Perubahan Data Pelanggan di AP2T (Nama / Daya / Alamat)
                       </span>
                       <span className="text-[10.5px] text-slate-500 block">
-                        Centang opsi ini jika data nama permohonan di AP2T berbeda / terjadi balik nama pelanggan.
+                        Centang opsi ini jika nama, daya, atau alamat permohonan di AP2T berbeda dengan hasil survey / terjadi balik nama pelanggan.
                       </span>
                     </div>
                   </label>
 
-                  {/* Inputan Nama Baru yang muncul saat di-trigger */}
+                  {/* Inputan perubahan data yang muncul saat di-trigger */}
                   {isNameChanged && (
-                    <div className="pt-2.5 border-t border-slate-200 animate-fadeIn">
-                      <label className="block font-bold text-blue-900 mb-1">
-                        Nama Pelanggan Baru (Sesuai AP2T): <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={newCustomerName}
-                        onChange={(e) => setNewCustomerName(e.target.value)}
-                        placeholder="Masukkan nama pelanggan baru hasil verifikasi AP2T..."
-                        className="w-full p-2.5 border-2 border-blue-400 rounded-xl font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 shadow-xs"
-                        required={isNameChanged}
-                      />
-                      <p className="text-[10.5px] text-blue-600 mt-1">
-                        💡 Nama baru ini yang akan digunakan pada dokumen Potensi Daftung dan Work Order (WO).
+                    <div className="pt-2.5 border-t border-slate-200 space-y-3 animate-fadeIn">
+                      <div>
+                        <label className="block font-bold text-blue-900 mb-1">
+                          Nama Pelanggan Baru (Sesuai AP2T): <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={newCustomerName}
+                          onChange={(e) => setNewCustomerName(e.target.value)}
+                          placeholder="Masukkan nama pelanggan baru hasil verifikasi AP2T..."
+                          className="w-full p-2.5 border-2 border-blue-400 rounded-xl font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 shadow-xs"
+                          required
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block font-bold text-blue-900 mb-1">
+                            Daya Baru (VA): <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={dayaBaruVal}
+                            onChange={(e) => setDayaBaruVal(e.target.value)}
+                            placeholder="Contoh: 1.300"
+                            className="w-full p-2.5 border-2 border-blue-400 rounded-xl font-bold font-mono text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 shadow-xs"
+                            required
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block font-bold text-blue-900 mb-1">
+                            Alamat Lokasi: <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={alamatVal}
+                            onChange={(e) => setAlamatVal(e.target.value)}
+                            placeholder="Kp. ..., Desa ..., Kec. ..., Kab. ..."
+                            className="w-full p-2.5 border-2 border-blue-400 rounded-xl font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 shadow-xs"
+                            required
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[10.5px] text-blue-600">
+                        💡 Data baru ini yang akan digunakan pada dokumen RAB, Potensi Daftung, dan Work Order (WO).
                       </p>
                     </div>
                   )}
@@ -512,7 +591,7 @@ export const PraDaftungView: React.FC = () => {
                 <label className="block font-bold text-slate-700 mb-1">Status Pembayaran di Kasir AP2T:</label>
                 <select
                   value={paymentStatus}
-                  onChange={(e) => setPaymentStatus(e.target.value as any)}
+                  onChange={(e) => setPaymentStatus(e.target.value as typeof paymentStatus)}
                   className="w-full p-2.5 border border-slate-300 rounded-xl font-bold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
                 >
                   <option value="Sudah Bayar">✓ Sudah Bayar (Lunas BP/UJL ➔ Siap Apply WO)</option>

@@ -1,50 +1,138 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SurveyRecord, WorkOrderRecord } from '@/types';
 import { calculateRabFromSurvey, RabRowItem } from '@/data/rabMasterData';
-import { generateWorkTitlePln } from '@/data/surveyRabCalculator';
-import { usePromotorStore } from '@/store/usePromotorStore';
-import { 
-  X, 
-  Printer, 
-  Download, 
-  Zap, 
-  CheckCircle2, 
-  Layers,
-  FileSpreadsheet,
+import {
+  generateWorkTitlePln,
+  getSurveyPackages,
+  listSurveyDocs,
+  calculateTiangRabFromSurvey,
+  SurveyDocType,
+} from '@/data/surveyRabCalculator';
+import { usePromotorStore, isWoPendingApproval } from '@/store/usePromotorStore';
+import {
+  X,
+  Printer,
   PenTool,
-  Edit3
+  Edit3,
+  Save
 } from 'lucide-react';
 import { SignaturePadModal } from './SignaturePadModal';
 
-// Paraf Otentik Hasian Sitorus dari Screenshot Excel User
-const DEFAULT_HASIAN_PARAF = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="200" height="120"><path d="M 40,70 C 50,50 70,25 78,12 C 82,5 75,8 70,22 C 62,48 55,80 48,112 M 52,72 C 60,48 72,40 82,42 C 90,44 88,62 89,76 C 92,28 102,20 108,30 C 112,38 110,68 112,80 C 116,48 126,45 132,56 C 136,66 138,82 144,102 M 62,58 L 130,56" fill="none" stroke="%23003366" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+/** Penunjuk baris dokumen ke item WO asalnya (indeks di `materials` / `jasaItems`). */
+type WoItemRef = { group: 'materials' | 'jasaItems'; index: number };
+type DocRow = RabRowItem & { woRef?: WoItemRef };
 
-// Paraf Standar Asman Konstruksi
-const DEFAULT_ASMAN_PARAF = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="200" height="120"><path d="M 35,45 C 45,80 55,85 62,35 C 70,75 80,80 88,30 C 95,45 110,25 125,50 C 135,68 120,85 95,80 M 45,90 L 140,88" fill="none" stroke="%23003366" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const refKey = (ref: WoItemRef) => `${ref.group}:${ref.index}`;
+
+/** Input volume ditulis bebas (boleh koma desimal); NaN berarti belum valid. */
+const parseVolume = (raw: string) => (raw.trim() === '' ? NaN : Number(raw.replace(',', '.')));
+
+/** Tab dokumen di mode RAB survey. */
+const SURVEY_DOC_TABS: Record<SurveyDocType, { label: string; activeClass: string }> = {
+  paket1: { label: 'RAB JTM (Paket 1)', activeClass: 'bg-purple-600' },
+  paket2: { label: 'RAB JTR (Paket 2)', activeClass: 'bg-blue-600' },
+  tiang: { label: 'RAB WO Tiang', activeClass: 'bg-sky-700' },
+};
+
+/** Subtotal, PPN 11%, total, dan pembulatan dokumen RAB/WO — sama persis dengan tabel. */
+const computeDocTotals = (items: RabRowItem[]) => {
+  let matRencana = 0;
+  let matRealisasi = 0;
+  let jasRencana = 0;
+  let jasRealisasi = 0;
+
+  items.forEach((it) => {
+    if (!it.isHeader) {
+      if (it.section === 'MATERIAL') {
+        matRencana += it.rencanaTotal;
+        matRealisasi += it.realisasiTotal;
+      } else {
+        jasRencana += it.rencanaTotal;
+        jasRealisasi += it.realisasiTotal;
+      }
+    }
+  });
+
+  const totRencana = matRencana + jasRencana;
+  const totRealisasi = matRealisasi + jasRealisasi;
+  const ppnRencana = Math.round(totRencana * 0.11);
+  const ppnRealisasi = Math.round(totRealisasi * 0.11);
+  const grandRencana = totRencana + ppnRencana;
+  const grandRealisasi = totRealisasi + ppnRealisasi;
+
+  return {
+    matRencana,
+    matRealisasi,
+    jasRencana,
+    jasRealisasi,
+    totRencana,
+    totRealisasi,
+    ppnRencana,
+    ppnRealisasi,
+    grandRencana,
+    grandRealisasi,
+    dibulatkanRencana: Math.round(grandRencana / 1000) * 1000,
+    dibulatkanRealisasi: Math.round(grandRealisasi / 1000) * 1000,
+  };
+};
 
 interface RabDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
   survey?: SurveyRecord | null;
   woData?: WorkOrderRecord | null;
-  initialPaket?: 'paket1' | 'paket2';
+  /** Kumpulan WO milik satu pelanggan. Kalau diisi, dokumen bisa dipindah-pindah
+   *  lewat tab (WO P1 / WO P2 / WO Tiang) tanpa menutup modal. */
+  woList?: WorkOrderRecord[];
+  /** Dokumen awal. Di mode RAB survey hanya paket yang terbentuk dari isian survey yang bisa dipilih. */
+  initialPaket?: SurveyDocType;
   mode?: 'rab' | 'wo'; // 'rab' = Survey Output (no signatures), 'wo' = Work Order Contract (with signatures)
+  /** Asman boleh merevisi volume rencana langsung di dokumen selama WO menunggu persetujuan. */
+  allowVolumeEdit?: boolean;
 }
 
 export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
   isOpen,
   onClose,
   survey: propSurvey,
-  woData,
+  woData: woDataProp,
+  woList,
   initialPaket = 'paket2',
   mode,
+  allowVolumeEdit = false,
 }) => {
-  const { workOrders, surveys, customKhsPrices } = usePromotorStore();
-  const isWoMode = mode ? mode === 'wo' : Boolean(woData);
+  const { workOrders, surveys, customKhsPrices, updateWoVolumes } = usePromotorStore();
 
-  const resolvePaket = (wo?: WorkOrderRecord | null, initPkt: 'paket1' | 'paket2' = 'paket2'): 'paket1' | 'paket2' => {
+  // --- Tab dokumen WO: satu tab per WO milik pelanggan yang sama ---
+  const tabWos = useMemo(
+    () => (woList && woList.length > 0 ? woList : woDataProp ? [woDataProp] : []),
+    [woList, woDataProp]
+  );
+  const [activeWoId, setActiveWoId] = useState<string | null>(woDataProp?.id ?? null);
+
+  // Semua bagian dokumen di bawah ini membaca `woData` = WO yang sedang ditab.
+  // Tab yang dipilih tidak ada di daftar (mis. pemakai berpindah ke WO lain tanpa
+  // menutup modal) -> jatuh kembali ke WO yang dibuka, jadi tidak pernah kosong.
+  // Selalu dibaca ulang dari store supaya revisi volume langsung tampil di dokumen.
+  const selectedWo = tabWos.find((w) => w.id === activeWoId) ?? woDataProp ?? tabWos[0] ?? null;
+  const woData = (selectedWo && workOrders.find((w) => w.id === selectedWo.id)) || selectedWo;
+
+  const isWoMode = mode ? mode === 'wo' : Boolean(woDataProp);
+
+  // --- Revisi volume rencana langsung di tabel dokumen ---
+  const canEditVolume = allowVolumeEdit && isWoMode && Boolean(woData && isWoPendingApproval(woData));
+  const [isEditingVolume, setIsEditingVolume] = useState(false);
+  const [volumeDrafts, setVolumeDrafts] = useState<Record<string, string>>({});
+  const isVolumeEditActive = canEditVolume && isEditingVolume;
+
+  const stopVolumeEdit = () => {
+    setIsEditingVolume(false);
+    setVolumeDrafts({});
+  };
+
+  const resolvePaket = (wo?: WorkOrderRecord | null, initPkt: SurveyDocType = 'paket2'): SurveyDocType => {
     if (!wo) return initPkt;
     const cat = (wo.category || '').toLowerCase();
     const no = (wo.noWorkOrder || wo.id || '').toLowerCase();
@@ -57,22 +145,22 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
     return initPkt;
   };
 
-  const [activePaket, setActivePaket] = useState<'paket1' | 'paket2'>(
-    resolvePaket(woData, initialPaket)
-  );
+  const [activeDoc, setActiveDoc] = useState<SurveyDocType>(resolvePaket(woData, initialPaket));
 
-  useEffect(() => {
-    if (woData) {
-      setActivePaket(resolvePaket(woData, initialPaket));
-    } else {
-      setActivePaket(initialPaket);
-    }
-  }, [woData, initialPaket]);
+  // Paket ikut berpindah saat WO yang dibuka / paket awal berganti. Disinkronkan
+  // saat render (bukan di effect) supaya tidak ada render ganda.
+  const paketSourceKey = `${woData?.id ?? ''}|${woData?.category ?? ''}|${woData?.noWorkOrder ?? ''}|${initialPaket}`;
+  const [syncedPaketKey, setSyncedPaketKey] = useState(paketSourceKey);
+  if (syncedPaketKey !== paketSourceKey) {
+    setSyncedPaketKey(paketSourceKey);
+    setActiveDoc(resolvePaket(woData, initialPaket));
+  }
   const [realisasiOverrides, setRealisasiOverrides] = useState<Record<string, number>>({});
 
   // Resolve survey
   const survey = useMemo(() => {
-    if (propSurvey) return propSurvey;
+    // Ambil versi terbaru dari store agar koreksi AP2T (nama, daya, alamat) langsung tampil.
+    if (propSurvey) return surveys.find((s) => s.id === propSurvey.id) || propSurvey;
     if (woData) {
       const found = surveys.find(
         (s) =>
@@ -98,32 +186,94 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
     return null;
   }, [propSurvey, woData, surveys]);
 
-  // Reset paket when initialPaket or woData changes
-  useEffect(() => {
-    if (woData?.category === 'WO Paket 1') {
-      setActivePaket('paket1');
-    } else if (woData?.category === 'WO Paket 2') {
-      setActivePaket('paket2');
-    } else {
-      setActivePaket(initialPaket);
+  // Perubahan daya menampilkan daya & tarif lama di samping yang baru.
+  const dayaBaruVal = survey?.dayaBaru || survey?.daya || '-';
+  const tarifBaruVal = survey?.tarifBaru || survey?.tarif || '-';
+  const dayaTarifRows: Array<[string, string]> = survey?.dayaLama || survey?.tarifLama
+    ? [
+        ['Daya Baru', dayaBaruVal],
+        ['Tarif Baru', tarifBaruVal],
+        ['Daya Lama', survey.dayaLama || '-'],
+        ['Tarif Lama', survey.tarifLama || '-'],
+      ]
+    : [
+        ['Daya', dayaBaruVal],
+        ['Tarif', tarifBaruVal],
+      ];
+
+  // Mode RAB survey: hanya dokumen paket yang terbentuk dari isian survey yang ditampilkan.
+  const surveyDocs = useMemo(
+    () => (isWoMode ? [] : listSurveyDocs(getSurveyPackages(survey))),
+    [isWoMode, survey]
+  );
+  const noSurveyDoc = !isWoMode && surveyDocs.length === 0;
+  const currentDoc: SurveyDocType =
+    isWoMode || noSurveyDoc || surveyDocs.includes(activeDoc) ? activeDoc : surveyDocs[0];
+  const activePaket: 'paket1' | 'paket2' = currentDoc === 'paket1' ? 'paket1' : 'paket2';
+  const isSurveyTiang = !isWoMode && currentDoc === 'tiang';
+
+  // Judul & nama bagian dokumen mengikuti jenis WO yang sedang dibuka, bukan
+  // hanya paket 1/2. WO Tiang berdiri sendiri di data, jadi labelnya pun sendiri.
+  const docMeta = useMemo(() => {
+    const cat = (woData?.category || '').toLowerCase();
+    const no = (woData?.noWorkOrder || woData?.id || '').toLowerCase();
+    const isTiang = isSurveyTiang || cat.includes('tiang') || cat.includes('(tb)') || no.includes('.tb.');
+    if (isTiang) {
+      return {
+        isTiang,
+        titlePaket: 'WO TIANG',
+        rabTitlePaket: 'WO TIANG (TB)',
+        totalLabel: 'WO TIANG (TB)',
+        matSub: 'MATERIAL TIANG BETON & PENUNJANG',
+        jasSub: 'PEKERJAAN PENDIRIAN TIANG BETON',
+      };
     }
-  }, [initialPaket, woData]);
+    return activePaket === 'paket1'
+      ? {
+          isTiang,
+          titlePaket: 'PAKET 1',
+          rabTitlePaket: 'JTM (PAKET 1)',
+          totalLabel: 'PAKET 1 JTM',
+          matSub: 'MATERIAL SUTM & GARDU',
+          jasSub: 'PEKERJAAN SUTM & GARDU DISTRIBUSI',
+        }
+      : {
+          isTiang,
+          titlePaket: 'PAKET 2',
+          rabTitlePaket: 'JTR (PAKET 2)',
+          totalLabel: 'PAKET 2 JTR',
+          matSub: 'BOX APP, JTR DAN LENGKAPAN',
+          jasSub: 'JASA PEMASANGAN/PENARIKAN SUTR DAN LENGKAPAN',
+        };
+  }, [woData, activePaket, isSurveyTiang]);
+
+  // Label pendek untuk tab WO
+  const woTabLabel = (category?: string): string => {
+    const c = (category || '').toLowerCase();
+    if (c.includes('tiang')) return 'WO Tiang';
+    if (c.includes('paket 1')) return 'WO P1';
+    if (c.includes('paket 2')) return 'WO P2';
+    return category || 'WO';
+  };
 
   // Match WO
-  const targetCategory = activePaket === 'paket1' ? 'WO Paket 1' : 'WO Paket 2';
+  const targetCategory = isSurveyTiang ? 'WO Tiang' : activePaket === 'paket1' ? 'WO Paket 1' : 'WO Paket 2';
   const matchedWo = useMemo(() => {
-    if (woData && woData.category === targetCategory) return woData;
+    // Kalau pemakai membuka dokumen WO tertentu, tampilkan WO itu apa adanya.
+    // Pencocokan di bawah hanya untuk mode RAB hasil survey (tanpa woData); kalau
+    // tidak dikunci, WO Tiang akan tertukar dengan WO Paket 2 milik pelanggan sama.
+    if (woData) return woData;
     const found = workOrders.find(
       (w) =>
         w.category === targetCategory &&
-        (
-          (woData && (w.daftungId === woData.daftungId || w.idpel === woData.idpel || w.customerName.toLowerCase() === woData.customerName.toLowerCase())) ||
-          (survey && (w.idpel === survey.idpel || w.customerName.toLowerCase().includes(survey.customerName.toLowerCase()) || survey.customerName.toLowerCase().includes(w.customerName.toLowerCase())))
+        Boolean(
+          survey &&
+          (w.idpel === survey.idpel ||
+            w.customerName.toLowerCase().includes(survey.customerName.toLowerCase()) ||
+            survey.customerName.toLowerCase().includes(w.customerName.toLowerCase()))
         )
     );
-    if (found) return found;
-    if (woData) return woData;
-    return null;
+    return found || null;
   }, [woData, targetCategory, workOrders, survey]);
 
   // Penyedia B/J, SPK, nomor WO, masa berlaku, dan pengawas baru ditetapkan
@@ -140,10 +290,10 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
   // Nama Pekerjaan Otomatis Sesuai Rumus Excel (PROJECT MASTER WO KHS 2026.xlsx -> ISIAN PEKERJAAN B478/C478)
   const workTitle = useMemo(() => {
     const dataSource = survey || matchedWo || woData;
-    const generated = generateWorkTitlePln(dataSource, activePaket);
+    const generated = generateWorkTitlePln(dataSource, docMeta.isTiang ? 'tiang' : activePaket);
     if (generated && generated !== '-') return generated;
     return survey?.customerName || matchedWo?.customerName || '-';
-  }, [survey, matchedWo, woData, activePaket]);
+  }, [survey, matchedWo, woData, activePaket, docMeta.isTiang]);
 
   // State Penandatangan (Dapat diubah dan diberi tanda tangan digital)
   const [approverName, setApproverName] = useState(matchedWo?.approverName || 'WEGIG DIDIK KURNIAWAN');
@@ -169,23 +319,34 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
     initialRole: '',
   });
 
-  useEffect(() => {
-    if (matchedWo) {
-      if (matchedWo.approverName) setApproverName(matchedWo.approverName);
-      if (matchedWo.approverRole) setApproverRole(matchedWo.approverRole);
-      setApproverSig(matchedWo.approverSignature || null);
-      if (matchedWo.creatorName) setCreatorName(matchedWo.creatorName);
-      if (matchedWo.creatorRole) setCreatorRole(matchedWo.creatorRole);
-      setCreatorSig(matchedWo.creatorSignature || null);
-    }
-  }, [matchedWo]);
+  // Data penandatangan mengikuti WO yang cocok setiap kali WO itu berubah.
+  const [signerSourceWo, setSignerSourceWo] = useState(matchedWo);
+  if (matchedWo && matchedWo !== signerSourceWo) {
+    setSignerSourceWo(matchedWo);
+    if (matchedWo.approverName) setApproverName(matchedWo.approverName);
+    if (matchedWo.approverRole) setApproverRole(matchedWo.approverRole);
+    setApproverSig(matchedWo.approverSignature || null);
+    if (matchedWo.creatorName) setCreatorName(matchedWo.creatorName);
+    if (matchedWo.creatorRole) setCreatorRole(matchedWo.creatorRole);
+    setCreatorSig(matchedWo.creatorSignature || null);
+  }
 
   // Calculate items
-  const rabItems = useMemo(() => {
-    let baseItems: RabRowItem[] = [];
+  const rabItemsSaved = useMemo(() => {
+    let baseItems: DocRow[] = [];
 
-    // 1. Coba kalkulasi dari data survey jika tersedia tiang
-    if (survey && survey.poles && survey.poles.length > 0) {
+    // 1. Coba kalkulasi dari data survey jika tersedia tiang.
+    //    Khusus WO Tiang, isi dokumen memang milik WO-nya sendiri (material & jasa
+    //    tiang), jadi jangan dihitung ulang dari survey paket 2. Di mode RAB survey,
+    //    WO Tiang = baris tiang dari Paket 1 & 2, dan paket tanpa pemicu tidak dihitung.
+    if (isSurveyTiang && survey) {
+      baseItems = calculateTiangRabFromSurvey(survey, customKhsPrices);
+    } else if (
+      survey &&
+      !noSurveyDoc &&
+      !docMeta.isTiang &&
+      (!isWoMode || (survey.poles && survey.poles.length > 0))
+    ) {
       baseItems = calculateRabFromSurvey(survey, activePaket, customKhsPrices);
     }
 
@@ -194,21 +355,24 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
     const targetWo = woData || matchedWo;
 
     if (activeSurveyItems.length === 0 && targetWo?.materials && targetWo.materials.length > 0) {
-      const subTitle = activePaket === 'paket1' ? 'MATERIAL SUTM & GARDU' : 'BOX APP, JTR DAN LENGKAPAN';
+      const subTitle = docMeta.matSub;
       baseItems = targetWo.materials.map((m, idx) => {
         const vol = m.qtyAllocated || m.qtyReksis || 1;
-        let harga = 250000;
+        // Harga satuan dari WO dipakai kalau benar-benar ada (0 dianggap belum ada).
+        let harga = m.hargaSatuan && m.hargaSatuan > 0 ? m.hargaSatuan : 250000;
         const matLower = m.material.toLowerCase();
-        if (matLower.includes('tiang beton 11') || matLower.includes('tiang 11')) harga = 2850000;
-        else if (matLower.includes('tiang beton 12') || matLower.includes('tiang 12')) harga = 3450000;
-        else if (matLower.includes('tiang beton 9') || matLower.includes('tiang 9')) harga = 1950000;
-        else if (matLower.includes('cross arm')) harga = 485000;
-        else if (matLower.includes('isolator')) harga = 185000;
-        else if (matLower.includes('lvtc') || matLower.includes('twisted')) harga = 48500;
-        else if (matLower.includes('a3cs')) harga = 56000;
-        else if (matLower.includes('suspension')) harga = 75000;
-        else if (matLower.includes('dead end') || matLower.includes('tension')) harga = 110000;
-        else if (matLower.includes('bracket')) harga = 65000;
+        if (!m.hargaSatuan || m.hargaSatuan <= 0) {
+          if (matLower.includes('tiang beton 11') || matLower.includes('tiang 11')) harga = 2850000;
+          else if (matLower.includes('tiang beton 12') || matLower.includes('tiang 12')) harga = 3450000;
+          else if (matLower.includes('tiang beton 9') || matLower.includes('tiang 9')) harga = 1950000;
+          else if (matLower.includes('cross arm')) harga = 485000;
+          else if (matLower.includes('isolator')) harga = 185000;
+          else if (matLower.includes('lvtc') || matLower.includes('twisted')) harga = 48500;
+          else if (matLower.includes('a3cs')) harga = 56000;
+          else if (matLower.includes('suspension')) harga = 75000;
+          else if (matLower.includes('dead end') || matLower.includes('tension')) harga = 110000;
+          else if (matLower.includes('bracket')) harga = 65000;
+        }
 
         return {
           id: `mat-wo-${idx + 1}`,
@@ -227,6 +391,71 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
           realisasiVol: 0,
           realisasiTotal: 0,
           keterangan: 'Kebutuhan Material WO',
+          woRef: { group: 'materials' as const, index: idx },
+        };
+      });
+
+      // Jasa milik WO (mis. pendirian tiang beton) punya harga sendiri di data,
+      // jadi ikut ditampilkan supaya dokumen tidak kehilangan Kelompok Jasa.
+      const woJasa = (targetWo.jasaItems || []).filter(
+        (j) => (j.qtyTarget || 0) > 0 || (j.hargaSatuan || 0) > 0
+      );
+      woJasa.forEach((j, idx) => {
+        const vol = j.qtyTarget || 0;
+        const harga = j.hargaSatuan && j.hargaSatuan > 0 ? j.hargaSatuan : 0;
+        baseItems.push({
+          id: `jas-wo-${idx + 1}`,
+          rowNumber: `J${idx + 1}`,
+          no: String(idx + 1),
+          kode: j.kode || `JSA-${1000 + idx}`,
+          desc: j.deskripsi,
+          sat: j.unit || 'Lot',
+          isHeader: false,
+          headerLevel: undefined,
+          section: 'JASA' as const,
+          subSection: docMeta.jasSub,
+          hargaSatuan: harga,
+          rencanaVol: vol,
+          rencanaTotal: Math.round(vol * harga),
+          realisasiVol: j.qtyRealisasi || 0,
+          realisasiTotal: Math.round((j.qtyRealisasi || 0) * harga),
+          keterangan: 'Pekerjaan sesuai WO',
+          woRef: { group: 'jasaItems', index: (targetWo.jasaItems || []).indexOf(j) },
+        });
+      });
+    }
+
+    // 3. Baris dokumen yang berasal dari survey ditautkan ke item WO-nya. Item WO
+    //    dibentuk dari baris survey aktif dengan urutan yang sama, jadi dicocokkan per
+    //    (kelompok, kode, uraian) secara berurutan agar item kembar tetap tepat.
+    //    Volume WO menjadi acuan dokumen bila sudah direvisi Asman / sedang diedit.
+    if (targetWo && activeSurveyItems.length > 0) {
+      const useWoVolume = Boolean(targetWo.volumeEditedAt) || isVolumeEditActive;
+      const rowKey = (section?: string, kode?: string, desc?: string) =>
+        `${section || ''}|${(kode || '').trim()}|${(desc || '').trim().toLowerCase()}`;
+      const woVolumes = new Map<string, { vol: number; harga: number; ref: WoItemRef }[]>();
+      const addVolume = (key: string, vol: number, harga: number | undefined, ref: WoItemRef) => {
+        woVolumes.set(key, [...(woVolumes.get(key) || []), { vol, harga: harga || 0, ref }]);
+      };
+      (targetWo.materials || []).forEach((m, index) =>
+        addVolume(rowKey('MATERIAL', m.kode, m.material), m.qtyAllocated || m.qtyReksis || 0, m.hargaSatuan, { group: 'materials', index })
+      );
+      (targetWo.jasaItems || []).forEach((j, index) =>
+        addVolume(rowKey('JASA', j.kode, j.deskripsi), j.qtyTarget || 0, j.hargaSatuan, { group: 'jasaItems', index })
+      );
+
+      baseItems = baseItems.map((item) => {
+        if (item.isHeader || item.rencanaVol <= 0) return item;
+        const fromWo = woVolumes.get(rowKey(item.section, item.kode, item.desc))?.shift();
+        if (!fromWo) return item;
+        if (!useWoVolume) return { ...item, woRef: fromWo.ref };
+        const harga = fromWo.harga > 0 ? fromWo.harga : item.hargaSatuan;
+        return {
+          ...item,
+          woRef: fromWo.ref,
+          hargaSatuan: harga,
+          rencanaVol: fromWo.vol,
+          rencanaTotal: Math.round(fromWo.vol * harga),
         };
       });
     }
@@ -258,7 +487,19 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
       }
       return item;
     });
-  }, [survey, activePaket, realisasiOverrides, customKhsPrices, woData, matchedWo]);
+  }, [survey, activePaket, realisasiOverrides, customKhsPrices, woData, matchedWo, docMeta, isVolumeEditActive, isSurveyTiang, noSurveyDoc, isWoMode]);
+
+  // Volume yang sedang diketik Asman (belum disimpan) langsung dihitung ke total dokumen.
+  const rabItems = useMemo(() => {
+    if (!isVolumeEditActive) return rabItemsSaved;
+    return rabItemsSaved.map((item) => {
+      const draft = item.woRef ? volumeDrafts[refKey(item.woRef)] : undefined;
+      if (draft === undefined) return item;
+      const vol = parseVolume(draft);
+      if (!Number.isFinite(vol) || vol <= 0) return item;
+      return { ...item, rencanaVol: vol, rencanaTotal: Math.round(vol * item.hargaSatuan) };
+    });
+  }, [rabItemsSaved, isVolumeEditActive, volumeDrafts]);
 
   // HANYA tampilkan item material & jasa yang benar-benar diinput di survey (rencanaVol > 0)
   // Sub-header yang kosong tidak ditampilkan sama sekali
@@ -328,80 +569,66 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
     const materialItems = activeItems.filter((r) => r.section === 'MATERIAL');
     const jasaItems    = activeItems.filter((r) => r.section === 'JASA');
     const hasJasa      = jasaItems.length > 0;
-    const result: RabRowItem[] = [];
+    const result: DocRow[] = [];
 
     if (materialItems.length > 0) {
       if (hasJasa) result.push(makeHdr('hdr-mat', 'I', 'KELOMPOK MATERIAL', 'MATERIAL', 'I'));
-      const matSubTitle = activePaket === 'paket1' ? 'MATERIAL SUTM & GARDU' : 'BOX APP, JTR DAN LENGKAPAN';
+      const matSubTitle = docMeta.matSub;
       result.push(makeHdr('hdr-mat-a', 'A', matSubTitle, 'MATERIAL', 'A'));
       materialItems.forEach((it, idx) => result.push({ ...it, no: String(idx + 1) }));
     }
 
     if (jasaItems.length > 0) {
       result.push(makeHdr('hdr-jas', 'II', 'KELOMPOK JASA', 'JASA', 'II'));
-      const jasSubTitle = activePaket === 'paket1'
-        ? 'PEKERJAAN SUTM & GARDU DISTRIBUSI'
-        : 'JASA PEMASANGAN/PENARIKAN SUTR DAN LENGKAPAN';
+      const jasSubTitle = docMeta.jasSub;
       result.push(makeHdr('hdr-jas-a', 'A', jasSubTitle, 'JASA', 'A'));
       jasaItems.forEach((it, idx) => result.push({ ...it, no: String(idx + 1) }));
     }
 
     return result;
-  }, [rabItems, activePaket]);
+  }, [rabItems, docMeta]);
 
-  // Totals
-  const totals = useMemo(() => {
-    let matRencana = 0;
-    let matRealisasi = 0;
-    let jasRencana = 0;
-    let jasRealisasi = 0;
+  // Totals (persis seperti baris ringkasan di tabel dokumen)
+  const totals = useMemo(() => computeDocTotals(rabItems), [rabItems]);
 
-    rabItems.forEach((it) => {
-      if (!it.isHeader) {
-        if (it.section === 'MATERIAL') {
-          matRencana += it.rencanaTotal;
-          matRealisasi += it.realisasiTotal;
-        } else {
-          jasRencana += it.rencanaTotal;
-          jasRealisasi += it.realisasiTotal;
-        }
-      }
-    });
-
-    const totRencana = matRencana + jasRencana;
-    const totRealisasi = matRealisasi + jasRealisasi;
-    const ppnRencana = Math.round(totRencana * 0.11);
-    const ppnRealisasi = Math.round(totRealisasi * 0.11);
-    const grandRencana = totRencana + ppnRencana;
-    const grandRealisasi = totRealisasi + ppnRealisasi;
-
-    return {
-      matRencana,
-      matRealisasi,
-      jasRencana,
-      jasRealisasi,
-      totRencana,
-      totRealisasi,
-      ppnRencana,
-      ppnRealisasi,
-      grandRencana,
-      grandRealisasi,
-      dibulatkanRencana: Math.round(grandRencana / 1000) * 1000,
-      dibulatkanRealisasi: Math.round(grandRealisasi / 1000) * 1000,
+  // Volume akhir per item WO (draft yang diketik, atau volume WO bila tidak diubah).
+  const volumeEdit = useMemo(() => {
+    if (!isVolumeEditActive || !woData) return null;
+    const materials = woData.materials || [];
+    const jasaItems = woData.jasaItems || [];
+    const resolve = (ref: WoItemRef, current: number) => {
+      const draft = volumeDrafts[refKey(ref)];
+      return draft === undefined ? current : parseVolume(draft);
     };
-  }, [rabItems]);
+    const matVols = materials.map((m, index) => resolve({ group: 'materials', index }, m.qtyAllocated || m.qtyReksis || 0));
+    const jasaVols = jasaItems.map((j, index) => resolve({ group: 'jasaItems', index }, j.qtyTarget || 0));
+    const invalidCount = Object.values(volumeDrafts).filter((d) => {
+      const v = parseVolume(d);
+      return !(Number.isFinite(v) && v > 0);
+    }).length;
+    const changedCount =
+      materials.filter((m, i) => matVols[i] !== (m.qtyAllocated || m.qtyReksis || 0)).length +
+      jasaItems.filter((j, i) => jasaVols[i] !== (j.qtyTarget || 0)).length;
 
-  const formatRp = (val: number) => {
-    if (!val || val === 0) return '-';
-    return 'Rp\u00A0' + val.toLocaleString('id-ID');
+    return { matVols, jasaVols, invalidCount, changedCount };
+  }, [isVolumeEditActive, woData, volumeDrafts]);
+
+  const handleSaveVolumes = () => {
+    if (!woData || !volumeEdit) return;
+    if (volumeEdit.invalidCount > 0) {
+      alert('Volume yang diedit wajib diisi dengan angka lebih dari 0.');
+      return;
+    }
+    const tersimpan = updateWoVolumes(
+      woData.id,
+      { materials: volumeEdit.matVols, jasaItems: volumeEdit.jasaVols },
+      woData.approverName
+    );
+    if (tersimpan) stopVolumeEdit();
   };
 
   const handlePrint = () => {
     const logoUrl = `${window.location.origin}/Logo_PLN.png`;
-    const fmtRp = (val: number) => {
-      if (!val || val === 0) return '';
-      return `Rp&nbsp;${val.toLocaleString('id-ID')}`;
-    };
     const fmtRpLeft = (val: number) => {
       if (!val || val === 0) return '';
       return `<span style="display:inline-flex;justify-content:space-between;width:100%;"><span>Rp</span><span>${val.toLocaleString('id-ID')}</span></span>`;
@@ -464,8 +691,9 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
     const coordVal = (survey?.poles && survey.poles[0]?.lat)
       ? `${survey.poles[0].lat.toFixed(6)},${survey.poles[0].lng?.toFixed(6)}`
       : '-';
-    const dayaVal = survey?.dayaBaru || survey?.daya || '-';
-    const tarifVal = survey?.tarifBaru || survey?.tarif || '-';
+    const dayaTarifHtml = dayaTarifRows
+      .map(([label, val]) => `<tr><td style="border:none;padding:0.5px 0;width:48px;white-space:nowrap;">${label}</td><td style="border:none;padding:0.5px 4px;width:8px;">:</td><td style="border:none;padding:0.5px 0;">${val}</td></tr>`)
+      .join('');
 
     const signatureBlock = isWoMode ? `
       <div style="margin-top:4mm;border:1px solid #000;padding:3mm 4mm;">
@@ -489,14 +717,14 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
       </div>` : '';
 
     const docTitle = isWoMode
-      ? `WORK ORDER JASA PEMASARAN ${activePaket === 'paket1' ? 'PAKET 1' : 'PAKET 2'} UP3 BANTEN SELATAN`
-      : `RENCANA ANGGARAN BIAYA (RAB) ${activePaket === 'paket1' ? 'JTM (PAKET 1)' : 'JTR (PAKET 2)'} UP3 BANTEN SELATAN`;
+      ? `WORK ORDER JASA PEMASARAN ${docMeta.titlePaket} UP3 BANTEN SELATAN`
+      : `RENCANA ANGGARAN BIAYA (RAB) ${docMeta.rabTitlePaket} UP3 BANTEN SELATAN`;
 
     const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="utf-8"/>
-  <title>${isWoMode ? 'WORK_ORDER' : 'RAB'}_${survey?.id || 'PLN'}</title>
+  <title>${isWoMode ? 'WORK_ORDER' : 'RAB'}_${woData?.id || survey?.id || 'PLN'}</title>
   <style>
     @page { size: A4 portrait; margin: 6mm 7mm; }
     *, *::before, *::after { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -569,8 +797,7 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
           </td>
           <td style="border:none;padding:0 0 0 6mm;vertical-align:top;width:32%;">
             <table style="border:none;width:100%;font-size:6.8pt;line-height:1.4;">
-              <tr><td style="border:none;padding:0.5px 0;width:36px;white-space:nowrap;">Daya</td><td style="border:none;padding:0.5px 4px;width:8px;">:</td><td style="border:none;padding:0.5px 0;">${dayaVal}</td></tr>
-              <tr><td style="border:none;padding:0.5px 0;">Tarif</td><td style="border:none;padding:0.5px 4px;">:</td><td style="border:none;padding:0.5px 0;">${tarifVal}</td></tr>
+              ${dayaTarifHtml}
             </table>
           </td>
         </tr>
@@ -611,7 +838,7 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
       <td style="border:1px solid #000;vertical-align:middle;"></td>
     </tr>
     <tr>
-      <td colspan="5" style="border:1.5px solid #000;padding:3px 5px;text-align:right;font-weight:900;text-transform:uppercase;vertical-align:middle;">TOTAL NILAI WO / RAB (${activePaket === 'paket1' ? 'PAKET 1 JTM' : 'PAKET 2 JTR'})</td>
+      <td colspan="5" style="border:1.5px solid #000;padding:3px 5px;text-align:right;font-weight:900;text-transform:uppercase;vertical-align:middle;">TOTAL NILAI WO / RAB (${docMeta.totalLabel})</td>
       <td colspan="2" style="border:1.5px solid #000;padding:3px 5px;text-align:right;font-weight:900;white-space:nowrap;vertical-align:middle;">${fmtRpLeft(totals.grandRencana)}</td>
       <td colspan="2" style="border:1.5px solid #000;padding:3px 5px;text-align:right;font-weight:900;white-space:nowrap;vertical-align:middle;">${totals.grandRealisasi > 0 ? fmtRpLeft(totals.grandRealisasi) : ''}</td>
       <td style="border:1.5px solid #000;vertical-align:middle;"></td>
@@ -643,44 +870,6 @@ ${signatureBlock}
       printWin.print();
       setTimeout(() => printWin.close(), 1000);
     }, 600);
-  };
-
-
-
-  const handleExportCSV = () => {
-    const hasJasa = totals.jasRencana > 0 || totals.jasRealisasi > 0;
-    const headers = [
-      'No', 
-      'Nomor Material', 
-      hasJasa ? 'Uraian Material & Jasa' : 'Uraian Material', 
-      'Sat', 
-      'Harga Satuan', 
-      'Rencana Vol', 
-      'Rencana Total', 
-      'Realisasi Vol', 
-      'Realisasi Total', 
-      'Keterangan'
-    ];
-    const rows = rabItems.map((r) => [
-      r.no,
-      r.kode,
-      `"${r.desc.replace(/"/g, '""')}"`,
-      r.sat,
-      r.hargaSatuan,
-      r.rencanaVol,
-      r.rencanaTotal,
-      r.realisasiVol,
-      r.realisasiTotal,
-      `"${r.keterangan || ''}"`,
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `OUTPUT_RAB_${activePaket.toUpperCase()}_${survey?.id || 'WO'}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   if (!isOpen || !survey) return null;
@@ -799,43 +988,100 @@ ${signatureBlock}
 
             {/* Paket Indicator: Jika mode Dokumen WO, kunci dan tampilkan paket yang dibuka saja (tanpa toggle switch) */}
             {isWoMode ? (
-              <div className="flex items-center">
-                {activePaket === 'paket1' ? (
-                  <span className="px-3.5 py-1.5 rounded-xl bg-purple-600 text-white font-black text-xs border border-purple-400/50 shadow-xs tracking-wide">
-                    WO Paket 1 (JTM)
-                  </span>
-                ) : (
-                  <span className="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white font-black text-xs border border-blue-400/50 shadow-xs tracking-wide">
-                    WO Paket 2 (JTR)
-                  </span>
-                )}
-              </div>
+              tabWos.length > 1 ? (
+                /* Beberapa WO milik pelanggan dibuka lewat tab: WO P1 | WO P2 | WO Tiang */
+                <div className="flex items-center bg-slate-800 p-0.5 rounded-xl text-xs font-bold border border-slate-700 gap-0.5">
+                  {tabWos.map((w) => {
+                    const isActive = w.id === woData?.id;
+                    return (
+                      <button
+                        key={w.id}
+                        type="button"
+                        onClick={() => {
+                          if (w.id !== woData?.id) stopVolumeEdit();
+                          setActiveWoId(w.id);
+                        }}
+                        title={`${w.category || 'WO'} — ${w.id}`}
+                        className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap cursor-pointer ${
+                          isActive ? 'bg-amber-500 text-slate-900 shadow-xs font-black' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {woTabLabel(w.category)}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span
+                  className={`px-3.5 py-1.5 rounded-xl text-white font-black text-xs border shadow-xs tracking-wide ${
+                    docMeta.isTiang
+                      ? 'bg-sky-700 border-sky-400/50'
+                      : activePaket === 'paket1'
+                      ? 'bg-purple-600 border-purple-400/50'
+                      : 'bg-blue-600 border-blue-400/50'
+                  }`}
+                >
+                  {docMeta.isTiang ? 'WO Tiang (TB)' : activePaket === 'paket1' ? 'WO Paket 1 (JTM)' : 'WO Paket 2 (JTR)'}
+                </span>
+              )
+            ) : noSurveyDoc ? (
+              <span className="px-3.5 py-1.5 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300">
+                Belum ada paket dari isian survey
+              </span>
             ) : (
-              /* Mode RAB Survey Umum (Bisa pilih Paket 1 atau Paket 2) */
+              /* Mode RAB Survey: hanya paket yang terbentuk dari isian survey */
               <div className="flex items-center bg-slate-800 p-0.5 rounded-xl text-xs font-bold border border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setActivePaket('paket1')}
-                  className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-                    activePaket === 'paket1' ? 'bg-purple-600 text-white shadow-xs font-black' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <span>RAB JTM (Paket 1)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActivePaket('paket2')}
-                  className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-                    activePaket === 'paket2' ? 'bg-blue-600 text-white shadow-xs font-black' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <span>RAB JTR (Paket 2)</span>
-                </button>
+                {surveyDocs.map((doc) => {
+                  const meta = SURVEY_DOC_TABS[doc];
+                  return (
+                    <button
+                      key={doc}
+                      type="button"
+                      onClick={() => setActiveDoc(doc)}
+                      className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                        currentDoc === doc ? `${meta.activeClass} text-white shadow-xs font-black` : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span>{meta.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
 
           <div className="flex items-center gap-2">
+            {canEditVolume && (
+              isVolumeEditActive ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={stopVolumeEdit}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700 cursor-pointer"
+                  >
+                    Batal Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveVolumes}
+                    disabled={!volumeEdit || volumeEdit.invalidCount > 0 || volumeEdit.changedCount === 0}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    title="Simpan volume rencana hasil revisi ke Work Order"
+                  >
+                    <Save className="w-3.5 h-3.5" /> Simpan Volume
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingVolume(true)}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Edit volume rencana material & jasa langsung di dokumen"
+                >
+                  <Edit3 className="w-3.5 h-3.5" /> Edit Volume
+                </button>
+              )
+            )}
             {isWoMode && (
               <button
                 type="button"
@@ -894,8 +1140,8 @@ ${signatureBlock}
             <div className="w-full py-2 px-3 border-b border-black flex flex-col justify-center items-center text-center print:py-1">
               <h2 className="font-bold text-[11px] print:text-[7.5pt] uppercase tracking-wide">
                 {isWoMode
-                  ? `WORK ORDER JASA PEMASARAN ${activePaket === 'paket1' ? 'PAKET 1' : 'PAKET 2'} UP3 BANTEN SELATAN`
-                  : `RENCANA ANGGARAN BIAYA (RAB) ${activePaket === 'paket1' ? 'JTM (PAKET 1)' : 'JTR (PAKET 2)'} UP3 BANTEN SELATAN`}
+                  ? `WORK ORDER JASA PEMASARAN ${docMeta.titlePaket} UP3 BANTEN SELATAN`
+                  : `RENCANA ANGGARAN BIAYA (RAB) ${docMeta.rabTitlePaket} UP3 BANTEN SELATAN`}
               </h2>
               {/* Penyedia B/J baru ditetapkan saat WO di-apply, jadi tidak tampil di RAB */}
               {isWoMode && (
@@ -1000,20 +1246,13 @@ ${signatureBlock}
 
               {/* Kolom Kanan: 4 Kolom (Daya & Tarif) */}
               <div className="md:col-span-4 space-y-0.5">
-                <div className="flex items-start">
-                  <span className="w-12 shrink-0 font-normal">Daya</span>
-                  <span className="w-3 text-center">:</span>
-                  <span className="font-normal flex-1">
-                    {survey.dayaBaru || survey.daya || '23.000 VA - 33.000 VA, 16.500 VA - 23.000 VA, 10.600 VA, 10.600 VA'}
-                  </span>
-                </div>
-                <div className="flex items-start">
-                  <span className="w-12 shrink-0 font-normal">Tarif</span>
-                  <span className="w-3 text-center">:</span>
-                  <span className="font-normal flex-1">
-                    {survey.tarifBaru || survey.tarif || 'I2'}
-                  </span>
-                </div>
+                {dayaTarifRows.map(([label, val]) => (
+                  <div key={label} className="flex items-start">
+                    <span className="w-16 shrink-0 font-normal whitespace-nowrap">{label}</span>
+                    <span className="w-3 text-center">:</span>
+                    <span className="font-normal flex-1">{val}</span>
+                  </div>
+                ))}
               </div>
 
             </div>
@@ -1074,12 +1313,17 @@ ${signatureBlock}
                     );
                   }
 
-                  const hasVol = item.rencanaVol > 0;
+                  const draftKey = isVolumeEditActive && item.woRef ? refKey(item.woRef) : null;
+                  const draftValue = draftKey ? volumeDrafts[draftKey] : undefined;
+                  const draftNum = draftValue === undefined ? NaN : parseVolume(draftValue);
+                  const isDraftInvalid = draftValue !== undefined && !(Number.isFinite(draftNum) && draftNum > 0);
 
                   return (
                     <tr
                       key={item.id}
-                      className="text-black border-b border-black hover:bg-slate-50 transition-colors text-[9.5px] print:text-[6.1pt]"
+                      className={`text-black border-b border-black hover:bg-slate-50 transition-colors text-[9.5px] print:text-[6.1pt] ${
+                        draftValue !== undefined ? 'bg-indigo-50/60' : ''
+                      }`}
                     >
                       <td className="py-0.5 px-1.5 text-center border border-black font-normal">{item.no || '-'}</td>
                       <td className="py-0.5 px-2 text-center border border-black font-mono font-semibold text-slate-700 text-[10px] print:text-[6pt] whitespace-nowrap align-middle">
@@ -1101,7 +1345,29 @@ ${signatureBlock}
                       </td>
                       {/* Rencana Vol */}
                       <td className="py-0.5 px-1 text-center border border-black tabular-nums">
-                        {item.rencanaVol > 0 ? item.rencanaVol : ''}
+                        {draftKey ? (
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="any"
+                            inputMode="decimal"
+                            value={draftValue ?? String(item.rencanaVol)}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setVolumeDrafts((prev) => ({ ...prev, [draftKey]: next }));
+                            }}
+                            title="Volume rencana (klik untuk ubah)"
+                            className={`w-full min-w-12 px-0.5 py-0.5 text-center font-bold rounded border text-[9.5px] tabular-nums focus:outline-hidden focus:ring-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                              isDraftInvalid
+                                ? 'border-rose-400 bg-rose-50 text-rose-700 focus:ring-rose-500'
+                                : draftValue !== undefined
+                                ? 'border-indigo-400 bg-white text-indigo-700 focus:ring-indigo-500'
+                                : 'border-indigo-200 bg-white text-black focus:ring-indigo-500'
+                            }`}
+                          />
+                        ) : (
+                          item.rencanaVol > 0 ? item.rencanaVol : ''
+                        )}
                       </td>
                       {/* Rencana Total */}
                       <td className="py-0.5 px-1.5 text-right border border-black whitespace-nowrap tabular-nums">
@@ -1260,7 +1526,7 @@ ${signatureBlock}
 
                 <tr className="bg-white font-black border-t-2 border-b-2 border-black">
                   <td colSpan={5} className="py-1 px-3 text-right uppercase border border-black font-black">
-                    TOTAL NILAI WO / RAB ({activePaket === 'paket1' ? 'PAKET 1 JTM' : 'PAKET 2 JTR'})
+                    TOTAL NILAI WO / RAB ({docMeta.totalLabel})
                   </td>
                   <td colSpan={2} className="py-1 px-2 text-right border border-black font-black whitespace-nowrap tabular-nums">
                     <div className="flex justify-between items-center w-full">
@@ -1396,6 +1662,7 @@ ${signatureBlock}
           <span>
             Acuan: <b>KHS 2026 PT PLN (Persero) UP3 Banten Selatan</b>
             {isWoMode ? ' • Klik tanda tangan untuk ubah/tanda tangan digital.' : ''}
+            {canEditVolume ? ' • Volume rencana dapat direvisi lewat tombol Edit Volume.' : ''}
           </span>
           <div className="flex items-center gap-2">
             <button

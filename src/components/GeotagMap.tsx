@@ -1,113 +1,111 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type * as Leaflet from 'leaflet';
 import { PoleData } from '@/types';
-import { Download, Loader2 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
 interface GeotagMapProps {
   poles: PoleData[];
-  customerName?: string;
-  onViewPhoto?: (photoUrl: string, title: string, caption: string) => void;
+  /** Bila diisi, tiang bisa digeser manual di peta (mode "Geser Tiang"). */
+  onPoleMove?: (poleId: string, lat: number, lng: number) => void;
 }
 
-export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onViewPhoto }) => {
+const isJtmPole = (pole: PoleData) => pole.networkType
+  ? pole.networkType === 'JTM' || pole.networkType === 'SUTM'
+  : !pole.id.startsWith('TR');
+
+// Keep internal pole IDs for positioning and dragging; display the entered construction.
+const getConstructionLabelHtml = (pole: PoleData, isTM: boolean) => {
+  const construction = (isTM ? pole.tmConstruction : pole.trConstruction)?.trim() || '-';
+  return construction
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
+const getTileLayer = (L: typeof Leaflet, type: string) => {
+  if (type === 'googleStreets') {
+    return L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: 21,
+      crossOrigin: true,
+      attribution: '© Google Maps',
+    });
+  } else if (type === 'esriSatellite') {
+    return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19,
+      crossOrigin: true,
+      attribution: '© Esri Satellite',
+    });
+  } else if (type === 'osm') {
+    return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      crossOrigin: true,
+      attribution: '© OpenStreetMap',
+    });
+  } else {
+    // Default: Google Satelit Hybrid (citra satelit asli + label jalan PLN)
+    return L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: 21,
+      crossOrigin: true,
+      attribution: '© Google Maps Satellite',
+    });
+  }
+};
+
+export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, onPoleMove }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-  const extraLayersRef = useRef<any[]>([]);
-  const currentTileRef = useRef<any>(null);
+  const mapInstanceRef = useRef<Leaflet.Map | null>(null);
+  const markersRef = useRef<Leaflet.Marker[]>([]);
+  const extraLayersRef = useRef<Leaflet.Layer[]>([]);
+  const currentTileRef = useRef<Leaflet.TileLayer | null>(null);
+  const currentTileTypeRef = useRef<string | null>(null);
+  // Peta hanya di-fit ulang bila daftar tiang berubah, bukan saat tiang digeser.
+  const fittedKeyRef = useRef<string | null>(null);
+  const onPoleMoveRef = useRef(onPoleMove);
+  // Marker tidak boleh dihapus saat sedang ditarik (autoPan Leaflet masih memakai ikonnya → error _leaflet_pos).
+  const draggingRef = useRef(false);
+  const pendingRebuildRef = useRef(false);
+  const [rebuildTick, setRebuildTick] = useState(0);
 
   const [mapType, setMapType] = useState<'googleHybrid' | 'googleStreets' | 'esriSatellite' | 'osm'>('googleHybrid');
   const [showDistances, setShowDistances] = useState<boolean>(true);
-  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isDragMode, setIsDragMode] = useState<boolean>(false);
+  const canDrag = Boolean(onPoleMove);
+  const dragActive = canDrag && isDragMode;
 
-  const handleDownloadMap = async () => {
-    if (!mapContainerRef.current) return;
-    setIsExporting(true);
+  useEffect(() => {
+    onPoleMoveRef.current = onPoleMove;
+  }, [onPoleMove]);
 
-    try {
-      const html2canvasModule = await import('html2canvas');
-      const html2canvas = html2canvasModule.default || html2canvasModule;
+  // Bersihkan instance peta saat komponen dilepas agar timer / animasi Leaflet tidak menyentuh DOM yang sudah hilang.
+  useEffect(() => {
+    return () => {
+      mapInstanceRef.current?.remove();
+      mapInstanceRef.current = null;
+      currentTileRef.current = null;
+      currentTileTypeRef.current = null;
+      fittedKeyRef.current = null;
+      markersRef.current = [];
+      extraLayersRef.current = [];
+      draggingRef.current = false;
+    };
+  }, []);
 
-      const container = mapContainerRef.current;
-      const canvas = await html2canvas(container, {
-        useCORS: true,
-        allowTaint: false,
-        logging: false,
-        scale: 2, // Kualitas High-Definition (Retina)
-        backgroundColor: '#0f172a',
-      });
-
-      // Tambahkan Kop Informasi PLN di bagian bawah gambar (seperti format Gambar Rencana PLN UP3)
-      const exportCanvas = document.createElement('canvas');
-      const bannerHeight = 84;
-      exportCanvas.width = canvas.width;
-      exportCanvas.height = canvas.height + bannerHeight;
-
-      const ctx = exportCanvas.getContext('2d');
-      if (ctx) {
-        // 1. Gambar peta utama
-        ctx.drawImage(canvas, 0, 0);
-
-        // 2. Gambar banner kop PLN di bawah
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(0, canvas.height, canvas.width, bannerHeight);
-
-        // Garis batas pemisah atas kop
-        ctx.fillStyle = '#0284c7';
-        ctx.fillRect(0, canvas.height, canvas.width, 3);
-
-        // Header / Logo PLN text
-        ctx.font = 'bold 24px system-ui, sans-serif';
-        ctx.fillStyle = '#38bdf8';
-        ctx.fillText('⚡ PT PLN (PERSERO) UP3 BANTEN SELATAN', 28, canvas.height + 34);
-
-        // Subtitle Nama Pelanggan & Lokasi
-        ctx.font = '18px system-ui, sans-serif';
-        ctx.fillStyle = '#f8fafc';
-        const titleText = customerName ? `GAMBAR RENCANA GEOTAGGING TIANG: ${customerName.toUpperCase()}` : 'GAMBAR RENCANA GEOTAGGING TIANG & TRACE JARINGAN';
-        ctx.fillText(titleText, 28, canvas.height + 62);
-
-        // Rincian Teknis di sebelah kanan
-        ctx.font = 'bold 16px monospace';
-        ctx.fillStyle = '#cbd5e1';
-        ctx.textAlign = 'right';
-        const jtmInfo = jtmPoles.length > 0 ? `JTM: ${totalJtmMeters}m (${jtmPoles.length} Tiang) | ` : '';
-        const jtrInfo = jtrPoles.length > 0 ? `JTR: ${totalJtrMeters}m (${jtrPoles.length} Tiang) | ` : '';
-        const totalPolesInfo = `Total: ${validPoles.length} Titik Tiang`;
-        ctx.fillText(`${jtmInfo}${jtrInfo}${totalPolesInfo}`, canvas.width - 28, canvas.height + 38);
-
-        ctx.font = '14px system-ui, sans-serif';
-        ctx.fillStyle = '#94a3b8';
-        const dateStr = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-        ctx.fillText(`Diunduh dari Sistem Promotor PLN • ${dateStr}`, canvas.width - 28, canvas.height + 62);
-      }
-
-      // Trigger download file PNG
-      const link = document.createElement('a');
-      const safeCustomer = (customerName || 'PLN_Geotagging').replace(/[^a-zA-Z0-9_-]/g, '_');
-      link.download = `Geotagging_Map_${safeCustomer}_${new Date().toISOString().slice(0, 10)}.png`;
-      link.href = exportCanvas.toDataURL('image/png', 0.95);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err) {
-      console.error('Gagal mengunduh peta:', err);
-      alert('Maaf, gagal memproses unduhan gambar peta. Pastikan koneksi satelit termuat dengan baik.');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const validPoles = poles.filter((p) => p.lat !== null && p.lng !== null);
+  const validPoles = useMemo(() => poles.filter((p) => p.lat !== null && p.lng !== null), [poles]);
 
   // Filter Tiang JTM & JTR
-  const jtmPoles = validPoles.filter(
-    (p) => p.networkType === 'JTM' || p.networkType === 'SUTM' || p.id.startsWith('TM')
+  const jtmPoles = useMemo(
+    () => validPoles.filter(isJtmPole),
+    [validPoles]
   );
-  const jtrPoles = validPoles.filter(
-    (p) => p.networkType === 'JTR' || p.networkType === 'SUTR' || p.id.startsWith('TR')
+  const jtrPoles = useMemo(
+    () => validPoles.filter((p) => !isJtmPole(p)),
+    [validPoles]
   );
 
   const totalJtmMeters = jtmPoles.reduce(
@@ -119,68 +117,39 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
     0
   );
 
-  const getTileLayer = (L: any, type: string) => {
-    if (type === 'googleStreets') {
-      return L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-        subdomains: ['0', '1', '2', '3'],
-        maxZoom: 21,
-        crossOrigin: true,
-        attribution: '© Google Maps',
-      });
-    } else if (type === 'esriSatellite') {
-      return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-        crossOrigin: true,
-        attribution: '© Esri Satellite',
-      });
-    } else if (type === 'osm') {
-      return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        crossOrigin: true,
-        attribution: '© OpenStreetMap',
-      });
-    } else {
-      // Default: Google Satelit Hybrid (citra satelit asli + label jalan PLN)
-      return L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-        subdomains: ['0', '1', '2', '3'],
-        maxZoom: 21,
-        crossOrigin: true,
-        attribution: '© Google Maps Satellite',
-      });
-    }
-  };
-
   useEffect(() => {
     let isMounted = true;
 
     import('leaflet').then((L) => {
       if (!isMounted || !mapContainerRef.current) return;
+      // Tunda gambar ulang sampai tiang selesai ditarik
+      if (draggingRef.current) {
+        pendingRebuildRef.current = true;
+        return;
+      }
 
       // Initialize map if not yet done
       if (!mapInstanceRef.current) {
         mapInstanceRef.current = L.map(mapContainerRef.current, {
           zoomControl: true,
         });
-
-        currentTileRef.current = getTileLayer(L, mapType);
-        currentTileRef.current.addTo(mapInstanceRef.current);
-      } else {
-        // Switch layer if changed
-        if (currentTileRef.current) {
-          mapInstanceRef.current.removeLayer(currentTileRef.current);
-        }
-        currentTileRef.current = getTileLayer(L, mapType);
-        currentTileRef.current.addTo(mapInstanceRef.current);
+      }
+      const map = mapInstanceRef.current;
+      // Ganti layer hanya bila jenis peta berubah (hindari kedip saat tiang digeser)
+      if (currentTileTypeRef.current !== mapType) {
+        if (currentTileRef.current) map.removeLayer(currentTileRef.current);
+        currentTileRef.current = getTileLayer(L, mapType).addTo(map);
+        currentTileTypeRef.current = mapType;
       }
 
       // Clear existing markers & extra layers (polylines, distance badges)
-      markersRef.current.forEach((m) => mapInstanceRef.current.removeLayer(m));
+      markersRef.current.forEach((m) => map.removeLayer(m));
       markersRef.current = [];
 
-      extraLayersRef.current.forEach((layer) => mapInstanceRef.current.removeLayer(layer));
+      extraLayersRef.current.forEach((layer) => map.removeLayer(layer));
       extraLayersRef.current = [];
 
-      mapInstanceRef.current.invalidateSize();
+      map.invalidateSize();
 
       if (validPoles.length > 0) {
         const latLngs: [number, number][] = [];
@@ -208,19 +177,18 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
           posMap[p.id] = pos;
           latLngs.push(pos);
 
-          const isTM = p.networkType === 'JTM' || p.networkType === 'SUTM' || !p.networkType || p.id.startsWith('TM');
-          const isTrafo = (p.tmConstruction || '').includes('GARDU') || (p.trConstruction || '').includes('GARDU');
+          const isTM = isJtmPole(p);
           const isExisting = p.poleStatus === 'EXISTING' || (p.name || '').toLowerCase().includes('existing') || (p.note || '').toLowerCase().includes('eksisting') || (p.note || '').toLowerCase().includes('existing');
 
-          const labelText = p.id;
-          const specText = isTM ? (p.tmConstruction || 'TM1') : (p.trConstruction || 'TR1');
+          const fullLabelText = getConstructionLabelHtml(p, isTM);
+          const labelText = /\bgardu\b/i.test(fullLabelText) ? 'Gardu' : fullLabelText;
 
           let markerHtml = '';
 
           if (isExisting) {
             // Simbol Tiang Existing Standar PLN: Berwarna Hitam Pekat berbingkai putih/abu-abu
             markerHtml = `
-              <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translate(-50%,-50%);">
+              <div style="display:flex;flex-direction:column;align-items:center;cursor:${dragActive ? 'move' : 'pointer'};transform:translate(-50%,-50%);">
                 <div style="
                   width: ${isTM ? '14px' : '12px'};
                   height: ${isTM ? '14px' : '12px'};
@@ -254,43 +222,10 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
                 </div>
               </div>
             `;
-          } else if (isTrafo) {
-            // Simbol Rencana Trafo: Node kompak dan terpusat (tidak melebar ke samping)
-            markerHtml = `
-              <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translate(-50%,-50%);">
-                <div style="
-                  width: 24px;
-                  height: 14px;
-                  background: #000;
-                  border: 1.5px solid #00e5ff;
-                  border-radius: 2px;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  gap: 2.5px;
-                  box-shadow: 0 0 8px rgba(0,229,255,0.9);
-                ">
-                  <span style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:7px solid #ef4444;"></span>
-                  <span style="width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:7px solid #22c55e;"></span>
-                </div>
-                <div style="
-                  margin-top: 2px;
-                  font-family: 'Consolas', 'Courier New', monospace;
-                  font-size: 9.5px;
-                  font-weight: 900;
-                  color: #00ff66;
-                  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 4px #000;
-                  white-space: nowrap;
-                  line-height: 1;
-                ">
-                  ${labelText}
-                </div>
-              </div>
-            `;
           } else {
             // Node Tiang Rencana Baru: Warna Merah (TM) atau Biru (TR) menyala
             markerHtml = `
-              <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translate(-50%,-50%);">
+              <div style="display:flex;flex-direction:column;align-items:center;cursor:${dragActive ? 'move' : 'pointer'};transform:translate(-50%,-50%);">
                 <div style="
                   width: ${isTM ? '13px' : '11px'};
                   height: ${isTM ? '13px' : '11px'};
@@ -330,11 +265,25 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
             iconAnchor: [0, 0],
           });
 
-          const marker = L.marker(pos, { icon: poleIcon }).addTo(mapInstanceRef.current);
+          const marker = L.marker(pos, { icon: poleIcon, draggable: dragActive, autoPan: dragActive }).addTo(map);
+          if (dragActive) {
+            marker.on('dragstart', () => {
+              draggingRef.current = true;
+            });
+            marker.on('dragend', () => {
+              draggingRef.current = false;
+              const ll = marker.getLatLng();
+              onPoleMoveRef.current?.(p.id, ll.lat, ll.lng);
+              if (pendingRebuildRef.current) {
+                pendingRebuildRef.current = false;
+                setRebuildTick((t) => t + 1);
+              }
+            });
+          }
 
           const specBadge = isTM
-            ? `<span style="display:inline-block;padding:2px 6px;background:#eff6ff;color:#1d4ed8;font-weight:bold;font-size:10px;border-radius:4px;border:1px solid #bfdbfe">⚡ JTM • ${p.tmConstruction || '1B'} • ${p.a3cs || '3x150 mm²'}</span>`
-            : `<span style="display:inline-block;padding:2px 6px;background:#ecfdf5;color:#047857;font-weight:bold;font-size:10px;border-radius:4px;border:1px solid #a7f3d0">🔌 JTR • ${p.trConstruction || '1B'} • ${p.lvTwisted || 'JTR 70'}</span>`;
+            ? `<span style="display:inline-block;padding:2px 6px;background:#eff6ff;color:#1d4ed8;font-weight:bold;font-size:10px;border-radius:4px;border:1px solid #bfdbfe">⚡ JTM • ${fullLabelText} • ${p.a3cs || '3x150 mm²'}</span>`
+            : `<span style="display:inline-block;padding:2px 6px;background:#ecfdf5;color:#047857;font-weight:bold;font-size:10px;border-radius:4px;border:1px solid #a7f3d0">🔌 JTR • ${fullLabelText} • ${p.lvTwisted || 'JTR 70'}</span>`;
 
           const noteHtml = p.note
             ? `<div style="margin-top:6px;padding:5px 8px;background:#f8fafc;border-left:3px solid #64748b;border-radius:4px;font-size:11px;color:#334155"><b>Keterangan:</b> ${p.note}</div>`
@@ -350,7 +299,7 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
           marker.bindPopup(`
             <div style="min-width:210px;max-width:250px;font-family:sans-serif">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:4px">
-                <span style="font-size:13px;font-weight:bold;color:#0f172a">${p.id}</span>
+                <span style="font-size:13px;font-weight:bold;color:#0f172a">${fullLabelText}</span>
                 <span style="font-size:10px;font-weight:800;color:${isTM ? '#dc2626' : '#0284c7'}">${isTM ? 'JTM (TM)' : 'JTR (TR)'}</span>
               </div>
               <div style="margin-bottom:6px">${specBadge}</div>
@@ -362,7 +311,7 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
             </div>
           `);
 
-          marker.bindTooltip(`<b>${p.id}</b> [${p.tmConstruction || p.trConstruction || p.poleType}]`, {
+          marker.bindTooltip(`<b>${fullLabelText}</b>`, {
             direction: 'top',
             offset: [0, -10],
           });
@@ -373,7 +322,7 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
         // ---------------------------------------------------------------------
         // FUNGSI PENGGAMBARAN JALUR & LABEL JARAK ANTAR TIANG
         // ---------------------------------------------------------------------
-        const drawNetworkSegments = (netPoles: PoleData[], isTM: boolean) => {
+        const drawNetworkSegments = (netPoles: PoleData[], isTM: boolean, isCrossNetwork = false) => {
           if (netPoles.length < 2) return;
           const points: [number, number][] = [];
 
@@ -395,7 +344,8 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
                 )
               );
               const gpsDist = Math.round(L.latLng(prevPos).distanceTo(L.latLng(pos)));
-              const distMeters = rawSurveyLen > 0 ? rawSurveyLen : (gpsDist > 0 ? gpsDist : (isTM ? 50 : 45));
+              // Cross-network connectors have no separate surveyed length.
+              const distMeters = isCrossNetwork ? gpsDist : rawSurveyLen > 0 ? rawSurveyLen : (gpsDist > 0 ? gpsDist : (isTM ? 50 : 45));
 
               // Titik tengah antar 2 tiang untuk menaruh badge jarak
               const midLat = (prevPos[0] + pos[0]) / 2;
@@ -419,7 +369,7 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
                     background: transparent;
                     border: none;
                     padding: 0;
-                  " title="Jarak bentangan: ${prevP.id} ➔ ${p.id} = ${distMeters} meter">
+                  " title="Jarak bentangan: ${getConstructionLabelHtml(prevP, isJtmPole(prevP))} ➔ ${getConstructionLabelHtml(p, isJtmPole(p))} = ${distMeters} meter">
                     ${distMeters} m
                   </div>
                 `;
@@ -432,11 +382,11 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
                 });
 
                 const distMarker = L.marker([midLat, midLng], { icon: distIcon, interactive: true })
-                  .bindTooltip(`<b>Jarak Bentangan (Span):</b><br/>${prevP.id} ➔ ${p.id}: <b>${distMeters} meter</b>`, {
+                  .bindTooltip(`<b>Jarak Bentangan (Span):</b><br/>${getConstructionLabelHtml(prevP, isJtmPole(prevP))} ➔ ${getConstructionLabelHtml(p, isJtmPole(p))}: <b>${distMeters} meter</b>`, {
                     direction: 'top',
                     offset: [0, -8],
                   })
-                  .addTo(mapInstanceRef.current);
+                  .addTo(map);
 
                 extraLayersRef.current.push(distMarker);
               }
@@ -449,7 +399,9 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
               color: '#020617',
               weight: isTM ? 6 : 5.5,
               opacity: 0.95,
-            }).addTo(mapInstanceRef.current);
+              dashArray: isCrossNetwork ? '8, 8' : undefined,
+              lineCap: isCrossNetwork ? 'butt' : 'round',
+            }).addTo(map);
             extraLayersRef.current.push(casingLine);
 
             // Garis utama tebal & kontras tinggi (solid vibrant line)
@@ -457,7 +409,9 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
               color: isTM ? '#f43f5e' : '#0284c7',
               weight: isTM ? 3.8 : 3.4,
               opacity: 1,
-            }).addTo(mapInstanceRef.current);
+              dashArray: isCrossNetwork ? '8, 8' : undefined,
+              lineCap: isCrossNetwork ? 'butt' : 'round',
+            }).addTo(map);
             extraLayersRef.current.push(line);
           }
         };
@@ -468,68 +422,23 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
         // Gambar JTR
         drawNetworkSegments(jtrPoles, false);
 
-        // Jika ada JTM dan JTR, sambungkan tiang gardu JTM ke tiang awal JTR
-        if (jtmPoles.length > 0 && jtrPoles.length > 0) {
-          const lastTm = jtmPoles[jtmPoles.length - 1];
-          const firstTr = jtrPoles[0];
-          const posTm = posMap[lastTm.id];
-          const posTr = posMap[firstTr.id];
-
-          if (posTm && posTr) {
-            const linkCasing = L.polyline([posTm, posTr], {
-              color: '#020617',
-              weight: 4.5,
-              opacity: 0.9,
-            }).addTo(mapInstanceRef.current);
-            extraLayersRef.current.push(linkCasing);
-
-            const linkLine = L.polyline([posTm, posTr], {
-              color: '#10b981',
-              weight: 2.8,
-              dashArray: '5, 4',
-              opacity: 1,
-            }).addTo(mapInstanceRef.current);
-            extraLayersRef.current.push(linkLine);
-
-            if (showDistances) {
-              const linkGpsDist = Math.round(L.latLng(posTm).distanceTo(L.latLng(posTr)));
-              const midLat = (posTm[0] + posTr[0]) / 2;
-              const midLng = (posTm[1] + posTr[1]) / 2;
-
-              const linkHtml = `
-                <div style="
-                  font-family: 'Consolas', 'Courier New', monospace, sans-serif;
-                  font-size: 11px;
-                  font-weight: 900;
-                  color: #34d399;
-                  text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 0 4px #000;
-                  white-space: nowrap;
-                  transform: translate(-50%, -135%);
-                  pointer-events: auto;
-                  user-select: none;
-                  background: transparent;
-                  border: none;
-                  padding: 0;
-                " title="Koneksi Gardu ke JTR: ${linkGpsDist} m">
-                  ${linkGpsDist} m
-                </div>
-              `;
-              const linkIcon = L.divIcon({
-                className: 'pln-link-distance-text',
-                html: linkHtml,
-                iconSize: [0, 0],
-                iconAnchor: [0, 0],
-              });
-              const linkMarker = L.marker([midLat, midLng], { icon: linkIcon }).addTo(mapInstanceRef.current);
-              extraLayersRef.current.push(linkMarker);
-            }
+        // Follow survey order; each cross-network connection uses its starting pole's color.
+        for (let i = 1; i < validPoles.length; i++) {
+          const from = validPoles[i - 1];
+          const to = validPoles[i];
+          if (isJtmPole(from) !== isJtmPole(to)) {
+            drawNetworkSegments([from, to], isJtmPole(from), true);
           }
         }
 
-        const bounds = L.latLngBounds(latLngs);
-        mapInstanceRef.current.fitBounds(bounds, { padding: [35, 35], maxZoom: 18 });
+        const fitKey = validPoles.map((p) => p.id).join('|');
+        if (fittedKeyRef.current !== fitKey) {
+          map.fitBounds(L.latLngBounds(latLngs), { padding: [35, 35], maxZoom: 18 });
+          fittedKeyRef.current = fitKey;
+        }
       } else {
-        mapInstanceRef.current.setView([-6.12, 106.15], 13);
+        map.setView([-6.12, 106.15], 13);
+        fittedKeyRef.current = null;
       }
 
       // Ensure leaflet recalculates container size immediately after mounting in modal tab
@@ -543,7 +452,7 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
     return () => {
       isMounted = false;
     };
-  }, [poles, mapType, showDistances]);
+  }, [validPoles, jtmPoles, jtrPoles, mapType, showDistances, dragActive, rebuildTick]);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
@@ -578,6 +487,25 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Toggle Mode Geser Tiang (hanya bila halaman induk mengizinkan) */}
+          {canDrag && (
+            <button
+              type="button"
+              onClick={() => setIsDragMode(!isDragMode)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border ${
+                isDragMode
+                  ? 'bg-amber-50 text-amber-700 border-amber-300 shadow-2xs'
+                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+              }`}
+              title="Aktifkan lalu tarik titik tiang di peta untuk memindahkan posisinya secara manual"
+            >
+              <span>✋ Geser Tiang:</span>
+              <span className={`px-1.5 py-0.2 rounded text-[10px] ${isDragMode ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                {isDragMode ? 'ON' : 'OFF'}
+              </span>
+            </button>
+          )}
+
           {/* Toggle Button Jarak Tiang */}
           <button
             type="button"
@@ -599,7 +527,7 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
             <label className="text-[11px] text-slate-500 font-medium">Layer Peta:</label>
             <select
               value={mapType}
-              onChange={(e) => setMapType(e.target.value as any)}
+              onChange={(e) => setMapType(e.target.value as typeof mapType)}
               className="text-xs font-semibold bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-blue-500"
             >
               <option value="googleHybrid">🛰️ Google Satelit (Hybrid)</option>
@@ -613,6 +541,11 @@ export const GeotagMap: React.FC<GeotagMapProps> = ({ poles, customerName, onVie
 
       <div className="relative w-full h-[500px] md:h-[540px] bg-slate-900">
         <div ref={mapContainerRef} className="w-full h-full" style={{ zIndex: 1 }} />
+        {dragActive && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-1000 px-3 py-1.5 rounded-lg bg-amber-500/95 text-white text-[11px] font-bold shadow-md pointer-events-none">
+            Mode Geser Tiang aktif — tarik titik tiang ke posisi yang benar, koordinat GPS ikut diperbarui
+          </div>
+        )}
       </div>
     </div>
   );

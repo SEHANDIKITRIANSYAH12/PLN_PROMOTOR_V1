@@ -76,7 +76,7 @@ export interface SurveyRecord {
   createdAt: string;
   rabCustomOverrides?: Record<string, {
     volumeOverrides?: Record<string, number>; // itemId -> volume
-    extraItems?: any[];
+    extraItems?: unknown[];
   }>;
 }
 
@@ -102,6 +102,8 @@ export interface WoMaterialItem {
   qtyReksis: number;
   qtyAllocated: number;
   qtyReserved?: number;
+  qtyReservedSap?: number; // Reservasi jalur SAP (Stok Gudang)
+  qtyReservedNonSap?: number; // Reservasi jalur Non-SAP (Pabrikan / Pengadaan Luar)
   qtyTaken?: number; // Jumlah yang diambil dari gudang
   isTaken?: boolean; // Status centang pengambilan di gudang
   takenAt?: string; // Waktu pengambilan
@@ -134,6 +136,9 @@ export interface WoJasaItem {
   bobotPersen?: number; // Bobot persentase item ini terhadap total paket jasa
   progresPersen?: number; // (qtyRealisasi / qtyTarget) * 100%
   catatan?: string;
+  kendala?: string; // Laporan kendala / hambatan di lapangan (cuaca, izin warga, material, dll)
+  evidencePhoto?: string; // Foto bukti progres lapangan (Base64 atau URL)
+  evidenceCaption?: string; // Keterangan foto bukti (tanggal, lokasi, dll)
 }
 
 export interface ApplyWoPackageInput {
@@ -279,7 +284,8 @@ export interface WorkOrderRecord {
   progressMaterial?: number; // Progres pengadaan & kesiapan material (%)
   progressJasa?: number; // Progres pelaksanaan pekerjaan / jasa fisik (%)
   milestones?: WoMilestones; // 6 Tahap Progres Fisik Standar PLN
-  status: 'Menunggu Persetujuan Asman' | 'Dikembalikan' | 'Konstruksi' | 'Verifikasi SJ' | 'Selesai' | 'Draf';
+  // 'Closeout' = progres jasa dikunci pengawas; WO ditutup dari sisi pelaksanaan vendor.
+  status: 'Menunggu Persetujuan Asman' | 'Dikembalikan' | 'Konstruksi' | 'Verifikasi SJ' | 'Selesai' | 'Draf' | 'Closeout';
   approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   rejectionReason?: string;
   approvedAt?: string;
@@ -323,10 +329,16 @@ export interface WorkOrderRecord {
   suratJalanList?: {
     suratJalanNumber: string;
     suratJalanDate: string;
+    reservationNumber?: string;
     giNumber?: string;
     photos?: string[];
+    receiptPhotos?: string[];
     notes?: string;
-    items?: { material: string; qtyTaken: number }[];
+    items?: { material: string; qtyTaken: number; note?: string }[];
+    status?: 'BELUM_DIPERIKSA' | 'SESUAI' | 'ADA_SELISIH';
+    verifiedAt?: string;
+    verifiedBy?: string;
+    verificationNotes?: string;
   }[];
   receiptPhotos?: string[];
   suratJalanDate?: string;
@@ -349,7 +361,7 @@ export interface WorkOrderRecord {
   jasaItems?: WoJasaItem[];
   rabCustomOverrides?: Record<string, {
     volumeOverrides?: Record<string, number>;
-    extraItems?: any[];
+    extraItems?: unknown[];
   }>;
   // Data Penandatangan Dokumen
   approverName?: string;
@@ -368,32 +380,20 @@ export interface WorkOrderRecord {
   progressVerifiedAt?: string;              // Kapan pengawas approve/tolak
   progressVerifiedBy?: string;              // Nama pengawas yang verifikasi
   progressRejectedReason?: string;          // Alasan penolakan (jika DITOLAK)
-}
 
-export interface MutasiMaterialRecord {
-  id: string;             // woId sebagai ID
-  woId: string;
-  woNumber: string;
-  spkNumber?: string;
-  customerName: string;
-  vendor: string;
-  materials: Array<{
-    kode: string;
-    material: string;
-    satuan: string;
-    qtyReserved: number;
-    qtyTaken: number;
-  }>;
-  reservationNumber?: string;
-  reservationDate?: string;
-  suratJalanNumber?: string;
-  suratJalanDate?: string;
-  giNumber?: string;
-  giStatus: 'Sistem' | 'Non-Sistem';
-  giInputDate?: string;
-  giInputBy?: string;
-  tglKeluar?: string;
-  catatan?: string;
+  // === Kunci Progres Jasa oleh Pengawas ===
+  // Saat true, vendor tidak boleh mengirim update progres jasa lagi untuk WO ini
+  // dan status WO otomatis menjadi 'Closeout'.
+  progressJasaLocked?: boolean;
+  progressLockedAt?: string;                // Kapan pengawas mengunci
+  progressLockedBy?: string;                // Nama pengawas yang mengunci
+  statusBeforeCloseout?: Exclude<WorkOrderRecord['status'], 'Closeout'>; // Dipulihkan saat kunci dibuka
+
+  // === Revisi Volume oleh Asman (sebelum WO disetujui) ===
+  // Bila terisi, volume rencana di `materials` / `jasaItems` adalah hasil revisi
+  // dan menjadi acuan dokumen WO, bukan hasil hitung ulang dari survey.
+  volumeEditedAt?: string;
+  volumeEditedBy?: string;
 }
 
 export interface StockMaterial {
@@ -407,6 +407,7 @@ export interface StockMaterial {
   qtySisa: number; // Sisa bebas fisik = qtyFisik - qtyAlokasi
   unit: string;
   status: 'Aman' | 'Kritis' | 'Menipis';
+  lastUpdatedAt?: string; // Tanggal & Jam terakhir kali gudang update stok manual
 }
 
 export interface AuditRecord {
@@ -456,6 +457,10 @@ export interface VendorPickupTransaction {
   giNumber?: string;
   suratJalanPhotos?: string[];
   notes?: string;
+  status?: 'BELUM_DIPERIKSA' | 'SESUAI' | 'ADA_SELISIH';
+  verifiedAt?: string;
+  verifiedBy?: string;
+  verificationNotes?: string;
   items: {
     material: string;
     kode?: string;

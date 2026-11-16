@@ -12,25 +12,18 @@ import {
 import { ContractRecord } from '@/types';
 import {
   FileCheck2,
-  Building2,
   Coins,
   TrendingUp,
   Plus,
   Search,
-  Filter,
   Edit3,
   Trash2,
   Calendar,
-  AlertCircle,
   AlertTriangle,
-  CheckCircle2,
   Clock,
-  Sparkles,
   FileSpreadsheet,
   Boxes,
-  Zap,
-  X,
-  UserCheck,
+  X
 } from 'lucide-react';
 
 const parseSupervisor = (s?: string) => {
@@ -353,7 +346,7 @@ export const ContractView: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto text-xs">
           <select
             value={jenisPekerjaanFilter}
-            onChange={(e) => setJenisPekerjaanFilter(e.target.value as any)}
+            onChange={(e) => setJenisPekerjaanFilter(e.target.value as typeof jenisPekerjaanFilter)}
             className="px-3 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700 cursor-pointer"
           >
             <option value="ALL">Semua Paket Pekerjaan</option>
@@ -364,7 +357,7 @@ export const ContractView: React.FC = () => {
 
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             className="px-3 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700 cursor-pointer"
           >
             <option value="ALL">Semua Status SPK</option>
@@ -790,7 +783,7 @@ export const ContractView: React.FC = () => {
                   </label>
                   <select
                     value={contractForm.jenisPekerjaan}
-                    onChange={(e) => setContractForm({ ...contractForm, jenisPekerjaan: e.target.value as any })}
+                    onChange={(e) => setContractForm({ ...contractForm, jenisPekerjaan: e.target.value as typeof contractForm.jenisPekerjaan })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-800 bg-white font-medium focus:outline-hidden focus:border-amber-500 focus:ring-1 focus:ring-amber-500 cursor-pointer"
                   >
                     <option value="Paket 1">Paket 1 (JTM & Gardu)</option>
@@ -804,7 +797,7 @@ export const ContractView: React.FC = () => {
                   <label className="block font-semibold text-slate-700 mb-1">Status Kontrak</label>
                   <select
                     value={contractForm.status}
-                    onChange={(e) => setContractForm({ ...contractForm, status: e.target.value as any })}
+                    onChange={(e) => setContractForm({ ...contractForm, status: e.target.value as typeof contractForm.status })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-800 bg-white font-medium focus:outline-hidden focus:border-amber-500 focus:ring-1 focus:ring-amber-500 cursor-pointer"
                   >
                     <option value="AKTIF">Aktif</option>

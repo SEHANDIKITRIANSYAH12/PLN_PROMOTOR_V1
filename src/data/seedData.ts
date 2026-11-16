@@ -32,19 +32,11 @@ export const SEED_CONSTRUCTION_RULES: StandardConstructionRules = {
       conductorLabel: "Panjang Konduktor (m)",
       tiangList: [
         "12/200",
-        "12/350",
-        "12/350 (GARDU)",
-        "11/200",
-        "11/350",
-        "11/500",
-        "13/350",
-        "14/350",
-        "Tiang Besi 11m",
-        "Tiang Besi 12m"
+        "12/350"
       ],
       konstruksiList: [
         "TM - 1B", "TM - 2B", "TM - 3B", "TM - 4B", "TM - 5B", "TM - 6B", "TM - 7B",
-        "TM - 8B", "TM - 9B", "TM - 10B", "TM - 11B", "TM - 12B", "TM - 13B", "TM - 14B",
+        "TM - 8B", "TM - 9B", "TM - 10B", "TM - 11B", "TM - 12B",
         "GARDU CANTOL DISTRIBUSI", "GARDU CANTOL KHUSUS", "GARDU PORTAL DISTRIBUSI", "GARDU PORTAL KHUSUS",
         "GARDU PORTAL RMU", "GARDU BETON", "STAYSET", "KONTRAMASK", "CO AFTAK"
       ]

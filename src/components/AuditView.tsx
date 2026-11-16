@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
-import { History, ShieldAlert, FileSpreadsheet, Trash2, Search } from 'lucide-react';
+import { FileSpreadsheet, Trash2, Search } from 'lucide-react';
 import { Pagination } from '@/components/Pagination';
 
 export const AuditView: React.FC = () => {
