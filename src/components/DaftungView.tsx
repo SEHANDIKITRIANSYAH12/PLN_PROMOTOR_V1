@@ -9,7 +9,8 @@ import {
   Clock,
   FileText,
   Zap,
-  ChevronRight
+  ChevronRight,
+  Trash2
 } from 'lucide-react';
 import { DaftungRecord, SurveyRecord, WorkOrderRecord } from '@/types';
 import { Pagination } from '@/components/Pagination';
@@ -29,6 +30,8 @@ export const DaftungView: React.FC = () => {
     surveys, 
     workOrders,
     setCurrentPage,
+    deleteDaftung,
+    showToast,
   } = usePromotorStore();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -417,7 +420,7 @@ export const DaftungView: React.FC = () => {
 
                       {/* 7. AKSI */}
                       <td className="py-3.5 px-3 text-center align-middle whitespace-nowrap">
-                        <div className="flex items-center justify-center">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => setCurrentPage('verifikasi-pengawas')}
@@ -426,6 +429,20 @@ export const DaftungView: React.FC = () => {
                           >
                             <span>Verifikasi</span>
                             <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`⚠️ PERINGATAN HAPUS:\nApakah Anda yakin ingin menghapus data Daftung untuk pelanggan:\n"${d.customerName}" (IDPEL: ${d.idpel || '-'})?\n\nData yang dihapus tidak dapat dipulihkan.`)) {
+                                deleteDaftung(d.id);
+                                showToast(`✓ Data Daftung ${d.customerName} berhasil dihapus.`);
+                              }
+                            }}
+                            className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs"
+                            title="Hapus Data Daftung"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                           </button>
                         </div>
                       </td>

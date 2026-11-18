@@ -39,6 +39,29 @@ import {
   SEED_SWEEPINGS,
 } from '@/data/seedData';
 
+export function generateDaftungId(existingDaftungs: { id?: string }[] = []): string {
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(now.getFullYear());
+
+  let maxSeq = 0;
+  for (const d of existingDaftungs) {
+    if (!d.id) continue;
+    const parts = d.id.split('-');
+    // Cocokkan pola DF-{pelanggan keberapa}-{bulan}-{tahun}
+    if (parts.length === 4 && parts[0] === 'DF' && parts[2] === mm && parts[3] === yyyy) {
+      const seq = parseInt(parts[1], 10);
+      if (!isNaN(seq) && seq > maxSeq) {
+        maxSeq = seq;
+      }
+    }
+  }
+
+  // Jika belum ada pada pola baru, jadikan pelanggan ke (jumlah data + 1)
+  const nextSeq = maxSeq > 0 ? maxSeq + 1 : (existingDaftungs.length + 1);
+  return `DF-${nextSeq}-${mm}-${yyyy}`;
+}
+
 interface PromotorState {
   currentRole: Role;
   setCurrentRole: (role: Role) => void;
@@ -79,6 +102,7 @@ interface PromotorState {
   ) => boolean;
   rejectWorkOrder: (id: string, reason: string) => void;
   resubmitWorkOrder: (id: string, updates?: Partial<WorkOrderRecord>) => void;
+  submitWoToAsman: (id: string) => void;
   /**
    * Revisi volume rencana oleh Asman sebelum WO disetujui. Array volume mengikuti
    * urutan `materials` dan `jasaItems` WO. `false` = ditolak (bukan antrean / tidak valid).
@@ -88,6 +112,19 @@ interface PromotorState {
     volumes: { materials: number[]; jasaItems: number[] },
     editedBy?: string
   ) => boolean;
+  removeWoMaterialItem: (woId: string, itemIndex: number) => void;
+  removeWoJasaItem: (woId: string, itemIndex: number) => void;
+  updateWoSignatures: (
+    woId: string,
+    signatures: {
+      approverName?: string;
+      approverRole?: string;
+      approverSignature?: string;
+      creatorName?: string;
+      creatorRole?: string;
+      creatorSignature?: string;
+    }
+  ) => void;
   selectedDaftungIdForWo: string | null;
   setSelectedDaftungIdForWo: (id: string | null) => void;
   openApplyWoFromDaftung: (daftungId: string) => void;
@@ -131,7 +168,14 @@ interface PromotorState {
     sjNumber: string,
     sjDate: string,
     photoUrl: string | string[],
-    materialsTaken: { material: string; qtyTaken: number }[],
+    materialsTaken: {
+      material: string;
+      qtyTaken: number;
+      qtyTakenSap?: number;
+      qtyTakenNonSap?: number;
+      qtyTakenBatch?: number;
+      channel?: 'SAP' | 'NON_SAP';
+    }[],
     notes?: string,
     reservationNumber?: string,
     giNumber?: string,
@@ -351,7 +395,14 @@ const WO_COMMITTED_STATUSES: WorkOrderRecord['status'][] = ['Konstruksi', 'Verif
 export const isWoCommittingPagu = (wo: WorkOrderRecord): boolean =>
   wo.approvalStatus === 'APPROVED' || WO_COMMITTED_STATUSES.includes(wo.status);
 
-/** WO di antrean Persetujuan Asman (satu-satunya tahap volume rencana boleh direvisi). */
+/** WO dalam tahap belum disetujui (Draf / Pengajuan ke Asman) yang volumenya masih boleh diedit. */
+export const isWoEditable = (wo: WorkOrderRecord): boolean =>
+  wo.status === 'Draf' ||
+  wo.status === 'Menunggu Persetujuan Asman' ||
+  wo.approvalStatus === 'DRAFT' ||
+  wo.approvalStatus === 'PENDING';
+
+/** WO di antrean Persetujuan Asman (tahap verifikasi oleh Asman Konstruksi). */
 export const isWoPendingApproval = (wo: WorkOrderRecord): boolean =>
   wo.status === 'Menunggu Persetujuan Asman' || wo.approvalStatus === 'PENDING';
 
@@ -680,7 +731,8 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
   daftungs: SEED_DAFTUNGS,
 
   addDaftungFromSurvey: (surveyId, finalName, finalIdpel) => {
-    const newDf = `DF-2026-${String(Date.now()).slice(-4)}`;
+    const currentDaftungs = get().daftungs;
+    const newDf = generateDaftungId(currentDaftungs);
     const newRec: DaftungRecord = {
       id: newDf,
       idpel: finalIdpel,
@@ -917,8 +969,8 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
           supervisor1: customParams.paket1.pengawas1 || 'Hasian Sitorus (TC Lola Konstruksi)',
           supervisor2: customParams.paket1.pengawas2 || 'Daud Febrizer (TL Teknik ULP Rangkasbitung)',
           progress: 0,
-          status: 'Menunggu Persetujuan Asman',
-          approvalStatus: 'PENDING',
+          status: 'Draf',
+          approvalStatus: 'DRAFT',
           appliedAt: nowStr,
           daftungId,
           reservationStatus: 'Belum Reservasi',
@@ -962,8 +1014,8 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
           supervisor1: customParams.paket2.pengawas1 || 'Winnetou Chandra Sadli (Officer Kinerja Konstruksi)',
           supervisor2: customParams.paket2.pengawas2 || '',
           progress: 0,
-          status: 'Menunggu Persetujuan Asman',
-          approvalStatus: 'PENDING',
+          status: 'Draf',
+          approvalStatus: 'DRAFT',
           appliedAt: nowStr,
           daftungId,
           reservationStatus: 'Belum Reservasi',
@@ -1028,8 +1080,8 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
           supervisor1: customParams.woTiang.pengawas1 || 'Hasian Sitorus (TC Lola Konstruksi)',
           supervisor2: customParams.woTiang.pengawas2 || '',
           progress: 0,
-          status: 'Menunggu Persetujuan Asman',
-          approvalStatus: 'PENDING',
+          status: 'Draf',
+          approvalStatus: 'DRAFT',
           appliedAt: nowStr,
           daftungId,
           reservationStatus: 'Belum Reservasi',
@@ -1058,8 +1110,8 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
           supervisor1: 'Hasian Sitorus (TC Lola Konstruksi)',
           supervisor2: 'Daud Febrizer (TL Teknik ULP Rangkasbitung)',
           progress: 0,
-          status: 'Menunggu Persetujuan Asman',
-          approvalStatus: 'PENDING',
+          status: 'Draf',
+          approvalStatus: 'DRAFT',
           appliedAt: nowStr,
           daftungId,
           reservationStatus: 'Belum Reservasi',
@@ -1081,8 +1133,8 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
           supervisor1: 'Winnetou Chandra Sadli (Officer Kinerja Konstruksi)',
           supervisor2: '',
           progress: 0,
-          status: 'Menunggu Persetujuan Asman',
-          approvalStatus: 'PENDING',
+          status: 'Draf',
+          approvalStatus: 'DRAFT',
           appliedAt: nowStr,
           daftungId,
           reservationStatus: 'Belum Reservasi',
@@ -1188,7 +1240,7 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
         });
       } else if (targetWo) {
         const matchedSrv = state.surveys.find((s) => s.idpel === targetWo.idpel || s.id === targetWo.daftungId);
-        const newDfId = `DF-2026-${String(Date.now()).slice(-4)}`;
+        const newDfId = generateDaftungId(updatedDaftungs);
         const newDaftungItem: DaftungRecord = {
           id: newDfId,
           idpel: targetWo.idpel,
@@ -1265,14 +1317,38 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
     get().showToast(`✓ Work Order ${id} berhasil diajukan ulang ke Asman`);
   },
 
+  submitWoToAsman: (id) => {
+    set((state) => {
+      const nowStr = new Date().toLocaleString('id-ID');
+      const updatedWos = state.workOrders.map((w) => {
+        if (w.id === id) {
+          return {
+            ...w,
+            status: 'Menunggu Persetujuan Asman' as const,
+            approvalStatus: 'PENDING' as const,
+            submittedToAsmanAt: nowStr,
+          };
+        }
+        return w;
+      });
+
+      return {
+        workOrders: updatedWos,
+      };
+    });
+
+    get().addAudit(`Admin WO mengajukan Work Order ${id} ke meja Asman Konstruksi untuk persetujuan`, id, 'Work Order');
+    get().showToast(`✓ Work Order ${id} berhasil diajukan ke Asman Konstruksi!`);
+  },
+
   updateWoVolumes: (id, volumes, editedBy) => {
     const wo = get().workOrders.find((w) => w.id === id);
     if (!wo) {
       get().showToast(`✗ Work Order ${id} tidak ditemukan`);
       return false;
     }
-    if (!isWoPendingApproval(wo)) {
-      get().showToast(`⚠ Volume WO ${id} hanya dapat direvisi selama menunggu persetujuan Asman`);
+    if (!isWoEditable(wo)) {
+      get().showToast(`⚠ Volume WO ${id} hanya dapat direvisi pada tahap Draf atau Menunggu Persetujuan Asman`);
       return false;
     }
 
@@ -1292,10 +1368,6 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
 
     const changedMaterials = materials.filter((m, i) => (m.qtyAllocated || m.qtyReksis || 0) !== volumes.materials[i]).length;
     const changedJasa = jasaItems.filter((j, i) => (j.qtyTarget || 0) !== volumes.jasaItems[i]).length;
-    if (changedMaterials + changedJasa === 0) {
-      get().showToast('Tidak ada perubahan volume yang disimpan');
-      return false;
-    }
 
     const updatedMaterials = materials.map((m, i) => ({
       ...m,
@@ -1347,6 +1419,112 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
     );
     get().showToast(`✓ Volume WO ${id} berhasil direvisi`);
     return true;
+  },
+
+  removeWoMaterialItem: (woId, itemIndex) => {
+    const wo = get().workOrders.find((w) => w.id === woId);
+    if (!wo) {
+      get().showToast(`✗ Work Order ${woId} tidak ditemukan`);
+      return;
+    }
+    if (!isWoEditable(wo)) {
+      get().showToast(`⚠ Item WO ${woId} hanya dapat dihapus sebelum disetujui`);
+      return;
+    }
+
+    const mats = wo.materials || [];
+    if (itemIndex < 0 || itemIndex >= mats.length) return;
+    const removedItem = mats[itemIndex];
+    const newMats = mats.filter((_, idx) => idx !== itemIndex);
+
+    const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+    set((state) => ({
+      workOrders: state.workOrders.map((w) =>
+        w.id === woId
+          ? {
+              ...w,
+              materials: newMats,
+              volumeEditedAt: nowStr,
+              volumeEditedBy: 'Admin WO',
+            }
+          : w
+      ),
+    }));
+
+    get().addAudit(
+      `Admin WO menghapus material "${removedItem.material}" dari WO ${woId}`,
+      woId,
+      'Work Order'
+    );
+    get().showToast(`✓ Material "${removedItem.material}" berhasil dihapus dari WO`);
+  },
+
+  removeWoJasaItem: (woId, itemIndex) => {
+    const wo = get().workOrders.find((w) => w.id === woId);
+    if (!wo) {
+      get().showToast(`✗ Work Order ${woId} tidak ditemukan`);
+      return;
+    }
+    if (!isWoEditable(wo)) {
+      get().showToast(`⚠ Item WO ${woId} hanya dapat dihapus sebelum disetujui`);
+      return;
+    }
+
+    const jasa = wo.jasaItems || [];
+    if (itemIndex < 0 || itemIndex >= jasa.length) return;
+    const removedItem = jasa[itemIndex];
+    const newJasa = jasa.filter((_, idx) => idx !== itemIndex);
+
+    // Recalculate bobot persen
+    const totalJasaVal = newJasa.reduce((acc, j) => acc + (j.qtyTarget || 0) * (j.hargaSatuan || 0), 0);
+    const reweightedJasa = newJasa.map((j) => {
+      const vol = j.qtyTarget || 0;
+      return {
+        ...j,
+        bobotPersen: totalJasaVal > 0
+          ? Math.round(((vol * (j.hargaSatuan || 0)) / totalJasaVal) * 1000) / 10
+          : (newJasa.length > 0 ? Math.round((100 / newJasa.length) * 10) / 10 : 0),
+      };
+    });
+
+    const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+    set((state) => ({
+      workOrders: state.workOrders.map((w) =>
+        w.id === woId
+          ? {
+              ...w,
+              jasaItems: reweightedJasa,
+              volumeEditedAt: nowStr,
+              volumeEditedBy: 'Admin WO',
+            }
+          : w
+      ),
+    }));
+
+    get().addAudit(
+      `Admin WO menghapus jasa "${removedItem.deskripsi}" dari WO ${woId}`,
+      woId,
+      'Work Order'
+    );
+    get().showToast(`✓ Jasa "${removedItem.deskripsi}" berhasil dihapus dari WO`);
+  },
+
+  updateWoSignatures: (woId, signatures) => {
+    set((state) => ({
+      workOrders: state.workOrders.map((w) =>
+        w.id === woId
+          ? {
+              ...w,
+              ...(signatures.approverName && { approverName: signatures.approverName }),
+              ...(signatures.approverRole && { approverRole: signatures.approverRole }),
+              ...(signatures.approverSignature !== undefined && { approverSignature: signatures.approverSignature }),
+              ...(signatures.creatorName && { creatorName: signatures.creatorName }),
+              ...(signatures.creatorRole && { creatorRole: signatures.creatorRole }),
+              ...(signatures.creatorSignature !== undefined && { creatorSignature: signatures.creatorSignature }),
+            }
+          : w
+      ),
+    }));
   },
 
   updateWoProgress: (id, progress, note, progressMaterial, progressJasa, updatedJasaItems, updatedMaterials, milestones) => {
@@ -1408,13 +1586,15 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
         const isStok = m.stockType ? m.stockType === 'STOK' : !isTiang;
         const req = m.qtyAllocated || m.qtyReksis || 1;
         const curRes = m.qtyReserved !== undefined ? m.qtyReserved : req;
+        const prevTaken = m.qtyTaken || 0;
+        const batchRes = Math.max(0, curRes - prevTaken);
         return {
           material: m.material,
           kode: m.kode,
           unit: m.unit,
           categoryType: isStok ? 'STOK' : 'NON_STOK',
           qtyMaterial: req,
-          qtyReservedCurrent: curRes,
+          qtyReservedCurrent: batchRes > 0 ? batchRes : curRes,
           qtySudahReservasi: curRes,
           qtyBelumReservasi: Math.max(0, req - curRes),
         };
@@ -1424,18 +1604,34 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
     set((state) => ({
       workOrders: state.workOrders.map((w) => {
         if (w.id !== woId) return w;
-        const primaryResNo = reservationNumber || reservationNumberNonStock || `RES/UP3-BTS/${new Date().getFullYear()}/${woId.split('.').pop() || '001'}`;
+        const finalMats = updatedMaterials || w.materials || [];
+        const hasAnySapRes = finalMats.some((m) => (m.qtyReservedSap || 0) > 0);
+        const hasAnyNonSapRes = finalMats.some((m) => (m.qtyReservedNonSap || 0) > 0);
+        const finalResNo = reservationNumber || (hasAnySapRes ? w.reservationNumber : undefined) || undefined;
+        const finalResNoNonStock = reservationNumberNonStock || (hasAnyNonSapRes ? w.reservationNumberNonStock : undefined) || undefined;
+        const primaryResNo = finalResNo || finalResNoNonStock || `RES/UP3-BTS/${new Date().getFullYear()}/${woId.split('.').pop() || '001'}`;
+
+        const isAllTaken = finalMats.length > 0 && finalMats.every((m) => !m.isHold && (m.qtyTaken || 0) >= (m.qtyAllocated || m.qtyReksis || 1));
+        const hasTakenAny = finalMats.some((m) => (m.qtyTaken || 0) > 0);
+        const nextResStatus = isHold
+          ? ('Hold' as const)
+          : isAllTaken
+          ? ('Selesai' as const)
+          : hasTakenAny
+          ? ('Siap Ambil Sebagian' as const)
+          : ('Siap Ambil' as const);
+
         return {
           ...w,
-          reservationNumber: reservationNumber || undefined,
-          reservationNumberNonStock: reservationNumberNonStock || undefined,
+          reservationNumber: finalResNo,
+          reservationNumberNonStock: finalResNoNonStock,
           reservationDate,
-          reservationStatus: isHold ? ('Hold' as const) : ('Siap Ambil' as const),
+          reservationStatus: nextResStatus,
           isHold: Boolean(isHold),
           holdReason: isHold ? holdReason : undefined,
           reservationNotes: notes,
           reservationNotesNonStock: undefined,
-          materials: updatedMaterials || w.materials,
+          materials: finalMats,
           reservationLink: `https://promotor.pln.co.id/r/${primaryResNo.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
         };
       }),
@@ -1565,10 +1761,47 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
     const targetWo = get().workOrders.find((w) => w.id === woId);
     const pkpTrxId = `TRX-PKP-${Date.now().toString().slice(-6)}`;
 
-    const sjList: string[] = Array.isArray(photoUrl)
+    const sjList: string[] = (Array.isArray(photoUrl)
       ? photoUrl
-      : (photoUrl ? [photoUrl] : ['https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80']);
-    const rcList: string[] = receiptPhotos && receiptPhotos.length > 0 ? receiptPhotos : (targetWo?.receiptPhotos || []);
+      : (photoUrl ? [photoUrl] : [])
+    ).filter((u) => Boolean(u) && !u.includes('photo-1586528116311-ad8dd3c8310d'));
+    const rcList: string[] = (receiptPhotos || []).filter(
+      (u) => Boolean(u) && !u.includes('photo-1586528116311-ad8dd3c8310d')
+    );
+
+    const allBatchItems = materialsTaken.map((t) => {
+      const orig = (targetWo?.materials || []).find((m) => m.material === t.material);
+      const isTiang = (orig?.kategori || '').toUpperCase().includes('TIANG') ||
+        t.material.toLowerCase().includes('pole;concrete') ||
+        t.material.toLowerCase().startsWith('tiang beton') ||
+        (t.material.toLowerCase().includes('tiang') && !t.material.toLowerCase().includes('serandang')) ||
+        (orig?.kode && orig.kode.toLowerCase().includes('tng'));
+      const isStok = t.channel ? t.channel === 'SAP' : (orig?.stockType ? orig.stockType === 'STOK' : !isTiang);
+      const req = orig?.qtyAllocated || orig?.qtyReksis || orig?.qtyReserved || 1;
+      const prevTaken = orig?.qtyTaken || 0;
+      const curTakenThisBatch = t.qtyTakenBatch !== undefined
+        ? Math.max(0, t.qtyTakenBatch)
+        : Math.max(0, t.qtyTaken - prevTaken);
+      return {
+        material: t.material,
+        kode: orig?.kode,
+        unit: orig?.unit || 'bh',
+        categoryType: (isStok ? 'STOK' : 'NON_STOK') as 'STOK' | 'NON_STOK',
+        qtyReserved: req,
+        qtyTakenCurrent: curTakenThisBatch,
+        totalTakenAccumulated: t.qtyTaken,
+        sisaRemaining: Math.max(0, req - t.qtyTaken),
+      };
+    });
+
+    // Hanya catat material yang benar-benar diambil pada batch Surat Jalan ini (qtyTakenCurrent > 0).
+    // Jika semua 0 (mis. hanya edit nomor SJ tanpa tambah volume), fallback ke item yang sudah pernah diambil.
+    const activeBatchItems = allBatchItems.filter((it) => it.qtyTakenCurrent > 0);
+    const trxItems = activeBatchItems.length > 0
+      ? activeBatchItems
+      : allBatchItems
+          .filter((it) => it.totalTakenAccumulated > 0)
+          .map((it) => ({ ...it, qtyTakenCurrent: it.totalTakenAccumulated }));
 
     const newPickupTrx: VendorPickupTransaction = {
       id: pkpTrxId,
@@ -1583,28 +1816,7 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
       giNumber: giNumber !== undefined ? giNumber : targetWo?.giNumber,
       suratJalanPhotos: sjList,
       notes: notes,
-      items: materialsTaken.map((t) => {
-        const orig = (targetWo?.materials || []).find((m) => m.material === t.material);
-        const isTiang = (orig?.kategori || '').toUpperCase().includes('TIANG') ||
-          t.material.toLowerCase().includes('pole;concrete') ||
-          t.material.toLowerCase().startsWith('tiang beton') ||
-          (t.material.toLowerCase().includes('tiang') && !t.material.toLowerCase().includes('serandang')) ||
-          (orig?.kode && orig.kode.toLowerCase().includes('tng'));
-        const isStok = orig?.stockType ? orig.stockType === 'STOK' : !isTiang;
-        const req = orig?.qtyReserved !== undefined ? orig.qtyReserved : (orig?.qtyAllocated || orig?.qtyReksis || 1);
-        const prevTaken = orig?.qtyTaken || 0;
-        const curTakenThisBatch = Math.max(0, t.qtyTaken - prevTaken);
-        return {
-          material: t.material,
-          kode: orig?.kode,
-          unit: orig?.unit || 'bh',
-          categoryType: isStok ? 'STOK' : 'NON_STOK',
-          qtyReserved: req,
-          qtyTakenCurrent: curTakenThisBatch > 0 ? curTakenThisBatch : t.qtyTaken,
-          totalTakenAccumulated: t.qtyTaken,
-          sisaRemaining: Math.max(0, req - t.qtyTaken),
-        };
-      }),
+      items: trxItems,
     };
 
     set((state) => ({
@@ -1613,7 +1825,6 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
         if (w.id !== woId) return w;
         const updatedMats = (w.materials || []).map((m) => {
           const match = materialsTaken.find((t) => t.material === m.material);
-          // Jika item di-hold, tetap isTaken: false & qtyTaken: 0
           if (m.isHold) {
             return {
               ...m,
@@ -1624,11 +1835,16 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
           if (match) {
             const taken = match.qtyTaken;
             const hasTaken = taken > 0;
+            // Item yang volumenya tidak berubah di batch ini mempertahankan status verifikasi sebelumnya
+            const isUnchanged = (m.qtyTaken || 0) === taken && Boolean(m.isVerified);
             return {
               ...m,
               isTaken: hasTaken,
               qtyTaken: taken,
+              qtyTakenSap: match.qtyTakenSap !== undefined ? match.qtyTakenSap : m.qtyTakenSap,
+              qtyTakenNonSap: match.qtyTakenNonSap !== undefined ? match.qtyTakenNonSap : m.qtyTakenNonSap,
               takenAt: hasTaken ? (m.takenAt || nowStr) : undefined,
+              isVerified: isUnchanged ? true : false,
             };
           }
           return m;
@@ -1637,10 +1853,10 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
         const hasHeld = updatedMats.some((m) => m.isHold);
         const hasRemainingToTake = updatedMats.some((m) => {
           if (m.isHold) return true;
-          const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
-          return (m.qtyTaken || 0) < req;
+          const fullReq = m.qtyAllocated || m.qtyReksis || 1;
+          return (m.qtyTaken || 0) < fullReq;
         });
-        const isAllCompleted = !hasRemainingToTake && !hasHeld;
+        const isAllTakenByVendor = !hasRemainingToTake && !hasHeld;
 
         const curMilestones = w.milestones || {
           material: 0,
@@ -1651,27 +1867,35 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
           energize: 0,
         };
 
-        // Hitung progres pemenuhan material secara proporsional per item
-        let calculatedMatProgress = 0;
-        if (updatedMats.length > 0) {
-          const totalFulfillment = updatedMats.reduce((sum, m) => {
-            if (m.isHold) return sum;
-            const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
-            const taken = m.qtyTaken || 0;
-            return sum + (req > 0 ? Math.min(1, taken / req) : 0);
-          }, 0);
-          calculatedMatProgress = Math.round((totalFulfillment / updatedMats.length) * 100);
-        }
+        // Progres material HANYA bertambah dari material yang SUDAH diverifikasi pengawas (isVerified === true)
+        const verifiedMats = updatedMats.filter((m) => m.isVerified && !m.isHold);
+        let matProgress = 0;
+        if (updatedMats.length > 0 && verifiedMats.length > 0) {
+          const hasRemainingToVerify = updatedMats.some((m) => {
+            if (m.isHold || !m.isVerified) return true;
+            const fullReq = m.qtyAllocated || m.qtyReksis || 1;
+            return (m.qtyTaken || 0) < fullReq;
+          });
+          const isAllVerifiedAndCompleted = !hasRemainingToVerify && !hasHeld;
 
-        // HANYA 100% jika SEMUA item sudah selesai diambil penuh! Jika baru sebagian (bertahap), maksimal 99%
-        const matProgress = isAllCompleted ? 100 : Math.min(99, Math.max(calculatedMatProgress > 0 ? 1 : 0, calculatedMatProgress));
+          const totalFulfillment = updatedMats.reduce((sum, m) => {
+            if (m.isHold || !m.isVerified) return sum;
+            const fullReq = m.qtyAllocated || m.qtyReksis || 1;
+            const taken = m.qtyTaken || 0;
+            return sum + (fullReq > 0 ? Math.min(1, taken / fullReq) : 0);
+          }, 0);
+          const calculatedMatProgress = Math.round((totalFulfillment / updatedMats.length) * 100);
+          matProgress = isAllVerifiedAndCompleted ? 100 : Math.min(99, calculatedMatProgress);
+        }
 
         const prevSjList = w.suratJalanList || (w.suratJalanNumber ? [{
           suratJalanNumber: w.suratJalanNumber,
           suratJalanDate: w.suratJalanDate || nowStr,
+          reservationNumber: w.reservationNumber,
           giNumber: w.giNumber,
           photos: w.suratJalanPhotos || (w.suratJalanPhoto ? [w.suratJalanPhoto] : []),
           notes: w.vendorReceiptNotes,
+          status: w.sjVerificationStatus === 'SESUAI' ? ('SESUAI' as const) : ('BELUM_DIPERIKSA' as const),
         }] : []);
 
         const newSjEntry = {
@@ -1682,7 +1906,7 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
           photos: sjList,
           receiptPhotos: rcList,
           notes: notes,
-          items: newPickupTrx.items.map((it) => ({
+          items: trxItems.map((it) => ({
             material: it.material,
             qtyTaken: it.qtyTakenCurrent,
           })),
@@ -1690,23 +1914,25 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
         };
         const updatedSjList = [newSjEntry, ...prevSjList.filter((s) => s.suratJalanNumber !== sjNumber)];
 
+        const overallProgress = Math.round((matProgress + (w.progressJasa || 0)) / 2);
+
         return {
           ...w,
           suratJalanNumber: sjNumber,
           suratJalanDate: sjDate || nowStr,
-          suratJalanPhoto: sjList[0] || 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80',
+          suratJalanPhoto: sjList[0] || undefined,
           suratJalanPhotos: sjList,
           suratJalanList: updatedSjList,
-          reservationNumber: reservationNumber !== undefined ? reservationNumber : w.reservationNumber,
           giNumber: giNumber !== undefined ? giNumber : w.giNumber,
           receiptPhotos: rcList,
           vendorReceiptConfirmed: true,
           vendorReceiptDate: nowStr,
           vendorReceiptNotes: notes,
-          reservationStatus: isAllCompleted ? ('Selesai' as const) : ('Siap Ambil Sebagian' as const),
-          ...applyWoStatus(w, isAllCompleted ? 'Verifikasi SJ' : 'Konstruksi'),
+          reservationStatus: isAllTakenByVendor ? ('Selesai' as const) : ('Siap Ambil Sebagian' as const),
+          ...applyWoStatus(w, 'Verifikasi SJ'),
           sjVerificationStatus: 'BELUM_DIPERIKSA' as const,
           materials: updatedMats,
+          progress: overallProgress,
           progressMaterial: matProgress,
           milestones: {
             ...curMilestones,
@@ -1719,7 +1945,7 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
     get().showToast(`✓ Material diterima & Surat Jalan ${sjNumber} tersimpan. Menunggu verifikasi Pengawas.`);
   },
 
-    pengawasVerifyReceipt: (woId, verifiedMaterials, notes, verifierName, suratJalanNumber) => {
+  pengawasVerifyReceipt: (woId, verifiedMaterials, notes, verifierName, suratJalanNumber) => {
     const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
     set((state) => {
       let hasSelisih = false;
@@ -1733,11 +1959,22 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
         }
       });
 
-      // 1. Update status pada transaksi vendorPickupTransactions
+      // 1. Update status & item fisik pada transaksi vendorPickupTransactions
       const updatedPickupTxs = state.vendorPickupTransactions.map((tx) => {
         if (tx.woId === woId && (!targetSjNo || tx.suratJalanNumber === targetSjNo)) {
+          const updatedTxItems = (tx.items || []).map((it) => {
+            const match = verifiedMaterials.find((v) => v.material === it.material);
+            if (!match) return it;
+            const delta = match.qtyTaken - (match.qtyVendorClaim ?? it.qtyTakenCurrent);
+            return {
+              ...it,
+              qtyTakenCurrent: match.qtyTaken,
+              totalTakenAccumulated: Math.max(0, (it.totalTakenAccumulated || 0) + delta),
+            };
+          });
           return {
             ...tx,
+            items: updatedTxItems,
             status: (hasSelisih ? 'ADA_SELISIH' : 'SESUAI') as 'ADA_SELISIH' | 'SESUAI',
             verifiedAt: nowStr,
             verifiedBy: verifierName,
@@ -1750,45 +1987,11 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
       // 2. Update status pada workOrders
       const updatedWos = state.workOrders.map((w) => {
         if (w.id !== woId) return w;
-        const updatedMats = (w.materials || []).map((m) => {
-          const match = verifiedMaterials.find((v) => v.material === m.material);
-          if (match) {
-            const isItemSelisih = match.qtyVendorClaim !== undefined ? match.qtyTaken !== match.qtyVendorClaim : false;
-            return {
-              ...m,
-              qtyTaken: match.qtyTaken,
-              isVerified: true,
-              verificationNote: match.note || (isItemSelisih ? `Selisih fisik vs klaim SJ: ${match.qtyTaken} dari ${match.qtyVendorClaim}` : 'Sesuai fisik Surat Jalan'),
-            };
-          }
-          return m;
-        });
-
-        const hasHeld = updatedMats.some((m) => m.isHold);
-        const hasRemainingToTake = updatedMats.some((m) => {
-          if (m.isHold) return true;
-          const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
-          return (m.qtyTaken || 0) < req;
-        });
-        const isAllCompleted = !hasRemainingToTake && !hasHeld;
-
-        let calculatedMatProgress = 0;
-        if (updatedMats.length > 0) {
-          const totalFulfillment = updatedMats.reduce((sum, m) => {
-            if (m.isHold) return sum;
-            const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
-            const taken = m.qtyTaken || 0;
-            return sum + (req > 0 ? Math.min(1, taken / req) : 0);
-          }, 0);
-          calculatedMatProgress = Math.round((totalFulfillment / updatedMats.length) * 100);
-        }
-        const matProgress = isAllCompleted ? 100 : Math.min(99, Math.max(calculatedMatProgress > 0 ? 1 : 0, calculatedMatProgress));
 
         // Gabungkan list Surat Jalan dari suratJalanList & vendorPickupTransactions yang ada
-        const woPickupTxs = state.vendorPickupTransactions.filter((tx) => tx.woId === woId);
+        const woPickupTxs = updatedPickupTxs.filter((tx) => tx.woId === woId);
         const existingList = w.suratJalanList || [];
-        
-        // Buat basis list yang memuat seluruh nomor surat jalan yang pernah diterbitkan
+
         const allKnownSjNos = Array.from(new Set([
           ...existingList.map((s) => s.suratJalanNumber),
           ...woPickupTxs.map((t) => t.suratJalanNumber),
@@ -1805,13 +2008,25 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
             ? ((hasSelisih ? 'ADA_SELISIH' : 'SESUAI') as 'ADA_SELISIH' | 'SESUAI')
             : (matchedExisting?.status || matchedTx?.status || 'BELUM_DIPERIKSA');
 
+          const prevItems = matchedExisting?.items || matchedTx?.items?.map((it) => ({
+            material: it.material,
+            qtyTaken: it.qtyTakenCurrent,
+          }));
+          const updatedSjItems = isTarget
+            ? verifiedMaterials
+                .filter((v) => (v.qtyVendorClaim || 0) > 0 || v.qtyTaken > 0)
+                .map((v) => ({ material: v.material, qtyTaken: v.qtyTaken, note: v.note }))
+            : prevItems;
+
           return {
             suratJalanNumber: sjNo,
             suratJalanDate: matchedExisting?.suratJalanDate || matchedTx?.date || w.suratJalanDate || nowStr,
             reservationNumber: matchedExisting?.reservationNumber || matchedTx?.reservationNumber || w.reservationNumber,
             giNumber: matchedExisting?.giNumber || matchedTx?.giNumber || w.giNumber,
             photos: matchedExisting?.photos || matchedTx?.suratJalanPhotos || w.suratJalanPhotos || [],
+            receiptPhotos: matchedExisting?.receiptPhotos || w.receiptPhotos || [],
             notes: matchedExisting?.notes || matchedTx?.notes || w.vendorReceiptNotes,
+            items: updatedSjItems,
             status: currentStatus as 'BELUM_DIPERIKSA' | 'SESUAI' | 'ADA_SELISIH',
             verifiedAt: isTarget ? nowStr : (matchedExisting?.verifiedAt || matchedTx?.verifiedAt),
             verifiedBy: isTarget ? verifierName : (matchedExisting?.verifiedBy || matchedTx?.verifiedBy),
@@ -1821,10 +2036,100 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
 
         // Hitung status verifikasi global WO
         const allVerified = updatedSjList.length > 0 && updatedSjList.every((sj) => sj.status === 'SESUAI');
+        const allInspected = updatedSjList.length > 0 && updatedSjList.every((sj) => sj.status === 'SESUAI' || sj.status === 'ADA_SELISIH');
         const anySelisih = updatedSjList.some((sj) => sj.status === 'ADA_SELISIH');
+
+        // Deteksi apakah SJ yang diverifikasi ini adalah jalur Non-SAP
+        const targetSjObj = updatedSjList.find((s) => s.suratJalanNumber === targetSjNo);
+        const isNonSapSj = Boolean(
+          (targetSjObj?.reservationNumber && w.reservationNumberNonStock && targetSjObj.reservationNumber === w.reservationNumberNonStock) ||
+          (targetSjNo && targetSjNo.toLowerCase().includes('nonsap'))
+        );
+
+        // Akumulasi qtyTaken secara benar (tidak menimpa pengambilan tahap sebelumnya dengan angka SJ tahap ini saja!)
+        const updatedMats = (w.materials || []).map((m) => {
+          const match = verifiedMaterials.find(
+            (v) => v.material === m.material && ((v.qtyVendorClaim !== undefined ? v.qtyVendorClaim > 0 : false) || v.qtyTaken > 0)
+          );
+          if (match) {
+            const claim = match.qtyVendorClaim !== undefined ? match.qtyVendorClaim : match.qtyTaken;
+            const delta = match.qtyTaken - claim;
+            const isItemSelisih = delta !== 0;
+
+            // Jika WO hanya punya 1 SJ, pakai langsung match.qtyTaken; jika multi-SJ bertahap, sesuaikan total akumulasi dengan delta
+            const prevTotalTaken = m.qtyTaken !== undefined && (m.qtyTaken || 0) >= claim ? (m.qtyTaken || 0) : claim;
+            const newTotalTaken = updatedSjList.length <= 1
+              ? match.qtyTaken
+              : Math.max(0, prevTotalTaken + delta);
+
+            let nextTakenSap = m.qtyTakenSap;
+            let nextTakenNonSap = m.qtyTakenNonSap;
+            if (delta !== 0) {
+              if (isNonSapSj && nextTakenNonSap !== undefined) {
+                nextTakenNonSap = Math.max(0, nextTakenNonSap + delta);
+              } else if (!isNonSapSj && nextTakenSap !== undefined) {
+                nextTakenSap = Math.max(0, nextTakenSap + delta);
+              }
+            }
+
+            return {
+              ...m,
+              isTaken: newTotalTaken > 0,
+              qtyTaken: newTotalTaken,
+              qtyTakenSap: nextTakenSap,
+              qtyTakenNonSap: nextTakenNonSap,
+              isVerified: newTotalTaken > 0,
+              verificationNote: match.note || (isItemSelisih ? `Selisih fisik vs klaim SJ: ${match.qtyTaken} dari ${claim}` : 'Sesuai fisik Surat Jalan'),
+            };
+          }
+
+          // Jika material tidak diambil pada SJ tahap ini tetapi sudah diambil pada SJ tahap sebelumnya:
+          // bila seluruh SJ sudah diperiksa, pastikan isVerified = true
+          if (allInspected && (m.qtyTaken || 0) > 0 && !m.isVerified) {
+            return {
+              ...m,
+              isVerified: true,
+              verificationNote: m.verificationNote || 'Sesuai fisik Surat Jalan',
+            };
+          }
+          return m;
+        });
+
+        // Hitung progres pemenuhan material terhadap kebutuhan penuh WO (qtyAllocated / qtyReksis)
+        const hasHeld = updatedMats.some((m) => m.isHold);
+        const hasRemainingToTakeOrVerify = updatedMats.some((m) => {
+          if (m.isHold) return true;
+          if (!m.isVerified) return true;
+          const fullReq = m.qtyAllocated || m.qtyReksis || 1;
+          return (m.qtyTaken || 0) < fullReq;
+        });
+        const isAllCompleted = !hasRemainingToTakeOrVerify && !hasHeld && allVerified;
+
+        let matProgress = 0;
+        if (updatedMats.length > 0) {
+          const totalFulfillment = updatedMats.reduce((sum, m) => {
+            if (m.isHold || !m.isVerified) return sum;
+            const fullReq = m.qtyAllocated || m.qtyReksis || 1;
+            const taken = m.qtyTaken || 0;
+            return sum + (fullReq > 0 ? Math.min(1, taken / fullReq) : 0);
+          }, 0);
+          const calculatedMatProgress = Math.round((totalFulfillment / updatedMats.length) * 100);
+          matProgress = isAllCompleted ? 100 : Math.min(99, calculatedMatProgress);
+        }
+
+        const overallProgress = Math.round((matProgress + (w.progressJasa || 0)) / 2);
+        const nextStatus: Exclude<WorkOrderRecord['status'], 'Closeout'> =
+          overallProgress >= 100
+            ? 'Selesai'
+            : (w.status === 'Verifikasi SJ' && allVerified
+                ? 'Konstruksi'
+                : (w.status === 'Closeout' ? (w.statusBeforeCloseout || 'Konstruksi') : w.status));
 
         return {
           ...w,
+          ...applyWoStatus(w, nextStatus),
+          reservationStatus: isAllCompleted ? ('Selesai' as const) : w.reservationStatus,
+          progress: overallProgress,
           progressMaterial: matProgress,
           milestones: {
             ...(w.milestones || { material: 0, konstruksi: 0, konduktor: 0, gardu: 0, komisioning: 0, energize: 0 }),
@@ -1839,9 +2144,9 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
         };
       });
 
-      return { 
+      return {
         workOrders: updatedWos,
-        vendorPickupTransactions: updatedPickupTxs
+        vendorPickupTransactions: updatedPickupTxs,
       };
     });
     get().addAudit(`Pengawas ${verifierName} memverifikasi fisik material Surat Jalan ${suratJalanNumber || ''} WO ${woId}`, woId, 'Menu Pengawas');
@@ -2064,7 +2369,7 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
           return {
             ...w,
             suratJalanNumber: sjNumber,
-            suratJalanPhoto: photoUrl || 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=400&q=80',
+            suratJalanPhoto: photoUrl || undefined,
             suratJalanDate: nowStr,
             reservationStatus: 'Selesai' as const,
           };

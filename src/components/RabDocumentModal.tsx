@@ -8,17 +8,25 @@ import {
   getSurveyPackages,
   listSurveyDocs,
   calculateTiangRabFromSurvey,
+  getHeaderDepth,
   SurveyDocType,
 } from '@/data/surveyRabCalculator';
-import { usePromotorStore, isWoPendingApproval } from '@/store/usePromotorStore';
+import { usePromotorStore, isWoEditable } from '@/store/usePromotorStore';
 import {
   X,
   Printer,
   PenTool,
   Edit3,
-  Save
+  Save,
+  Trash2,
+  CheckCircle2,
+  RotateCcw
 } from 'lucide-react';
 import { SignaturePadModal } from './SignaturePadModal';
+
+const DEFAULT_HASIAN_PARAF = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMTIwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEyMCI+PHBhdGggZD0iTSA0MCw3MCBDIDUwLDUwIDcwLDI1IDc4LDEyIEMgODIsNSA3NSw4IDcwLDIyIEMgNjIsNDggNTUsODAgNDgsMTEyIE0gNTIsNzIgQyA2MCw0OCA3Miw0MCA4Miw0MiBDIDkwLDQ0IDg4LDYyIDg5LDc2IEMgOTIsMjggMTAyLDIwIDEwOCwzMCBDIDExMiwzOCAxMTAsNjggMTEyLDgwIEMgMTE2LDQ4IDEyNiw0NSAxMzIsNTYgQyAxMzYsNjYgMTM4LDgyIDE0NCwxMDIgTSA2Miw1OCBMIDEzMCw1NiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAzMzY2IiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+';
+
+const DEFAULT_WEGIG_PARAF = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMjAgMTIwIiB3aWR0aD0iMjIwIiBoZWlnaHQ9IjEyMCI+CiAgPHBhdGggZD0iTSAyOCw2MiBDIDM4LDMyIDUwLDIyIDYyLDQ4IEMgNzIsNzAgNzgsODUgODYsNTIgQyA5NCwyMiAxMDYsMzAgMTE0LDY1IEMgMTIwLDg1IDEyOCw0NSAxMzgsNDAgQyAxNDgsMzUgMTU2LDYwIDE2OCw1MiBDIDE3OCw0NCAxODYsMzAgMTk2LDI1IE0gNDAsODggQyA3NSw4MiAxMjAsODAgMTg1LDgyIE0gNzAsOTUgQyAxMDUsOTIgMTQ1LDkwIDE3NSw5MyIgCiAgICBmaWxsPSJub25lIiBzdHJva2U9IiMwMDJiNjYiIHN0cm9rZS13aWR0aD0iMi44IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
 
 /** Penunjuk baris dokumen ke item WO asalnya (indeks di `materials` / `jasaItems`). */
 type WoItemRef = { group: 'materials' | 'jasaItems'; index: number };
@@ -91,6 +99,8 @@ interface RabDocumentModalProps {
   mode?: 'rab' | 'wo'; // 'rab' = Survey Output (no signatures), 'wo' = Work Order Contract (with signatures)
   /** Asman boleh merevisi volume rencana langsung di dokumen selama WO menunggu persetujuan. */
   allowVolumeEdit?: boolean;
+  /** Callback opsional saat menyimpan volume pada WO draft / preview (sebelum WO resmi di-submit ke store) */
+  onSavePreviewVolumes?: (woId: string, volumes: { materials: number[]; jasaItems: number[] }) => void;
 }
 
 export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
@@ -102,8 +112,10 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
   initialPaket = 'paket2',
   mode,
   allowVolumeEdit = false,
+  onSavePreviewVolumes,
 }) => {
-  const { workOrders, surveys, customKhsPrices, updateWoVolumes } = usePromotorStore();
+  const { workOrders, surveys, customKhsPrices, updateWoVolumes, removeWoMaterialItem, removeWoJasaItem, updateWoSignatures, currentPage } = usePromotorStore();
+  const isAsmanPage = currentPage === 'persetujuan-wo';
 
   // --- Tab dokumen WO: satu tab per WO milik pelanggan yang sama ---
   const tabWos = useMemo(
@@ -122,7 +134,7 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
   const isWoMode = mode ? mode === 'wo' : Boolean(woDataProp);
 
   // --- Revisi volume rencana langsung di tabel dokumen ---
-  const canEditVolume = allowVolumeEdit && isWoMode && Boolean(woData && isWoPendingApproval(woData));
+  const canEditVolume = allowVolumeEdit && isWoMode && Boolean(woData && isWoEditable(woData));
   const [isEditingVolume, setIsEditingVolume] = useState(false);
   const [volumeDrafts, setVolumeDrafts] = useState<Record<string, string>>({});
   const isVolumeEditActive = canEditVolume && isEditingVolume;
@@ -427,28 +439,41 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
 
     // 3. Baris dokumen yang berasal dari survey ditautkan ke item WO-nya. Item WO
     //    dibentuk dari baris survey aktif dengan urutan yang sama, jadi dicocokkan per
-    //    (kelompok, kode, uraian) secara berurutan agar item kembar tetap tepat.
+    //    (kelompok, uraian/deskripsi) secara berurutan agar item kembar tetap tepat.
     //    Volume WO menjadi acuan dokumen bila sudah direvisi Asman / sedang diedit.
     if (targetWo && activeSurveyItems.length > 0) {
-      const useWoVolume = Boolean(targetWo.volumeEditedAt) || isVolumeEditActive;
-      const rowKey = (section?: string, kode?: string, desc?: string) =>
-        `${section || ''}|${(kode || '').trim()}|${(desc || '').trim().toLowerCase()}`;
+      const isWoCustomized = Boolean(targetWo.volumeEditedAt) || isVolumeEditActive;
+      const normalizeDesc = (str?: string) =>
+        (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const rowKey = (section?: string, desc?: string) =>
+        `${section || ''}|${normalizeDesc(desc)}`;
       const woVolumes = new Map<string, { vol: number; harga: number; ref: WoItemRef }[]>();
       const addVolume = (key: string, vol: number, harga: number | undefined, ref: WoItemRef) => {
         woVolumes.set(key, [...(woVolumes.get(key) || []), { vol, harga: harga || 0, ref }]);
       };
       (targetWo.materials || []).forEach((m, index) =>
-        addVolume(rowKey('MATERIAL', m.kode, m.material), m.qtyAllocated || m.qtyReksis || 0, m.hargaSatuan, { group: 'materials', index })
+        addVolume(rowKey('MATERIAL', m.material), m.qtyAllocated || m.qtyReksis || 0, m.hargaSatuan, { group: 'materials', index })
       );
       (targetWo.jasaItems || []).forEach((j, index) =>
-        addVolume(rowKey('JASA', j.kode, j.deskripsi), j.qtyTarget || 0, j.hargaSatuan, { group: 'jasaItems', index })
+        addVolume(rowKey('JASA', j.deskripsi), j.qtyTarget || 0, j.hargaSatuan, { group: 'jasaItems', index })
       );
 
       baseItems = baseItems.map((item) => {
         if (item.isHeader || item.rencanaVol <= 0) return item;
-        const fromWo = woVolumes.get(rowKey(item.section, item.kode, item.desc))?.shift();
-        if (!fromWo) return item;
-        if (!useWoVolume) return { ...item, woRef: fromWo.ref };
+        const fromWo = woVolumes.get(rowKey(item.section, item.desc))?.shift();
+        if (!fromWo) {
+          // Jika WO sudah pernah diedit (misal baris material/jasa ini dihapus dari WO),
+          // maka di dokumen resmi WO baris ini harus disembunyikan (rencanaVol = 0)
+          if (isWoCustomized) {
+            return {
+              ...item,
+              rencanaVol: 0,
+              rencanaTotal: 0,
+            };
+          }
+          return item;
+        }
+        if (!isWoCustomized) return { ...item, woRef: fromWo.ref };
         const harga = fromWo.harga > 0 ? fromWo.harga : item.hargaSatuan;
         return {
           ...item,
@@ -516,10 +541,44 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
     const hasSurveyHierarchy = rabItems.some((r) => r.isHeader);
 
     if (hasSurveyHierarchy) {
+      // 1. Saring item non-header yang volume rencananya 0 dan tidak punya realisasi (misal baris dihapus dari WO)
+      const validItems = rabItems.filter(
+        (it) => it.isHeader || it.rencanaVol > 0 || it.realisasiVol > 0
+      );
+
+      // 2. Bersihkan header yatim (header yang tidak memiliki item aktif di bawahnya)
+      const activeHeaderIndices = new Set<number>();
+      validItems.forEach((item, idx) => {
+        if (item.isHeader) {
+          const myDepth = getHeaderDepth(item);
+          let hasActiveChild = false;
+          for (let j = idx + 1; j < validItems.length; j++) {
+            const next = validItems[j];
+            if (next.isHeader) {
+              const nextDepth = getHeaderDepth(next);
+              if (nextDepth <= myDepth) break;
+            } else {
+              if (next.rencanaVol > 0 || next.realisasiVol > 0) {
+                hasActiveChild = true;
+                break;
+              }
+            }
+          }
+          if (hasActiveChild) {
+            activeHeaderIndices.add(idx);
+          }
+        }
+      });
+
+      const prunedItems = validItems.filter((it, idx) => {
+        if (it.isHeader) return activeHeaderIndices.has(idx);
+        return it.rencanaVol > 0 || it.realisasiVol > 0;
+      });
+
       let itemCounter = 0;
       let lastHdrDepth = -1; // kedalaman header terakhir yang ditemukan
 
-      return rabItems.map((item) => {
+      return prunedItems.map((item) => {
         if (item.isHeader) {
           const no  = (item.no || '').trim();
           const desc = (item.desc || '').toUpperCase();
@@ -619,12 +678,44 @@ export const RabDocumentModal: React.FC<RabDocumentModalProps> = ({
       alert('Volume yang diedit wajib diisi dengan angka lebih dari 0.');
       return;
     }
-    const tersimpan = updateWoVolumes(
-      woData.id,
-      { materials: volumeEdit.matVols, jasaItems: volumeEdit.jasaVols },
-      woData.approverName
-    );
-    if (tersimpan) stopVolumeEdit();
+
+    const isInStore = workOrders.some((w) => w.id === woData.id);
+
+    if (isInStore) {
+      updateWoVolumes(
+        woData.id,
+        { materials: volumeEdit.matVols, jasaItems: volumeEdit.jasaVols },
+        woData.approverName
+      );
+      stopVolumeEdit();
+    } else {
+      // Draft / Preview WO: update data preview in-place
+      const targetMats = woData.materials;
+      if (targetMats) {
+        volumeEdit.matVols.forEach((v, i) => {
+          if (targetMats[i]) {
+            targetMats[i].qtyAllocated = v;
+            targetMats[i].qtyReksis = v;
+          }
+        });
+      }
+      const targetJasa = woData.jasaItems;
+      if (targetJasa) {
+        volumeEdit.jasaVols.forEach((v, i) => {
+          if (targetJasa[i]) {
+            targetJasa[i].qtyTarget = v;
+          }
+        });
+      }
+      woData.volumeEditedAt = new Date().toLocaleString('id-ID');
+      if (onSavePreviewVolumes) {
+        onSavePreviewVolumes(woData.id, {
+          materials: volumeEdit.matVols,
+          jasaItems: volumeEdit.jasaVols,
+        });
+      }
+      stopVolumeEdit();
+    }
   };
 
   const handlePrint = () => {
@@ -1053,61 +1144,76 @@ ${signatureBlock}
           <div className="flex items-center gap-2">
             {canEditVolume && (
               isVolumeEditActive ? (
-                <>
+                <div className="flex items-center gap-1.5 bg-slate-800/90 p-1 rounded-xl border border-slate-700 shadow-inner">
                   <button
                     type="button"
                     onClick={stopVolumeEdit}
-                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700 cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/80 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+                    title="Batalkan perubahan volume"
                   >
-                    Batal Edit
+                    <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Batal</span>
                   </button>
                   <button
                     type="button"
                     onClick={handleSaveVolumes}
-                    disabled={!volumeEdit || volumeEdit.invalidCount > 0 || volumeEdit.changedCount === 0}
-                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    disabled={!volumeEdit || volumeEdit.invalidCount > 0}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
                     title="Simpan volume rencana hasil revisi ke Work Order"
                   >
-                    <Save className="w-3.5 h-3.5" /> Simpan Volume
+                    <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                    <span>Simpan Volume</span>
                   </button>
-                </>
+                </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => setIsEditingVolume(true)}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600/90 hover:bg-indigo-600 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 border border-indigo-400/40 shadow-sm transition-all cursor-pointer hover:shadow-indigo-500/20"
                   title="Edit volume rencana material & jasa langsung di dokumen"
                 >
-                  <Edit3 className="w-3.5 h-3.5" /> Edit Volume
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit Volume</span>
                 </button>
               )
             )}
+
             {isWoMode && (
               <button
                 type="button"
                 onClick={() => setSigPadConfig({
                   isOpen: true,
-                  type: 'creator',
-                  title: 'Tanda Tangan Digital & Ubah Penandatangan',
-                  initialName: creatorName,
-                  initialRole: creatorRole,
-                  initialSig: creatorSig || undefined,
+                  type: isAsmanPage ? 'approver' : 'creator',
+                  title: isAsmanPage
+                    ? 'Tanda Tangan Digital Asman Konstruksi (Menyetujui)'
+                    : 'Tanda Tangan Digital Pembuat Work Order (Dibuat Oleh)',
+                  initialName: isAsmanPage ? (approverName || 'WEGIG DIDIK KURNIAWAN') : (creatorName || 'HASIAN EFRAVODITUS SITORUS'),
+                  initialRole: isAsmanPage ? (approverRole || 'ASMAN KONSTRUKSI') : (creatorRole || 'TC LOLA KONS'),
+                  initialSig: isAsmanPage ? (approverSig || DEFAULT_WEGIG_PARAF) : (creatorSig || DEFAULT_HASIAN_PARAF),
                 })}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1.5 transition border border-slate-700 cursor-pointer"
-                title="Atur tanda tangan digital & nama pejabat"
+                className="px-3.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 active:scale-95 text-slate-100 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-700/80 shadow-sm cursor-pointer"
+                title={isAsmanPage ? 'Tanda tangan digital Asman Konstruksi' : 'Atur tanda tangan digital pembuat WO'}
               >
-                <PenTool className="w-3.5 h-3.5 text-emerald-400" /> Tanda Tangan
+                <PenTool className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Tanda Tangan {isAsmanPage ? 'Asman' : ''}</span>
               </button>
             )}
+
             <button
               onClick={handlePrint}
-              className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition-all border border-blue-400/40 shadow-sm cursor-pointer hover:shadow-blue-500/20"
+              title="Cetak atau unduh dokumen sebagai PDF"
             >
-              <Printer className="w-3.5 h-3.5" /> Cetak / PDF
+              <Printer className="w-3.5 h-3.5" />
+              <span>Cetak / PDF</span>
             </button>
+
+            <div className="h-5 w-px bg-slate-700/80 mx-0.5" />
+
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 active:scale-95 transition-all cursor-pointer"
+              title="Tutup Dokumen (Esc)"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1406,7 +1512,41 @@ ${signatureBlock}
                       </td>
                       {/* Keterangan */}
                       <td className="py-0.5 px-2 text-center text-[9px] print:text-[5.9pt] border border-black whitespace-nowrap">
-                        {item.keterangan || (item.section === 'MATERIAL' ? 'LOG UP3 BTS' : '')}
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>{item.keterangan || (item.section === 'MATERIAL' ? 'LOG UP3 BTS' : '')}</span>
+                          {isVolumeEditActive && item.woRef?.group === 'materials' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm(`Hapus material "${item.desc}" dari daftar rencana Work Order ini?`)) {
+                                  if (item.woRef && woData) {
+                                    removeWoMaterialItem(woData.id, item.woRef.index);
+                                  }
+                                }
+                              }}
+                              className="p-0.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded transition cursor-pointer print:hidden"
+                              title="Hapus baris material ini"
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-600" />
+                            </button>
+                          )}
+                          {isVolumeEditActive && item.woRef?.group === 'jasaItems' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm(`Hapus pekerjaan jasa "${item.desc}" dari daftar rencana Work Order ini?`)) {
+                                  if (item.woRef && woData) {
+                                    removeWoJasaItem(woData.id, item.woRef.index);
+                                  }
+                                }
+                              }}
+                              className="p-0.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded transition cursor-pointer print:hidden"
+                              title="Hapus baris jasa ini"
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-600" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1661,19 +1801,13 @@ ${signatureBlock}
         <div className="p-3.5 px-6 border-t border-slate-200 bg-slate-50 rounded-b-2xl flex items-center justify-between text-xs text-slate-500 print:hidden">
           <span>
             Acuan: <b>KHS 2026 PT PLN (Persero) UP3 Banten Selatan</b>
-            {isWoMode ? ' • Klik tanda tangan untuk ubah/tanda tangan digital.' : ''}
-            {canEditVolume ? ' • Volume rencana dapat direvisi lewat tombol Edit Volume.' : ''}
+            {isWoMode ? ' • Klik kotak tanda tangan untuk ubah/tanda tangan digital.' : ''}
           </span>
           <div className="flex items-center gap-2">
             <button
-              onClick={handlePrint}
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <Printer className="w-4 h-4" /> Cetak Dokumen / PDF
-            </button>
-            <button
+              type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold transition cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 active:scale-95 text-white font-bold transition-all cursor-pointer shadow-xs"
             >
               Tutup Dokumen
             </button>
@@ -1692,13 +1826,31 @@ ${signatureBlock}
         initialSignature={sigPadConfig.initialSig}
         onSave={(dataUrl, newName, newRole) => {
           if (sigPadConfig.type === 'approver') {
-            setApproverName(newName || 'WEGIG DIDIK KURNIAWAN');
-            setApproverRole(newRole || 'ASMAN KONSTRUKSI');
+            const finalName = newName || 'WEGIG DIDIK KURNIAWAN';
+            const finalRole = newRole || 'ASMAN KONSTRUKSI';
+            setApproverName(finalName);
+            setApproverRole(finalRole);
             setApproverSig(dataUrl);
+            if (woData) {
+              updateWoSignatures(woData.id, {
+                approverName: finalName,
+                approverRole: finalRole,
+                approverSignature: dataUrl,
+              });
+            }
           } else {
-            setCreatorName(newName || 'HASIAN EFRAVODITUS SITORUS');
-            setCreatorRole(newRole || 'TC LOLA KONS');
+            const finalName = newName || 'HASIAN EFRAVODITUS SITORUS';
+            const finalRole = newRole || 'TC LOLA KONS';
+            setCreatorName(finalName);
+            setCreatorRole(finalRole);
             setCreatorSig(dataUrl);
+            if (woData) {
+              updateWoSignatures(woData.id, {
+                creatorName: finalName,
+                creatorRole: finalRole,
+                creatorSignature: dataUrl,
+              });
+            }
           }
         }}
       />

@@ -26,12 +26,14 @@ import {
   ChevronDown,
   Phone,
   UserCheck,
-  Lock
+  Lock,
+  Send
 } from 'lucide-react';
 import { Pagination } from '@/components/Pagination';
 import { RabDocumentModal } from '@/components/RabDocumentModal';
 import { SignaturePadModal } from '@/components/SignaturePadModal';
-import { getSurveyPackages } from '@/data/surveyRabCalculator';
+import { getSurveyPackages, calculateRabFromSurvey, calculateTiangRabFromSurvey } from '@/data/surveyRabCalculator';
+import { WoMaterialItem, WoJasaItem } from '@/types';
 
 const DEFAULT_HASIAN_PARAF = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMTIwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEyMCI+PHBhdGggZD0iTSA0MCw3MCBDIDUwLDUwIDcwLDI1IDc4LDEyIEMgODIsNSA3NSw4IDcwLDIyIEMgNjIsNDggNTUsODAgNDgsMTEyIE0gNTIsNzIgQyA2MCw0OCA3Miw0MCA4Miw0MiBDIDkwLDQ0IDg4LDYyIDg5LDc2IEMgOTIsMjggMTAyLDIwIDEwOCwzMCBDIDExMiwzOCAxMTAsNjggMTEyLDgwIEMgMTE2LDQ4IDEyNiw0NSAxMzIsNTYgQyAxMzYsNjYgMTM4LDgyIDE0NCwxMDIgTSA2Miw1OCBMIDEzMCw1NiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAzMzY2IiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+';
 
@@ -55,7 +57,9 @@ export const WorkOrderView: React.FC = () => {
     selectedDaftungIdForWo,
     setSelectedDaftungIdForWo,
     deleteWorkOrder, 
-    showToast 
+    showToast,
+    customKhsPrices,
+    submitWoToAsman
   } = usePromotorStore();
 
   // Sumber tunggal daftar rekanan: seed master + vendor yang lahir dari Master
@@ -69,9 +73,37 @@ export const WorkOrderView: React.FC = () => {
     [vendors, contracts]
   );
 
+  // Vendor per paket pekerjaan (hanya vendor yang terdaftar memiliki kontrak/penugasan di paket terkait)
+  const vendorP1Options = useMemo(() => {
+    const activeVendors = contracts
+      .filter((c) => c.jenisPekerjaan === 'Paket 1')
+      .map((c) => c.vendorName.trim().toLowerCase());
+    return vendorOptions.filter((v) => 
+      v.jenisPekerjaan?.includes('Paket 1') || activeVendors.includes(v.name.trim().toLowerCase())
+    );
+  }, [vendorOptions, contracts]);
+
+  const vendorP2Options = useMemo(() => {
+    const activeVendors = contracts
+      .filter((c) => c.jenisPekerjaan === 'Paket 2')
+      .map((c) => c.vendorName.trim().toLowerCase());
+    return vendorOptions.filter((v) => 
+      v.jenisPekerjaan?.includes('Paket 2') || activeVendors.includes(v.name.trim().toLowerCase())
+    );
+  }, [vendorOptions, contracts]);
+
+  const vendorTbOptions = useMemo(() => {
+    const activeVendors = contracts
+      .filter((c) => c.jenisPekerjaan === 'Tiang')
+      .map((c) => c.vendorName.trim().toLowerCase());
+    return vendorOptions.filter((v) => 
+      v.jenisPekerjaan?.includes('Tiang') || activeVendors.includes(v.name.trim().toLowerCase())
+    );
+  }, [vendorOptions, contracts]);
+
   const [selectedDocWo, setSelectedDocWo] = useState<WorkOrderRecord | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('BELUM_DISETUJUI');
+  const [categoryFilter, setCategoryFilter] = useState<string>('PENDING');
   const [woPage, setWoPage] = useState(1);
   const [woPageSize, setWoPageSize] = useState(5);
 
@@ -118,6 +150,12 @@ export const WorkOrderView: React.FC = () => {
   const [tbPengawas1, setTbPengawas1] = useState('Hasian Sitorus (TC Lola Konstruksi)');
   const [tbPengawas2, setTbPengawas2] = useState('');
 
+  // Simpan override volume yang telah diedit di modal pratinjau WO sebelum di-apply
+  const [previewCustomVolumes, setPreviewCustomVolumes] = useState<{
+    materials?: WoMaterialItem[];
+    jasaItems?: WoJasaItem[];
+  }>({});
+
   // Handler auto-generate penomoran serentak
   const handleRegenerateWoNumbers = (urut: string, bln: string, thn: string) => {
     setWoNoUrut(urut);
@@ -135,7 +173,7 @@ export const WorkOrderView: React.FC = () => {
     }
   };
 
-  // Handler perubahan vendor WO Tiang (otomatis isi Narahubung & Telepon)
+  // Handler perubahan vendor WO Tiang (otomatis isi Narahubung, Telepon, & Pengawas 1 dari Kontrak)
   const handleTbVendorChange = (vName: string) => {
     setTbVendor(vName);
     const matched = vendors.find((v) => v.name === vName);
@@ -143,9 +181,10 @@ export const WorkOrderView: React.FC = () => {
       if (matched.director) setTbNarahubung(matched.director);
       if (matched.phone) setTbPhone(matched.phone);
     }
-    const matchedContract = contracts.find((c) => c.vendorName === vName && c.jenisPekerjaan === 'Tiang');
+    const matchedContract = contracts.find((c) => c.vendorName.trim().toLowerCase() === vName.trim().toLowerCase() && c.jenisPekerjaan === 'Tiang');
     if (matchedContract) {
       setTbContractId(matchedContract.id);
+      if (matchedContract.supervisorName) setTbPengawas1(matchedContract.supervisorName);
     }
   };
 
@@ -241,31 +280,38 @@ export const WorkOrderView: React.FC = () => {
     setCandidateHasP2(hasP2);
     setCandidateHasTiang(hasTiang);
 
+    const initialP1Vendor = existingP1?.vendor || activeP1[0]?.vendorName || 'PT. HILMAN PRIMA PERKASA';
+    const initialP1Contract = contracts.find((c) => c.vendorName.trim().toLowerCase() === initialP1Vendor.trim().toLowerCase() && c.jenisPekerjaan === 'Paket 1') || activeP1[0];
+
+    const initialP2Vendor = existingP2?.vendor || activeP2[0]?.vendorName || 'PT. TAWAKAL KARYA TEKNIK';
+    const initialP2Contract = contracts.find((c) => c.vendorName.trim().toLowerCase() === initialP2Vendor.trim().toLowerCase() && c.jenisPekerjaan === 'Paket 2') || activeP2[0];
+
+    const defaultTbVendor = existingTb?.vendor || activeTb[0]?.vendorName || 'PT. ENERGI BANTEN SEJAHTERA';
+    const initialTbContract = contracts.find((c) => c.vendorName.trim().toLowerCase() === defaultTbVendor.trim().toLowerCase() && c.jenisPekerjaan === 'Tiang') || activeTb[0];
+    const matchedTbVendor = vendors.find((v) => v.name === defaultTbVendor);
+
     setP1Enabled(hasP1);
-    setP1ContractId(existingP1?.contractId || activeP1[0]?.id || '');
-    setP1Vendor(existingP1?.vendor || activeP1[0]?.vendorName || 'PT. HILMAN PRIMA PERKASA');
+    setP1ContractId(existingP1?.contractId || initialP1Contract?.id || '');
+    setP1Vendor(initialP1Vendor);
     setP1NoWo(existingP1?.id || formatWoNumber(u1, currentMonth, 'P1', currentYear));
-    setP1Pengawas1(existingP1?.supervisor1 || 'Hasian Sitorus (TC Lola Konstruksi)');
+    setP1Pengawas1(initialP1Contract?.supervisorName || existingP1?.supervisor1 || 'Hasian Sitorus (TC Lola Konstruksi)');
     setP1Pengawas2(existingP1?.supervisor2 || 'Daud Febrizer (TL Teknik ULP Rangkasbitung)');
 
     setP2Enabled(hasP2);
-    setP2ContractId(existingP2?.contractId || activeP2[0]?.id || '');
-    setP2Vendor(existingP2?.vendor || activeP2[0]?.vendorName || 'PT. TAWAKAL KARYA TEKNIK');
+    setP2ContractId(existingP2?.contractId || initialP2Contract?.id || '');
+    setP2Vendor(initialP2Vendor);
     setP2NoWo(existingP2?.id || formatWoNumber(u2, currentMonth, 'P2', currentYear));
-    setP2Pengawas1(existingP2?.supervisor1 || 'Winnetou Chandra Sadli (Officer Kinerja Konstruksi)');
+    setP2Pengawas1(initialP2Contract?.supervisorName || existingP2?.supervisor1 || 'Daud Febrizer (TL Teknik ULP Rangkasbitung)');
     setP2Pengawas2(existingP2?.supervisor2 || '');
-
-    const defaultTbVendor = activeTb[0]?.vendorName || 'PT. ENERGI BANTEN SEJAHTERA';
-    const matchedTbVendor = vendors.find((v) => v.name === defaultTbVendor);
 
     // WO Tiang hanya diaktifkan jika terdapat Material Tiang Rencana Baru
     setTbEnabled(hasTiang);
-    setTbContractId(existingTb?.contractId || activeTb[0]?.id || '');
-    setTbVendor(existingTb?.vendor || defaultTbVendor);
+    setTbContractId(existingTb?.contractId || initialTbContract?.id || '');
+    setTbVendor(defaultTbVendor);
     setTbNarahubung(existingTb?.narahubung || matchedTbVendor?.director || 'Ir. Dedi Mulyadi / Koordinator');
     setTbPhone(existingTb?.phone || matchedTbVendor?.phone || '0812-3456-7890');
     setTbNoWo(existingTb?.id || formatWoNumber(u3, currentMonth, 'TB', currentYear));
-    setTbPengawas1(existingTb?.supervisor1 || 'Hasian Sitorus (TC Lola Konstruksi)');
+    setTbPengawas1(initialTbContract?.supervisorName || existingTb?.supervisor1 || 'Winnetou Chandra Sadli (Officer Kinerja Konstruksi)');
     setTbPengawas2(existingTb?.supervisor2 || '');
 
     setIsApplyModalOpen(true);
@@ -320,6 +366,8 @@ export const WorkOrderView: React.FC = () => {
         noWorkOrder: p1NoWo.trim(),
         pengawas1: p1Pengawas1.trim(),
         pengawas2: p1Pengawas2.trim(),
+        materials: p1Enabled && previewCustomVolumes.materials ? previewCustomVolumes.materials : undefined,
+        jasaItems: p1Enabled && previewCustomVolumes.jasaItems ? previewCustomVolumes.jasaItems : undefined,
       },
       paket2: {
         enabled: p2Enabled,
@@ -331,6 +379,8 @@ export const WorkOrderView: React.FC = () => {
         noWorkOrder: p2NoWo.trim(),
         pengawas1: p2Pengawas1.trim(),
         pengawas2: p2Pengawas2.trim(),
+        materials: !p1Enabled && p2Enabled && previewCustomVolumes.materials ? previewCustomVolumes.materials : undefined,
+        jasaItems: !p1Enabled && p2Enabled && previewCustomVolumes.jasaItems ? previewCustomVolumes.jasaItems : undefined,
       },
       woTiang: {
         enabled: tbEnabled,
@@ -344,6 +394,8 @@ export const WorkOrderView: React.FC = () => {
         pengawas2: tbPengawas2.trim(),
         narahubung: tbNarahubung.trim(),
         phone: tbPhone.trim(),
+        materials: !p1Enabled && !p2Enabled && tbEnabled && previewCustomVolumes.materials ? previewCustomVolumes.materials : undefined,
+        jasaItems: !p1Enabled && !p2Enabled && tbEnabled && previewCustomVolumes.jasaItems ? previewCustomVolumes.jasaItems : undefined,
       },
       signatures: {
         approverName: 'WEGIG DIDIK KURNIAWAN',
@@ -357,14 +409,7 @@ export const WorkOrderView: React.FC = () => {
     });
 
     setIsApplyModalOpen(false);
-
-    // Langsung buka Dokumen WO Output hasil Apply WO
-    const latestWos = usePromotorStore.getState().workOrders;
-    const targetCreatedWo = latestWos.find((w) => w.daftungId === selCandidate.id || w.idpel === selCandidate.idpel);
-    if (targetCreatedWo) {
-      setSelectedDocWo(targetCreatedWo);
-    }
-    showToast(`✓ Berhasil Apply WO untuk ${selCandidate.customerName}. Dokumen WO ditampilkan.`);
+    showToast(`✓ Berhasil Apply WO untuk ${selCandidate.customerName}.`);
   };
 
   // Preview Dokumen WO Output
@@ -385,6 +430,111 @@ export const WorkOrderView: React.FC = () => {
     const previewPengawas1 = isP1 ? p1Pengawas1 : isP2 ? p2Pengawas1 : tbPengawas1;
     const previewPengawas2 = isP1 ? p1Pengawas2 : isP2 ? p2Pengawas2 : tbPengawas2;
 
+    const matchedSurvey = surveys.find(
+      (s) =>
+        s.id === selCandidate.id ||
+        (selCandidate.idpel && s.idpel === selCandidate.idpel) ||
+        s.customerName.toLowerCase() === selCandidate.customerName.toLowerCase() ||
+        s.customerName.toLowerCase().includes(selCandidate.customerName.toLowerCase())
+    );
+
+    let calculatedMaterials: WoMaterialItem[] = [];
+    let calculatedJasa: WoJasaItem[] = [];
+
+    if (matchedSurvey) {
+      if (isP1) {
+        const rab = calculateRabFromSurvey(matchedSurvey, 'paket1', customKhsPrices);
+        calculatedMaterials = rab
+          .filter((r) => !r.isHeader && r.rencanaVol > 0 && r.section === 'MATERIAL')
+          .map((r) => ({
+            material: r.desc,
+            qtyReksis: r.rencanaVol,
+            qtyAllocated: r.rencanaVol,
+            unit: r.sat || 'Buah',
+            kategori: r.subSection || r.section || 'KELOMPOK MATERIAL',
+            hargaSatuan: r.hargaSatuan,
+            kode: r.kode,
+          }));
+        const rawJasa = rab.filter((r) => !r.isHeader && r.rencanaVol > 0 && r.section === 'JASA');
+        const totJasa = rawJasa.reduce((acc, r) => acc + r.rencanaVol * (r.hargaSatuan || 0), 0);
+        calculatedJasa = rawJasa.map((r, idx) => ({
+          id: r.id || `p1-jsa-${idx + 1}`,
+          kode: r.kode || r.id,
+          subKategori: r.subSection,
+          deskripsi: r.desc,
+          qtyTarget: r.rencanaVol,
+          qtyRealisasi: 0,
+          unit: r.sat || 'kms',
+          hargaSatuan: r.hargaSatuan,
+          bobotPersen: totJasa > 0 ? Math.round((r.rencanaVol * (r.hargaSatuan || 0) / totJasa) * 1000) / 10 : 0,
+          progresPersen: 0,
+        }));
+      } else if (isP2) {
+        const rab = calculateRabFromSurvey(matchedSurvey, 'paket2', customKhsPrices);
+        calculatedMaterials = rab
+          .filter((r) => !r.isHeader && r.rencanaVol > 0 && r.section === 'MATERIAL')
+          .map((r) => ({
+            material: r.desc,
+            qtyReksis: r.rencanaVol,
+            qtyAllocated: r.rencanaVol,
+            unit: r.sat || 'Buah',
+            kategori: r.subSection || r.section || 'KELOMPOK MATERIAL',
+            hargaSatuan: r.hargaSatuan,
+            kode: r.kode,
+          }));
+        const rawJasa = rab.filter((r) => !r.isHeader && r.rencanaVol > 0 && r.section === 'JASA');
+        const totJasa = rawJasa.reduce((acc, r) => acc + r.rencanaVol * (r.hargaSatuan || 0), 0);
+        calculatedJasa = rawJasa.map((r, idx) => ({
+          id: r.id || `p2-jsa-${idx + 1}`,
+          kode: r.kode || r.id,
+          subKategori: r.subSection,
+          deskripsi: r.desc,
+          qtyTarget: r.rencanaVol,
+          qtyRealisasi: 0,
+          unit: r.sat || 'kms',
+          hargaSatuan: r.hargaSatuan,
+          bobotPersen: totJasa > 0 ? Math.round((r.rencanaVol * (r.hargaSatuan || 0) / totJasa) * 1000) / 10 : 0,
+          progresPersen: 0,
+        }));
+      } else {
+        // WO Tiang
+        const tiangRab = calculateTiangRabFromSurvey(matchedSurvey, customKhsPrices);
+        calculatedMaterials = tiangRab
+          .filter((r) => !r.isHeader && r.rencanaVol > 0 && r.section === 'MATERIAL')
+          .map((r) => ({
+            material: r.desc,
+            qtyReksis: r.rencanaVol,
+            qtyAllocated: r.rencanaVol,
+            unit: r.sat || 'Batang',
+            kategori: 'TIANG BETON',
+            hargaSatuan: r.hargaSatuan,
+            kode: r.kode,
+          }));
+        const rawJasa = tiangRab.filter((r) => !r.isHeader && r.rencanaVol > 0 && r.section === 'JASA');
+        const totJasa = rawJasa.reduce((acc, r) => acc + r.rencanaVol * (r.hargaSatuan || 0), 0);
+        calculatedJasa = rawJasa.map((r, idx) => ({
+          id: r.id || `tb-jsa-${idx + 1}`,
+          kode: r.kode || r.id,
+          subKategori: 'PEKERJAAN PENDIRIAN TIANG BETON',
+          deskripsi: r.desc,
+          qtyTarget: r.rencanaVol,
+          qtyRealisasi: 0,
+          unit: r.sat || 'btg',
+          hargaSatuan: r.hargaSatuan,
+          bobotPersen: totJasa > 0 ? Math.round((r.rencanaVol * (r.hargaSatuan || 0) / totJasa) * 1000) / 10 : 0,
+          progresPersen: 0,
+        }));
+      }
+    }
+
+    // Gunakan custom volumes jika sudah pernah diedit di preview
+    const finalMaterials = previewCustomVolumes.materials && previewCustomVolumes.materials.length > 0
+      ? previewCustomVolumes.materials
+      : calculatedMaterials;
+    const finalJasa = previewCustomVolumes.jasaItems && previewCustomVolumes.jasaItems.length > 0
+      ? previewCustomVolumes.jasaItems
+      : calculatedJasa;
+
     const previewWo: WorkOrderRecord = {
       id: previewNoWo || '537.10.WO.2026',
       noWorkOrder: previewNoWo || '537.10.WO.2026',
@@ -402,6 +552,7 @@ export const WorkOrderView: React.FC = () => {
       status: 'Menunggu Persetujuan Asman',
       appliedAt: '02 Jan 2026',
       daftungId: selCandidate.id,
+      surveyId: matchedSurvey?.id || selCandidate.id,
       reservationStatus: 'Belum Reservasi',
       approverName: 'WEGIG DIDIK KURNIAWAN',
       approverRole: 'ASMAN KONSTRUKSI',
@@ -409,7 +560,8 @@ export const WorkOrderView: React.FC = () => {
       creatorName: creatorName.trim(),
       creatorRole: creatorRole.trim(),
       creatorSignature: creatorSig || undefined,
-      materials: [],
+      materials: finalMaterials,
+      jasaItems: finalJasa,
     };
     setSelectedDocWo(previewWo);
   };
@@ -423,11 +575,7 @@ export const WorkOrderView: React.FC = () => {
       (w.supervisor1 || w.supervisor).toLowerCase().includes(searchTerm.toLowerCase()) ||
       (w.supervisor2 || '').toLowerCase().includes(searchTerm.toLowerCase());
 
-    const isPendingOrRejected = w.status === 'Menunggu Persetujuan Asman' || w.status === 'Dikembalikan' || w.approvalStatus === 'PENDING' || w.approvalStatus === 'REJECTED';
-
     const matchCategory =
-      categoryFilter === 'BELUM_DISETUJUI' ? isPendingOrRejected :
-      categoryFilter === 'ALL' ? true :
       categoryFilter === 'PENDING' ? (w.status === 'Menunggu Persetujuan Asman' || w.approvalStatus === 'PENDING') :
       categoryFilter === 'APPROVED' ? (w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Selesai' || w.status === 'Closeout') :
       w.category === categoryFilter;
@@ -440,7 +588,8 @@ export const WorkOrderView: React.FC = () => {
     woPage * woPageSize
   );
 
-  const pendingApprovalCount = workOrders.filter((w) => w.status === 'Menunggu Persetujuan Asman').length;
+  const draftWoCount = workOrders.filter((w) => w.status === 'Draf' || w.approvalStatus === 'DRAFT').length;
+  const pendingApprovalCount = workOrders.filter((w) => w.status === 'Menunggu Persetujuan Asman' || w.approvalStatus === 'PENDING').length;
   const currentDaftung = allApplyCandidates.find((d) => d.id === selectedDaftungId);
 
   return (
@@ -448,8 +597,14 @@ export const WorkOrderView: React.FC = () => {
       {/* Header Bar dengan Tombol Utama + Apply Work Order */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <h2 className="text-base font-bold text-slate-900">Work Order & Penerbitan Dokumen Pelaksanaan</h2>
+            {draftWoCount > 0 && (
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-indigo-100 text-indigo-800 border border-indigo-300 flex items-center gap-1">
+                <FileText className="w-3 h-3 text-indigo-600" />
+                <span>{draftWoCount} Draf Siap Diajukan</span>
+              </span>
+            )}
             {pendingApprovalCount > 0 && (
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 animate-pulse">
                 <Clock className="w-3 h-3 text-amber-600" />
@@ -502,12 +657,11 @@ export const WorkOrderView: React.FC = () => {
             }}
             className="p-2 border border-slate-200 rounded-lg text-xs font-semibold bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
           >
-            <option value="BELUM_DISETUJUI">⚡ Belum Disetujui Asman ({workOrders.filter(w => w.status === 'Menunggu Persetujuan Asman' || w.status === 'Dikembalikan' || w.approvalStatus === 'PENDING' || w.approvalStatus === 'REJECTED').length})</option>
-            <option value="APPROVED">✓ Sudah Disetujui Asman (Pindah ke Daftung) ({workOrders.filter(w => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Selesai' || w.status === 'Closeout').length})</option>
-            <option value="ALL">Semua WO ({workOrders.length})</option>
+            <option value="PENDING">⏳ Menunggu Persetujuan Asman ({workOrders.filter(w => w.status === 'Menunggu Persetujuan Asman' || w.approvalStatus === 'PENDING').length})</option>
+            <option value="APPROVED">✓ Disetujui Asman ({workOrders.filter(w => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Selesai' || w.status === 'Closeout').length})</option>
             <option value="WO Paket 1">WO Paket 1</option>
-            <option value="WO Paket 2">WO Paket 2</option>
             <option value="WO Tiang">WO Tiang</option>
+            <option value="WO Paket 2">WO Paket 2</option>
           </select>
         </div>
       </div>
@@ -548,6 +702,7 @@ export const WorkOrderView: React.FC = () => {
                 </tr>
               ) : (
                 paginatedWorkOrders.map((w) => {
+                  const isDraft = w.status === 'Draf' || w.approvalStatus === 'DRAFT';
                   const isPending = w.status === 'Menunggu Persetujuan Asman';
                   const isRejected = w.status === 'Dikembalikan' || w.approvalStatus === 'REJECTED';
                   const isCompleted = w.progress === 100 || w.status === 'Selesai';
@@ -558,26 +713,23 @@ export const WorkOrderView: React.FC = () => {
                     const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
                     return (m.qtyTaken || 0) < req;
                   });
-                  const isAllMatTaken = mats.length > 0 && !hasRemainingToTake && !mats.some((m) => m.isHold);
-                  const calculatedMatProg = mats.length > 0
-                    ? Math.round((mats.reduce((sum, m) => {
-                        if (m.isHold) return sum;
-                        const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
-                        const taken = m.qtyTaken || 0;
-                        return sum + (req > 0 ? Math.min(1, taken / req) : 0);
-                      }, 0) / mats.length) * 100)
-                    : 0;
+                  const isAllMatVerified = mats.length > 0 && mats.every((m) => {
+                    if (m.isHold || !m.isVerified) return false;
+                    const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
+                    return (m.qtyTaken || 0) >= req;
+                  });
 
-                  const progMat = isAllMatTaken 
+                  // Progres material resmi: hanya bertambah jika sudah diverifikasi pengawas
+                  const progMat = isAllMatVerified 
                     ? 100 
-                    : Math.min(99, w.progressMaterial !== undefined && w.progressMaterial < 100 ? w.progressMaterial : calculatedMatProg);
+                    : (w.progressMaterial !== undefined ? w.progressMaterial : 0);
                   const progJas = w.progressJasa !== undefined ? w.progressJasa : (isCompleted ? 100 : w.progress || 0);
 
                   return (
                     <tr 
                       key={w.id} 
                       className={`hover:bg-blue-50/30 transition-colors divide-x divide-slate-200 ${
-                        isRejected ? 'bg-rose-50/30' : isPending ? 'bg-amber-50/30' : ''
+                        isRejected ? 'bg-rose-50/30' : isDraft ? 'bg-indigo-50/20' : isPending ? 'bg-amber-50/30' : ''
                       }`}
                     >
                       {/* 1. NO. WO */}
@@ -689,6 +841,11 @@ export const WorkOrderView: React.FC = () => {
                               style={{ width: `${progMat}%` }}
                             />
                           </div>
+                          {w.status === 'Verifikasi SJ' && progMat < 100 && (
+                            <span className="text-[8.5px] font-bold text-amber-700 bg-amber-50 px-1 py-0.5 rounded border border-amber-200 whitespace-nowrap">
+                              Menunggu Verif SJ
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -723,6 +880,11 @@ export const WorkOrderView: React.FC = () => {
                               </div>
                             )}
                           </div>
+                        ) : isDraft ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold bg-indigo-50 text-indigo-900 border border-indigo-300">
+                            <FileText className="w-3 h-3 text-indigo-600" />
+                            <span>Draf Konsep</span>
+                          </span>
                         ) : isPending ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300">
                             <Clock className="w-3 h-3 text-amber-700 animate-pulse" />
@@ -751,8 +913,46 @@ export const WorkOrderView: React.FC = () => {
                       {/* 10. AKSI */}
                       <td className="py-3.5 px-3 text-center align-middle whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
-                          {/* JIKA STATUS DIKEMBALIKAN / PERLU REVISI */}
-                          {isRejected ? (
+                          {/* 1. JIKA STATUS DRAF: ADMIN WO PUNYA AKSI 'AJUKAN KE ASMAN' */}
+                          {isDraft ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`Ajukan Work Order ${w.id} (${w.category}) ke Asman Konstruksi untuk diverifikasi dan disetujui?`)) {
+                                    submitWoToAsman(w.id);
+                                  }
+                                }}
+                                className="px-3 py-1.5 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition cursor-pointer shadow-xs font-bold text-xs"
+                                title="Kirim/Ajukan Work Order ke Meja Asman Konstruksi"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                                <span>Ajukan ke Asman</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setSelectedDocWo(w)}
+                                className="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg transition cursor-pointer shadow-2xs"
+                                title="Lihat Draf Dokumen Work Order"
+                              >
+                                <Printer className="w-4 h-4 text-slate-600" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`Apakah Anda yakin ingin membatalkan/menghapus Draf Work Order ${w.id}?`)) {
+                                    deleteWorkOrder(w.id);
+                                  }
+                                }}
+                                className="w-8 h-8 flex items-center justify-center text-rose-500 hover:text-rose-700 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-lg transition cursor-pointer shadow-2xs"
+                                title="Hapus Draf WO"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : isRejected ? (
                             <>
                               <button
                                 type="button"
@@ -881,158 +1081,89 @@ export const WorkOrderView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmitApplyWo} className="p-6 overflow-y-auto space-y-5 text-xs flex-1">
-              {/* 1. Pilih Data Pelanggan */}
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <label className="block text-slate-800 font-bold mb-1">
-                  Pilih Data Pelanggan dari Potensi Daftung (Siap Apply WO):
-                </label>
-                <div className="relative">
-                  <select
-                    value={selectedDaftungId}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSelectedDaftungId(val);
-                      const targetCandidate = allApplyCandidates.find((d) => d.id === val);
-                      if (targetCandidate) {
-                        const { hasP1, hasP2, hasTiang } = detectCandidatePackages(targetCandidate.id);
-                        setCandidateHasP1(hasP1);
-                        setCandidateHasP2(hasP2);
-                        setCandidateHasTiang(hasTiang);
-                        setP1Enabled(hasP1);
-                        setP2Enabled(hasP2);
-                        setTbEnabled(hasTiang);
+            {/* Resolved Survey untuk Data Pelanggan */}
+            {(() => {
+              const matchedSurvey = surveys.find(
+                (s) =>
+                  s.id === selectedDaftungId ||
+                  (currentDaftung?.idpel && s.idpel === currentDaftung.idpel) ||
+                  (currentDaftung && s.customerName.toLowerCase() === currentDaftung.customerName.toLowerCase())
+              );
 
-                        const existingWos = workOrders.filter((w) => w.daftungId === targetCandidate.id || w.idpel === targetCandidate.idpel);
-                        const existingP1 = existingWos.find((w) => w.category === 'WO Paket 1');
-                        const existingP2 = existingWos.find((w) => w.category === 'WO Paket 2');
-                        const existingTb = existingWos.find((w) => w.category === 'WO Tiang');
-                        if (existingP1) {
-                          setP1Vendor(existingP1.vendor);
-                          setP1NoWo(existingP1.id);
-                          if (existingP1.supervisor1) setP1Pengawas1(existingP1.supervisor1);
-                          if (existingP1.supervisor2) setP1Pengawas2(existingP1.supervisor2);
-                        }
-                        if (existingP2) {
-                          setP2Vendor(existingP2.vendor);
-                          setP2NoWo(existingP2.id);
-                          if (existingP2.supervisor1) setP2Pengawas1(existingP2.supervisor1);
-                          if (existingP2.supervisor2 !== undefined) setP2Pengawas2(existingP2.supervisor2);
-                        }
-                        if (existingTb) {
-                          setTbVendor(existingTb.vendor);
-                          setTbNoWo(existingTb.id);
-                          if (existingTb.narahubung) setTbNarahubung(existingTb.narahubung);
-                          if (existingTb.phone) setTbPhone(existingTb.phone);
-                          if (existingTb.supervisor1) setTbPengawas1(existingTb.supervisor1);
-                          if (existingTb.supervisor2 !== undefined) setTbPengawas2(existingTb.supervisor2);
-                        }
-                      }
-                    }}
-                    className="w-full pl-3 pr-9 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer appearance-none"
-                  >
-                    <option value="" disabled>-- Pilih Data Pelanggan (Potensi Daftung / Daftung) --</option>
-                    {allApplyCandidates.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        [{d.source}] {d.id} • {d.customerName} (IDPEL: {d.idpel})
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
-                </div>
+              const dayaDisplay = matchedSurvey?.dayaBaru || matchedSurvey?.daya || '-';
+              const tarifDisplay = matchedSurvey?.tarifBaru || matchedSurvey?.tarif || '-';
+              const alamatDisplay = matchedSurvey?.address || matchedSurvey?.location || '-';
+              const koordinatDisplay = (matchedSurvey?.poles && matchedSurvey.poles[0]?.lat)
+                ? `${matchedSurvey.poles[0].lat.toFixed(6)}, ${matchedSurvey.poles[0].lng?.toFixed(6)}`
+                : (matchedSurvey?.latitude ? `${matchedSurvey.latitude.toFixed(6)}, ${matchedSurvey.longitude?.toFixed(6)}` : '-');
 
-                {currentDaftung && (
-                  <div className="mt-2.5 p-2.5 bg-blue-50/70 border border-blue-200 rounded-lg text-[11px] text-slate-700 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Nama Pelanggan:</span>
-                      <b className="text-slate-900">{currentDaftung.customerName}</b>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">IDPEL:</span>
-                      <b className="font-mono text-slate-900">{currentDaftung.idpel}</b>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Sumber Survey:</span>
-                      <span className="font-semibold">{currentDaftung.source}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">Status Daftung:</span>
-                      <span className={`font-semibold ${currentDaftung.status === 'Perlu Revisi' ? 'text-rose-700 font-bold' : 'text-blue-700'}`}>
-                        {currentDaftung.status}
+              return (
+                <form onSubmit={handleSubmitApplyWo} className="p-6 overflow-y-auto space-y-5 text-xs flex-1">
+                  {/* 1. Data Pelanggan Terpilih dari Potensi Daftung (Otomatis & Terkunci) */}
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                        <label className="text-slate-800 font-bold text-xs uppercase tracking-wide">
+                          Data Pelanggan Potensi Daftung (Siap Apply WO)
+                        </label>
+                      </div>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                        Otomatis Sesuai Pilihan
                       </span>
                     </div>
-                  </div>
-                )}
-              </div>
 
-              {/* 2. ATURAN PENOMORAN WO: [NO URUT].[BULAN].WO.[P1/P2/TB].[TAHUN] */}
-              <div className="bg-linear-to-r from-blue-50 via-slate-50 to-indigo-50/70 p-3.5 rounded-xl border border-blue-200/80 shadow-2xs">
-                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-blue-600 text-white rounded-lg shadow-2xs shrink-0">
-                      <FileText className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wide">
-                          Aturan Penomoran Work Order
-                        </h4>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300">
-                          Baku
-                        </span>
+                    {currentDaftung ? (
+                      /* Data Identitas Pelanggan (Tanpa pemotongan teks) */
+                      <div className="p-3.5 bg-white border border-blue-200 rounded-xl text-xs text-slate-700 shadow-2xs space-y-2.5">
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+                          <div className="md:col-span-5">
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">Nama Pelanggan:</span>
+                            <b className="text-slate-900 text-sm font-black leading-snug break-words">
+                              {currentDaftung.customerName}
+                            </b>
+                          </div>
+                          <div className="md:col-span-3">
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">IDPEL:</span>
+                            <b className="font-mono text-slate-900 text-xs block">{currentDaftung.idpel || '-'}</b>
+                          </div>
+                          <div className="md:col-span-2">
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">Tarif / Daya:</span>
+                            <span className="font-bold text-slate-900">{tarifDisplay} / {dayaDisplay} VA</span>
+                          </div>
+                          <div className="md:col-span-2">
+                            <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">Status:</span>
+                            <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                              currentDaftung.status === 'Perlu Revisi' 
+                                ? 'bg-rose-100 text-rose-700 border border-rose-300' 
+                                : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            }`}>
+                              {currentDaftung.status}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-100 text-[11px] flex flex-wrap items-center gap-x-6 gap-y-1 text-slate-600">
+                          <div>
+                            <span className="text-slate-400 font-semibold">Alamat: </span>
+                            <span className="text-slate-800 font-medium break-words">{alamatDisplay}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 font-semibold">Titik Koordinat: </span>
+                            <span className="font-mono text-slate-800">{koordinatDisplay}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 font-semibold">Sumber: </span>
+                            <span className="text-slate-800 font-medium">{currentDaftung.source} ({currentDaftung.id})</span>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-slate-600 mt-0.5">
-                        Pola: <code className="font-mono font-bold text-blue-800 bg-white px-1.5 py-0.5 rounded border border-blue-200">[NO URUT].[BULAN].WO.[P1 / P2 / TB].[TAHUN]</code>
-                      </p>
-                    </div>
+                    ) : (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold">
+                        Tidak ada pelanggan yang dipilih. Silakan klik Apply WO dari tabel Potensi Daftung.
+                      </div>
+                    )}
                   </div>
-
-                  <div className="flex items-center gap-2 flex-wrap self-stretch md:self-auto justify-end">
-                    <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-lg border border-slate-300">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">No. Urut:</span>
-                      <input
-                        type="text"
-                        value={woNoUrut}
-                        onChange={(e) => handleRegenerateWoNumbers(e.target.value, woBulan, woTahun)}
-                        placeholder="001"
-                        maxLength={5}
-                        className="w-14 text-center font-mono font-bold text-xs text-blue-700 focus:outline-none"
-                      />
-                    </div>
-                    <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-lg border border-slate-300">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">Bulan:</span>
-                      <input
-                        type="text"
-                        value={woBulan}
-                        onChange={(e) => handleRegenerateWoNumbers(woNoUrut, e.target.value, woTahun)}
-                        placeholder="11"
-                        maxLength={2}
-                        className="w-10 text-center font-mono font-bold text-xs text-blue-700 focus:outline-none"
-                      />
-                    </div>
-                    <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-lg border border-slate-300">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">Tahun:</span>
-                      <input
-                        type="text"
-                        value={woTahun}
-                        onChange={(e) => handleRegenerateWoNumbers(woNoUrut, woBulan, e.target.value)}
-                        placeholder="2026"
-                        maxLength={4}
-                        className="w-14 text-center font-mono font-bold text-xs text-blue-700 focus:outline-none"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRegenerateWoNumbers(woNoUrut, woBulan, woTahun)}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                      title="Generate Ulang Nomor WO untuk Paket 1, Paket 2 & WO Tiang"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Generate</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
 
               {/* Banner Informasi Seleksi Otomatis Paket Sesuai Survey */}
               {(!candidateHasP1 || !candidateHasP2 || !candidateHasTiang) && (
@@ -1098,17 +1229,25 @@ export const WorkOrderView: React.FC = () => {
                         <select
                           disabled={!p1Enabled}
                           value={p1Vendor}
-                          onChange={(e) => setP1Vendor(e.target.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setP1Vendor(val);
+                            const matched = contracts.find((c) => c.vendorName.trim().toLowerCase() === val.trim().toLowerCase() && c.jenisPekerjaan === 'Paket 1');
+                            if (matched) {
+                              setP1ContractId(matched.id);
+                              if (matched.supervisorName) setP1Pengawas1(matched.supervisorName);
+                            }
+                          }}
                           className="w-full pl-9 pr-8 py-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer appearance-none disabled:bg-slate-100"
                           required={p1Enabled}
                         >
-                          <option value="" disabled>-- Pilih Vendor Pelaksana --</option>
-                          {vendorOptions.map((v) => (
+                          <option value="" disabled>-- Pilih Vendor Pelaksana Paket 1 --</option>
+                          {vendorP1Options.map((v) => (
                             <option key={v.id} value={v.name}>
-                              {v.name} {v.jenisPekerjaan?.length ? `(${v.jenisPekerjaan.join(', ')})` : ''}
+                              {v.name}
                             </option>
                           ))}
-                          {!vendorOptions.some((v) => v.name === p1Vendor) && p1Vendor && (
+                          {!vendorP1Options.some((v) => v.name === p1Vendor) && p1Vendor && (
                             <option value={p1Vendor}>{p1Vendor}</option>
                           )}
                         </select>
@@ -1116,56 +1255,26 @@ export const WorkOrderView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Nomor Work Order */}
+                    {/* Pengawas 1 (UP3) - Terkunci Sesuai Master Kontrak */}
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="block text-slate-700 font-bold">
-                          Nomor WO (P1): {p1Enabled && <span className="text-rose-500">*</span>}
+                          Pengawas 1 (UP3): {p1Enabled && <span className="text-rose-500">*</span>}
                         </label>
-                        <span className="text-[10px] text-slate-400 font-mono">..WO.P1..</span>
+                        <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                          <Lock className="w-3 h-3 text-amber-600" /> Sesuai Kontrak
+                        </span>
                       </div>
-                      <div className="relative">
-                        <FileText className="w-4 h-4 text-amber-600 absolute left-3 top-2.5" />
-                        <input
-                          disabled={!p1Enabled}
-                          type="text"
-                          value={p1NoWo}
-                          onChange={(e) => setP1NoWo(e.target.value)}
-                          placeholder="Contoh: 001.11.WO.P1.2026"
-                          className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-900 font-mono font-bold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 disabled:bg-slate-100"
-                          required={p1Enabled}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Pengawas 1 (UP3) */}
-                    <div>
-                      <label className="block text-slate-700 font-bold mb-1">
-                        Pengawas 1 (UP3): {p1Enabled && <span className="text-rose-500">*</span>}
-                      </label>
                       <div className="relative">
                         <ShieldCheck className="w-4 h-4 text-amber-600 absolute left-3 top-3 pointer-events-none" />
-                        <select
-                          disabled={!p1Enabled}
-                          value={p1Pengawas1}
-                          onChange={(e) => setP1Pengawas1(e.target.value)}
-                          className="w-full pl-9 pr-8 py-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer appearance-none disabled:bg-slate-100"
-                          required={p1Enabled}
-                        >
-                          <option value="" disabled>-- Pilih Pengawas 1 (UP3) --</option>
-                          {supervisors.map((s) => {
-                            const val = `${s.name} (${s.role})`;
-                            return (
-                              <option key={s.id} value={val}>
-                                {val} - {s.unit}
-                              </option>
-                            );
-                          })}
-                          {!supervisors.some((s) => `${s.name} (${s.role})` === p1Pengawas1) && p1Pengawas1 && (
-                            <option value={p1Pengawas1}>{p1Pengawas1}</option>
-                          )}
-                        </select>
-                        <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                        <input
+                          disabled
+                          type="text"
+                          value={p1Pengawas1 || 'Hasian Sitorus (TC Lola Konstruksi)'}
+                          className="w-full pl-9 pr-8 py-2.5 border border-slate-300 rounded-xl text-xs bg-slate-100 text-slate-800 font-bold cursor-not-allowed"
+                          title="Pengawas 1 mutlak sesuai data Master Kontrak SPK"
+                        />
+                        <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                       </div>
                     </div>
 
@@ -1242,17 +1351,25 @@ export const WorkOrderView: React.FC = () => {
                         <select
                           disabled={!p2Enabled}
                           value={p2Vendor}
-                          onChange={(e) => setP2Vendor(e.target.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setP2Vendor(val);
+                            const matched = contracts.find((c) => c.vendorName.trim().toLowerCase() === val.trim().toLowerCase() && c.jenisPekerjaan === 'Paket 2');
+                            if (matched) {
+                              setP2ContractId(matched.id);
+                              if (matched.supervisorName) setP2Pengawas1(matched.supervisorName);
+                            }
+                          }}
                           className="w-full pl-9 pr-8 py-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer appearance-none disabled:bg-slate-100"
                           required={p2Enabled}
                         >
-                          <option value="" disabled>-- Pilih Vendor Pelaksana --</option>
-                          {vendorOptions.map((v) => (
+                          <option value="" disabled>-- Pilih Vendor Pelaksana Paket 2 --</option>
+                          {vendorP2Options.map((v) => (
                             <option key={v.id} value={v.name}>
-                              {v.name} {v.jenisPekerjaan?.length ? `(${v.jenisPekerjaan.join(', ')})` : ''}
+                              {v.name}
                             </option>
                           ))}
-                          {!vendorOptions.some((v) => v.name === p2Vendor) && p2Vendor && (
+                          {!vendorP2Options.some((v) => v.name === p2Vendor) && p2Vendor && (
                             <option value={p2Vendor}>{p2Vendor}</option>
                           )}
                         </select>
@@ -1260,56 +1377,26 @@ export const WorkOrderView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Nomor Work Order */}
+                    {/* Pengawas 1 (UP3) - Terkunci Sesuai Master Kontrak */}
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="block text-slate-700 font-bold">
-                          Nomor WO (P2): {p2Enabled && <span className="text-rose-500">*</span>}
+                          Pengawas 1 (UP3): {p2Enabled && <span className="text-rose-500">*</span>}
                         </label>
-                        <span className="text-[10px] text-slate-400 font-mono">..WO.P2..</span>
+                        <span className="text-[10px] text-blue-700 font-semibold flex items-center gap-1 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                          <Lock className="w-3 h-3 text-blue-600" /> Sesuai Kontrak
+                        </span>
                       </div>
-                      <div className="relative">
-                        <FileText className="w-4 h-4 text-blue-600 absolute left-3 top-2.5" />
-                        <input
-                          disabled={!p2Enabled}
-                          type="text"
-                          value={p2NoWo}
-                          onChange={(e) => setP2NoWo(e.target.value)}
-                          placeholder="Contoh: 002.11.WO.P2.2026"
-                          className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-900 font-mono font-bold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-100"
-                          required={p2Enabled}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Pengawas 1 (UP3) */}
-                    <div>
-                      <label className="block text-slate-700 font-bold mb-1">
-                        Pengawas 1 (UP3): {p2Enabled && <span className="text-rose-500">*</span>}
-                      </label>
                       <div className="relative">
                         <ShieldCheck className="w-4 h-4 text-blue-600 absolute left-3 top-3 pointer-events-none" />
-                        <select
-                          disabled={!p2Enabled}
-                          value={p2Pengawas1}
-                          onChange={(e) => setP2Pengawas1(e.target.value)}
-                          className="w-full pl-9 pr-8 py-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer appearance-none disabled:bg-slate-100"
-                          required={p2Enabled}
-                        >
-                          <option value="" disabled>-- Pilih Pengawas 1 (UP3) --</option>
-                          {supervisors.map((s) => {
-                            const val = `${s.name} (${s.role})`;
-                            return (
-                              <option key={s.id} value={val}>
-                                {val} - {s.unit}
-                              </option>
-                            );
-                          })}
-                          {!supervisors.some((s) => `${s.name} (${s.role})` === p2Pengawas1) && p2Pengawas1 && (
-                            <option value={p2Pengawas1}>{p2Pengawas1}</option>
-                          )}
-                        </select>
-                        <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                        <input
+                          disabled
+                          type="text"
+                          value={p2Pengawas1 || 'Daud Febrizer (TL Teknik ULP Rangkasbitung)'}
+                          className="w-full pl-9 pr-8 py-2.5 border border-slate-300 rounded-xl text-xs bg-slate-100 text-slate-800 font-bold cursor-not-allowed"
+                          title="Pengawas 1 mutlak sesuai data Master Kontrak SPK"
+                        />
+                        <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                       </div>
                     </div>
 
@@ -1391,12 +1478,12 @@ export const WorkOrderView: React.FC = () => {
                           required={tbEnabled}
                         >
                           <option value="" disabled>-- Pilih Vendor Pelaksana Tiang --</option>
-                          {vendorOptions.map((v) => (
+                          {vendorTbOptions.map((v) => (
                             <option key={v.id} value={v.name}>
-                              {v.name} {v.jenisPekerjaan?.length ? `(${v.jenisPekerjaan.join(', ')})` : ''}
+                              {v.name}
                             </option>
                           ))}
-                          {!vendorOptions.some((v) => v.name === tbVendor) && tbVendor && (
+                          {!vendorTbOptions.some((v) => v.name === tbVendor) && tbVendor && (
                             <option value={tbVendor}>{tbVendor}</option>
                           )}
                         </select>
@@ -1443,56 +1530,26 @@ export const WorkOrderView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Nomor Work Order */}
+                    {/* Pengawas 1 (UP3) - Terkunci Sesuai Master Kontrak */}
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="block text-slate-700 font-bold">
-                          Nomor WO (Tiang): {tbEnabled && <span className="text-rose-500">*</span>}
+                          Pengawas 1 (UP3): {tbEnabled && <span className="text-rose-500">*</span>}
                         </label>
-                        <span className="text-[10px] text-emerald-700 font-mono font-bold">..WO.TB..</span>
+                        <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          <Lock className="w-3 h-3 text-emerald-600" /> Sesuai Kontrak
+                        </span>
                       </div>
-                      <div className="relative">
-                        <FileText className="w-4 h-4 text-emerald-600 absolute left-3 top-2.5" />
-                        <input
-                          disabled={!tbEnabled}
-                          type="text"
-                          value={tbNoWo}
-                          onChange={(e) => setTbNoWo(e.target.value)}
-                          placeholder="Contoh: 003.11.WO.TB.2026"
-                          className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl text-xs bg-white text-slate-900 font-mono font-bold placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:bg-slate-100"
-                          required={tbEnabled}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Pengawas 1 (UP3) */}
-                    <div>
-                      <label className="block text-slate-700 font-bold mb-1">
-                        Pengawas 1 (UP3): {tbEnabled && <span className="text-rose-500">*</span>}
-                      </label>
                       <div className="relative">
                         <ShieldCheck className="w-4 h-4 text-emerald-600 absolute left-3 top-3 pointer-events-none" />
-                        <select
-                          disabled={!tbEnabled}
-                          value={tbPengawas1}
-                          onChange={(e) => setTbPengawas1(e.target.value)}
-                          className="w-full pl-9 pr-8 py-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer appearance-none disabled:bg-slate-100"
-                          required={tbEnabled}
-                        >
-                          <option value="" disabled>-- Pilih Pengawas 1 (UP3) --</option>
-                          {supervisors.map((s) => {
-                            const val = `${s.name} (${s.role})`;
-                            return (
-                              <option key={s.id} value={val}>
-                                {val} - {s.unit}
-                              </option>
-                            );
-                          })}
-                          {!supervisors.some((s) => `${s.name} (${s.role})` === tbPengawas1) && tbPengawas1 && (
-                            <option value={tbPengawas1}>{tbPengawas1}</option>
-                          )}
-                        </select>
-                        <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                        <input
+                          disabled
+                          type="text"
+                          value={tbPengawas1 || 'Winnetou Chandra Sadli (Officer Kinerja Konstruksi)'}
+                          className="w-full pl-9 pr-8 py-2.5 border border-slate-300 rounded-xl text-xs bg-slate-100 text-slate-800 font-bold cursor-not-allowed"
+                          title="Pengawas 1 mutlak sesuai data Master Kontrak SPK"
+                        />
+                        <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-3 pointer-events-none" />
                       </div>
                     </div>
 
@@ -1623,44 +1680,34 @@ export const WorkOrderView: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-200">
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={handlePreviewOutput}
-                  className="w-full sm:w-auto px-4 py-2 border border-blue-300 bg-blue-50 text-blue-700 font-bold rounded-xl hover:bg-blue-100 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                  title="Lihat Pratinjau Dokumen Output Work Order"
+                  onClick={() => setIsApplyModalOpen(false)}
+                  className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 font-semibold hover:bg-slate-50 transition cursor-pointer"
                 >
-                  <Eye className="w-4 h-4 text-blue-600" />
-                  <span>Pratinjau Dokumen WO (Output)</span>
+                  Batal
                 </button>
-
-                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setIsApplyModalOpen(false)}
-                    className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 font-semibold hover:bg-slate-50 transition cursor-pointer"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    className={`px-5 py-2 font-bold rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer text-white ${
-                      currentDaftung?.status === 'Perlu Revisi'
-                        ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
-                        : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
-                    }`}
-                  >
-                    <span>
-                      {currentDaftung?.status === 'Perlu Revisi' ? 'Ajukan Ulang & Buka Dokumen WO' : 'Apply WO & Buka Dokumen Output'}
-                    </span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </div>
+                <button
+                  type="submit"
+                  className={`px-5 py-2 font-bold rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer text-white ${
+                    currentDaftung?.status === 'Perlu Revisi'
+                      ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
+                      : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
+                  }`}
+                >
+                  <span>
+                    {currentDaftung?.status === 'Perlu Revisi' ? 'Ajukan Ulang WO' : 'Apply WO'}
+                  </span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+          );
+        })()}
+      </div>
+    </div>
+  )}
 
       {/* MODAL: DOKUMEN RESMI WORK ORDER & RAB */}
       {selectedDocWo && (
@@ -1670,6 +1717,25 @@ export const WorkOrderView: React.FC = () => {
           woData={selectedDocWo}
           initialPaket={selectedDocWo.category === 'WO Paket 1' ? 'paket1' : 'paket2'}
           mode="wo"
+          allowVolumeEdit
+          onSavePreviewVolumes={(_woId, vols) => {
+            if (selectedDocWo) {
+              const updatedMats = selectedDocWo.materials?.map((m, idx) => ({
+                ...m,
+                qtyAllocated: vols.materials[idx] !== undefined ? vols.materials[idx] : m.qtyAllocated,
+                qtyReksis: vols.materials[idx] !== undefined ? vols.materials[idx] : m.qtyReksis,
+              })) || [];
+              const updatedJasa = selectedDocWo.jasaItems?.map((j, idx) => ({
+                ...j,
+                qtyTarget: vols.jasaItems[idx] !== undefined ? vols.jasaItems[idx] : j.qtyTarget,
+              })) || [];
+              setPreviewCustomVolumes({
+                materials: updatedMats,
+                jasaItems: updatedJasa,
+              });
+              showToast('✓ Volume rencana preview berhasil disimpan!');
+            }
+          }}
         />
       )}
 

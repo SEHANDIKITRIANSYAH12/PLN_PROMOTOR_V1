@@ -138,16 +138,16 @@ async function writeWorkOrders(tx: Tx, rows: WorkOrderRecord[]) {
         slipReturPhotos: r.slipReturPhotos ?? [],
         sysIdx: i,
         materials: {
-          create: (r.materials ?? []).map((m, idx) => ({ ...drop(m, []), idx })),
+          create: (r.materials ?? []).map((m, idx) => ({ ...drop(m, ['woId', 'idx']), idx })),
         },
         jasaItems: {
-          create: (r.jasaItems ?? []).map((j, idx) => ({ ...drop(j, []), idx })),
+          create: (r.jasaItems ?? []).map((j, idx) => ({ ...drop(j, ['woId', 'idx']), idx })),
         },
       },
     });
   }
 }
-
+1
 async function readWorkOrders(tx: Tx) {
   const rows = await tx.workOrder.findMany({
     include: {

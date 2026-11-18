@@ -101,7 +101,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed, on
       title: 'VENDOR',
       items: [
         { id: 'vendor-ambil',        label: 'Menu Vendor (Pelaksanaan & SJ)',   icon: HardDrive, allowedRoles: ['Admin Daftung', 'Pengawas', 'Admin WO'] },
-        { id: 'sweeping-material',   label: 'Sweeping Material',                icon: ClipboardCheck, allowedRoles: ['Admin Daftung', 'Pengawas', 'Admin WO', 'Admin Gudang'] },
       ],
     },
     {
@@ -109,7 +108,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed, on
       title: 'PERSEDIAAN',
       items: [
         { id: 'stok-gudang', label: 'Stok Gudang', icon: Warehouse, allowedRoles: ['Admin Daftung', 'Admin Gudang', 'Admin WO'] },
-        { id: 'mutasi-material', label: 'Mutasi Material (GI SAP)', icon: ArrowLeftRight, allowedRoles: ['Admin Daftung', 'Admin Gudang', 'Admin WO'] },
         { id: 'analisis-material', label: 'Analisis Kebutuhan Material', icon: Calculator, allowedRoles: ['Admin Daftung', 'Admin Gudang', 'Admin WO', 'Pengawas'] },
 
       ],

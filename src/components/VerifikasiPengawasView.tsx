@@ -21,7 +21,8 @@ import {
   Zap,
   ChevronRight,
   Eye,
-  Layers
+  Layers,
+  Trash2
 } from 'lucide-react';
 import { usePromotorStore } from '@/store/usePromotorStore';
 import { WorkOrderRecord, WoJasaItem } from '@/types';
@@ -49,6 +50,7 @@ export const VerifikasiPengawasView: React.FC = () => {
     pengawasRejectProgress,
     pengawasLockProgressJasa,
     pengawasUnlockProgressJasa,
+    deleteWorkOrder,
     showToast,
     setCurrentPage
   } = usePromotorStore();
@@ -161,33 +163,32 @@ export const VerifikasiPengawasView: React.FC = () => {
     const mats = wo.materials || [];
     if (mats.length === 0) return wo.progressMaterial || 0;
 
-    // Periksa apakah masih ada item yang ditahan atau belum diambil penuh
+    // HANYA hitung item yang sudah diverifikasi pengawas (isVerified === true) dan tidak di-hold
+    const verifiedMats = mats.filter((m) => m.isVerified && !m.isHold);
+    if (verifiedMats.length === 0) return 0;
+
     const hasHeld = mats.some((m) => m.isHold);
-    const hasRemainingToTake = mats.some((m) => {
-      if (m.isHold) return true;
-      const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
+    const hasRemainingToTakeOrVerify = mats.some((m) => {
+      if (m.isHold || !m.isVerified) return true;
+      const req = m.qtyAllocated || m.qtyReksis || 1;
       return (m.qtyTaken || 0) < req;
     });
 
-    // HANYA 100% jika SELURUH material WO sudah selesai diambil penuh dan tidak ada yang di-hold
-    const isAllCompleted = !hasRemainingToTake && !hasHeld;
+    // HANYA 100% jika SELURUH material WO sudah selesai diverifikasi dan tidak ada yang di-hold
+    const isAllCompleted = !hasRemainingToTakeOrVerify && !hasHeld;
     if (isAllCompleted) return 100;
 
-    // Jika belum ada pengambilan sama sekali
-    const totalTaken = mats.reduce((acc, m) => acc + (m.qtyTaken || 0), 0);
-    if (totalTaken === 0) return 0;
-
-    // Hitung persentase riil material yang sudah diambil secara proporsional
+    // Hitung persentase riil material yang sudah diverifikasi secara proporsional
     const totalFulfillment = mats.reduce((sum, m) => {
-      if (m.isHold) return sum;
-      const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
+      if (m.isHold || !m.isVerified) return sum;
+      const req = m.qtyAllocated || m.qtyReksis || 1;
       const taken = m.qtyTaken || 0;
       return sum + (req > 0 ? Math.min(1, taken / req) : 0);
     }, 0);
 
     const calculatedPct = Math.round((totalFulfillment / mats.length) * 100);
 
-    // Jika baru diambil sebagian, maksimal 99% (tidak boleh 100% sebelum semua selesai)
+    // Jika baru sebagian diverifikasi, maksimal 99%
     return Math.min(99, Math.max(1, calculatedPct));
   };
 
@@ -315,17 +316,54 @@ export const VerifikasiPengawasView: React.FC = () => {
     const specificTx = vendorPickupTransactions.find((tx) => tx.woId === wo.id && tx.suratJalanNumber === sjNumber);
     const specificSj = (wo.suratJalanList || []).find((s) => s.suratJalanNumber === sjNumber);
 
-    const items = (wo.materials || []).map((m) => {
+    const resNoForSj = specificTx?.reservationNumber || specificSj?.reservationNumber || '';
+    const isNonSapSj = Boolean(
+      (resNoForSj && wo.reservationNumberNonStock && resNoForSj === wo.reservationNumberNonStock) ||
+      (sjNumber && sjNumber.toLowerCase().includes('nonsap'))
+    );
+    const isSapSj = Boolean(
+      !isNonSapSj &&
+      ((resNoForSj && wo.reservationNumber && resNoForSj === wo.reservationNumber) ||
+        (sjNumber && sjNumber.toLowerCase().includes('sap')))
+    );
+
+    const allItems = (wo.materials || []).map((m) => {
       const alloc = m.qtyAllocated || m.qtyReksis || 1;
+      const isTiang = (m.kategori || '').toUpperCase().includes('TIANG') ||
+        m.material.toLowerCase().includes('pole;concrete') ||
+        m.material.toLowerCase().startsWith('tiang beton') ||
+        (m.material.toLowerCase().includes('tiang') && !m.material.toLowerCase().includes('serandang')) ||
+        (m.kode && m.kode.toLowerCase().includes('tng'));
+
+      const resSap = m.qtyReservedSap !== undefined ? m.qtyReservedSap : (isTiang ? 0 : (m.qtyReserved || 0));
+      const resNonSap = m.qtyReservedNonSap !== undefined ? m.qtyReservedNonSap : (isTiang ? (m.qtyReserved || 0) : 0);
+      const takenSap = m.qtyTakenSap !== undefined ? m.qtyTakenSap : (isTiang ? 0 : Math.min(m.qtyTaken || 0, resSap || alloc));
+      const takenNonSap = m.qtyTakenNonSap !== undefined ? m.qtyTakenNonSap : (isTiang ? (m.qtyTaken || 0) : Math.max(0, (m.qtyTaken || 0) - takenSap));
+
       let vendorClaim = 0;
-      if (specificTx) {
-        const found = specificTx.items.find((it) => it.material === m.material);
-        vendorClaim = found ? found.qtyTakenCurrent : 0;
-      } else if (specificSj && specificSj.items) {
+      if (specificSj && specificSj.items && specificSj.items.length > 0) {
         const found = specificSj.items.find((it) => it.material === m.material);
         vendorClaim = found ? found.qtyTaken : 0;
+      } else if (specificTx) {
+        const found = specificTx.items.find((it) => it.material === m.material);
+        vendorClaim = found ? found.qtyTakenCurrent : 0;
       } else {
         vendorClaim = m.qtyTaken !== undefined ? m.qtyTaken : alloc;
+      }
+
+      // Filter & koreksi jika SJ khusus Non-SAP atau SAP namun data lama masih menyertakan material jalur sebelah
+      if (isNonSapSj && wo.reservationNumber) {
+        if (takenNonSap === 0 && resNonSap === 0) {
+          vendorClaim = 0;
+        } else if (takenNonSap > 0 && vendorClaim > takenNonSap) {
+          vendorClaim = takenNonSap;
+        }
+      } else if (isSapSj && wo.reservationNumberNonStock) {
+        if (takenSap === 0 && resSap === 0) {
+          vendorClaim = 0;
+        } else if (takenSap > 0 && vendorClaim > takenSap) {
+          vendorClaim = takenSap;
+        }
       }
 
       return {
@@ -338,8 +376,10 @@ export const VerifikasiPengawasView: React.FC = () => {
       };
     });
 
-    // Jika ada filter per SJ, kita bisa tampilkan yang diklaim di SJ tersebut, atau semua material
-    setVerifSjMaterials(items);
+    // Tampilkan hanya item yang benar-benar diambil pada Surat Jalan ini (qtyVendorClaim > 0).
+    // Jika semua 0 (fallback), tampilkan seluruh daftar.
+    const claimedOnly = allItems.filter((it) => it.qtyVendorClaim > 0);
+    setVerifSjMaterials(claimedOnly.length > 0 ? claimedOnly : allItems);
   };
 
   const handleOpenVerifSj = (wo: WorkOrderRecord, targetSjNumber?: string) => {
@@ -356,7 +396,14 @@ export const VerifikasiPengawasView: React.FC = () => {
       ])
     ).filter(Boolean);
 
-    const initialSj = targetSjNumber || allSjNumbers[0] || wo.suratJalanNumber || 'SJ-01';
+    // Utamakan buka tab Surat Jalan yang masih berstatus Menunggu (belum SESUAI)
+    const firstUnverifiedSj = allSjNumbers.find((sjNo) => {
+      const matchedSj = (wo.suratJalanList || []).find((s) => s.suratJalanNumber === sjNo);
+      const matchedTx = vendorPickupTransactions.find((t) => t.woId === wo.id && t.suratJalanNumber === sjNo);
+      return matchedSj?.status !== 'SESUAI' && matchedTx?.status !== 'SESUAI';
+    });
+
+    const initialSj = targetSjNumber || firstUnverifiedSj || allSjNumbers[0] || wo.suratJalanNumber || 'SJ-01';
     setActiveSjTab(initialSj);
     loadSjMaterialsForTab(wo, initialSj);
   };
@@ -377,22 +424,16 @@ export const VerifikasiPengawasView: React.FC = () => {
     });
   };
 
-  const handleUpdateVerifSjNote = (idx: number, note: string) => {
-    setVerifSjMaterials((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], note };
-      return copy;
-    });
-  };
-
   const handleSaveVerifSj = (e: React.FormEvent) => {
     e.preventDefault();
     if (!verifSjWo) return;
 
+    const currentWoId = verifSjWo.id;
+    const currentSjTab = activeSjTab;
     const anySelisih = verifSjMaterials.some((it) => it.qtyTaken !== it.qtyVendorClaim);
 
     pengawasVerifyReceipt(
-      verifSjWo.id,
+      currentWoId,
       verifSjMaterials.map((it) => ({
         material: it.material,
         qtyTaken: it.qtyTaken,
@@ -401,39 +442,61 @@ export const VerifikasiPengawasView: React.FC = () => {
       })),
       verifSjNotes,
       verifSjOfficer,
-      activeSjTab
+      currentSjTab
     );
 
-    // Update state lokal verifSjWo agar tab yang sedang aktif langsung berganti status sesuai hasil verifikasi
     const targetStatus = anySelisih ? ('ADA_SELISIH' as const) : ('SESUAI' as const);
-    setVerifSjWo((prev) => {
-      if (!prev) return null;
-      const prevList = prev.suratJalanList || [];
-      const exists = prevList.some((s) => s.suratJalanNumber === activeSjTab);
-      const updatedList = exists
-        ? prevList.map((s) =>
-            s.suratJalanNumber === activeSjTab
-              ? { ...s, status: targetStatus, verifiedAt: new Date().toISOString(), verifiedBy: verifSjOfficer }
-              : s
-          )
-        : [
-            ...prevList,
-            {
-              suratJalanNumber: activeSjTab,
-              suratJalanDate: new Date().toISOString(),
-              status: targetStatus,
-              verifiedAt: new Date().toISOString(),
-              verifiedBy: verifSjOfficer,
-            },
-          ];
-      return {
-        ...prev,
-        sjVerificationStatus: targetStatus,
-        suratJalanList: updatedList,
-      };
+
+    // Kumpulkan semua nomor SJ pada WO ini untuk mengecek apakah masih ada SJ lain yang belum diverifikasi
+    const allSjNumbers = Array.from(
+      new Set([
+        ...(verifSjWo.suratJalanList || []).map((s) => s.suratJalanNumber),
+        ...vendorPickupTransactions.filter((tx) => tx.woId === currentWoId).map((tx) => tx.suratJalanNumber),
+        ...(verifSjWo.suratJalanNumber ? [verifSjWo.suratJalanNumber] : []),
+      ])
+    ).filter(Boolean);
+
+    const prevList = verifSjWo.suratJalanList || [];
+    const exists = prevList.some((s) => s.suratJalanNumber === currentSjTab);
+    const updatedList = exists
+      ? prevList.map((s) =>
+          s.suratJalanNumber === currentSjTab
+            ? { ...s, status: targetStatus, verifiedAt: new Date().toISOString(), verifiedBy: verifSjOfficer }
+            : s
+        )
+      : [
+          ...prevList,
+          {
+            suratJalanNumber: currentSjTab,
+            suratJalanDate: new Date().toISOString(),
+            status: targetStatus,
+            verifiedAt: new Date().toISOString(),
+            verifiedBy: verifSjOfficer,
+          },
+        ];
+
+    // Cari apakah masih ada SJ lain yang belum diverifikasi
+    const nextUnverifiedSj = allSjNumbers.find((sjNo) => {
+      if (sjNo === currentSjTab) return false;
+      const matchedSj = updatedList.find((s) => s.suratJalanNumber === sjNo);
+      const matchedTx = vendorPickupTransactions.find((t) => t.woId === currentWoId && t.suratJalanNumber === sjNo);
+      const st = matchedSj?.status || matchedTx?.status;
+      return st !== 'SESUAI' && st !== 'ADA_SELISIH';
     });
 
-    showToast(`✅ Verifikasi Surat Jalan ${activeSjTab || ''} untuk ${verifSjWo.id} berhasil disimpan! Status: SESUAI`);
+    if (nextUnverifiedSj) {
+      const nextWoState: WorkOrderRecord = {
+        ...verifSjWo,
+        suratJalanList: updatedList,
+      };
+      setVerifSjWo(nextWoState);
+      setActiveSjTab(nextUnverifiedSj);
+      loadSjMaterialsForTab(nextWoState, nextUnverifiedSj);
+      showToast(`✅ SJ ${currentSjTab} disahkan! Lanjut memeriksa dokumen berikutnya: ${nextUnverifiedSj}`);
+    } else {
+      setVerifSjWo(null);
+      showToast(`✅ Seluruh Surat Jalan untuk WO ${currentWoId} telah selesai diverifikasi!`);
+    }
   };
 
   // --------------------------------------------------------------------------
@@ -1019,7 +1082,7 @@ export const VerifikasiPengawasView: React.FC = () => {
                                 />
                               </div>
                               <span className={`text-[9px] font-semibold ${matProg === 100 ? 'text-emerald-600' : matProg > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
-                                {matProg === 100 ? '✓ Selesai' : matProg > 0 ? 'Sebagian' : 'Belum Diambil'}
+                                {matProg === 100 ? '✓ Selesai' : matProg > 0 ? 'Sebagian' : wo.status === 'Verifikasi SJ' ? 'Menunggu Verif' : 'Belum Diambil'}
                               </span>
                             </div>
                           );
@@ -1198,6 +1261,22 @@ export const VerifikasiPengawasView: React.FC = () => {
                               <span>Update Progres %</span>
                             </button>
                           )}
+
+                          {/* Tombol Hapus WO dengan Alert Konfirmasi */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`⚠️ PERINGATAN HAPUS:\nApakah Anda yakin ingin menghapus Work Order:\n"${wo.noWorkOrder || wo.id}" (${wo.customerName})?\n\nData yang dihapus tidak dapat dipulihkan.`)) {
+                                deleteWorkOrder(wo.id);
+                                showToast(`✓ WO ${wo.noWorkOrder || wo.id} berhasil dihapus.`);
+                              }
+                            }}
+                            className="w-full py-1 px-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                            title="Hapus data Work Order ini"
+                          >
+                            <Trash2 className="w-3 h-3 text-rose-600" />
+                            <span>Hapus WO</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1262,145 +1341,205 @@ export const VerifikasiPengawasView: React.FC = () => {
                 const currentSjDate = curTx?.date || curSjRecord?.suratJalanDate || verifSjWo.suratJalanDate || verifSjWo.vendorReceiptDate || '-';
                 const currentNotes = curTx?.notes || curSjRecord?.notes || verifSjWo.vendorReceiptNotes || 'Material diambil dari gudang sesuai alokasi Surat Jalan.';
 
-                // Foto Surat Jalan untuk tab ini
-                const sjPhotoList = curTx?.suratJalanPhotos && curTx.suratJalanPhotos.length > 0
-                  ? curTx.suratJalanPhotos
-                  : curSjRecord?.photos && curSjRecord.photos.length > 0
-                  ? curSjRecord.photos
-                  : verifSjWo.suratJalanPhotos && verifSjWo.suratJalanPhotos.length > 0
-                  ? verifSjWo.suratJalanPhotos
-                  : (verifSjWo.suratJalanPhoto ? [verifSjWo.suratJalanPhoto] : []);
+                const cleanPhotos = (arr?: string[]) =>
+                  (arr || []).filter((u) => Boolean(u) && !u.includes('photo-1586528116311-ad8dd3c8310d'));
 
-                // Foto Bukti Penerimaan Material
-                const receiptPhotoList = curSjRecord?.receiptPhotos && curSjRecord.receiptPhotos.length > 0
-                  ? curSjRecord.receiptPhotos
-                  : (verifSjWo.receiptPhotos || []);
+                // Foto Surat Jalan khusus untuk tab SJ ini (tanpa bocor dari SJ lain dan tanpa dummy foto otomatis)
+                const sjPhotoList = (curTx || curSjRecord)
+                  ? cleanPhotos(curTx?.suratJalanPhotos?.length ? curTx.suratJalanPhotos : curSjRecord?.photos)
+                  : cleanPhotos(
+                      verifSjWo.suratJalanPhotos && verifSjWo.suratJalanPhotos.length > 0
+                        ? verifSjWo.suratJalanPhotos
+                        : (verifSjWo.suratJalanPhoto ? [verifSjWo.suratJalanPhoto] : [])
+                    );
+
+                // Foto Bukti Penerimaan Material khusus untuk tab SJ ini
+                const receiptPhotoList = curSjRecord
+                  ? cleanPhotos(curSjRecord.receiptPhotos)
+                  : cleanPhotos(verifSjWo.receiptPhotos);
 
                 return (
                   <div className="space-y-4">
-                    {/* TAB NAVIGASI SURAT JALAN VENDOR (Modern Segmented Pill) */}
-                    <div className="bg-slate-100/90 p-2.5 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-                      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5">
-                        <div className="flex items-center gap-1.5 text-slate-500 font-bold text-xs uppercase tracking-wider shrink-0 mr-1 pl-1">
-                          <Layers className="w-4 h-4 text-amber-600" />
-                          <span>Pilih Dokumen SJ:</span>
+                    {/* 1. TAB NAVIGASI SURAT JALAN VENDOR */}
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/90 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-slate-500 font-bold text-[11px] uppercase tracking-wider">
+                          <Layers className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Pilih Dokumen Surat Jalan</span>
                         </div>
-                        <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200/90 shadow-2xs">
-                          {allSjNumbers.map((sjNo, i) => {
-                            const isActive = (activeSjTab === sjNo) || (!activeSjTab && i === 0);
-                            const matchedSj = (verifSjWo.suratJalanList || []).find((s) => s.suratJalanNumber === sjNo);
-                            const matchedTx = vendorPickupTransactions.find((t) => t.woId === verifSjWo.id && t.suratJalanNumber === sjNo);
-                            const isVerifiedThis = matchedSj?.status === 'SESUAI' || matchedTx?.status === 'SESUAI' || (verifSjWo.sjVerificationStatus === 'SESUAI' && allSjNumbers.length <= 1);
-                            return (
-                              <button
-                                key={sjNo}
-                                type="button"
-                                onClick={() => handleSwitchSjTab(sjNo)}
-                                className={`px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                                  isActive
-                                    ? 'bg-amber-500 text-white shadow-xs scale-[1.02]'
-                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                }`}
-                              >
-                                <FileCheck2 className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-amber-600'}`} />
-                                <span>{sjNo}</span>
-                                {isVerifiedThis ? (
-                                  <span className={`text-[9.5px] px-1.5 py-0.2 rounded-md font-sans font-bold ${isActive ? 'bg-amber-600 text-amber-100' : 'bg-emerald-100 text-emerald-800'}`}>
-                                    ✓ Sesuai
-                                  </span>
-                                ) : (
-                                  <span className={`text-[9.5px] px-1.5 py-0.2 rounded-md font-sans ${isActive ? 'bg-amber-600 text-amber-100' : 'bg-slate-200/70 text-slate-600'}`}>
-                                    Menunggu
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right pr-2">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-slate-600 bg-white border border-slate-200 shadow-2xs">
-                          <Package className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Total <b>{allSjNumbers.length}</b> Surat Jalan Bertahap</span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium text-slate-600 bg-white border border-slate-200">
+                          <Package className="w-3 h-3 text-blue-600" />
+                          <span>Total <b className="text-slate-900">{allSjNumbers.length}</b> Surat Jalan Bertahap</span>
                         </span>
                       </div>
-                    </div>
-
-                    {/* Info Metadata Surat Jalan Vendor Aktif */}
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 text-xs">
-                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
-                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Nomor Surat Jalan:</span>
-                          <span className="font-bold font-mono text-slate-800 text-xs block break-all" title={currentSjNumber}>
-                            {currentSjNumber}
-                          </span>
-                        </div>
-                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
-                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Nomor Reservasi:</span>
-                          <span className="font-bold font-mono text-slate-800 text-xs block break-all" title={currentResNumber}>
-                            {currentResNumber}
-                          </span>
-                        </div>
-                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
-                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Nomor GI (Goods Issue):</span>
-                          <span className={`font-bold font-mono text-xs block break-all ${currentGiNumber !== '-' ? 'text-indigo-700' : 'text-slate-400'}`} title={currentGiNumber}>
-                            {currentGiNumber}
-                          </span>
-                        </div>
-                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
-                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Nomor SPK:</span>
-                          <span className="font-bold font-mono text-slate-800 text-xs block break-all" title={verifSjWo.spkNumber}>
-                            {verifSjWo.spkNumber || '-'}
-                          </span>
-                        </div>
-                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
-                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Tanggal Pengambilan:</span>
-                          <span className="font-bold text-slate-800 text-xs block">
-                            {currentSjDate}
-                          </span>
-                        </div>
-                        <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
-                          <span className="text-slate-400 block font-semibold text-[10.5px] mb-1">Vendor Pelaksana:</span>
-                          <span className="font-bold text-slate-800 text-xs block break-words" title={verifSjWo.vendor}>
-                            {verifSjWo.vendor}
-                          </span>
-                        </div>
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                        {allSjNumbers.map((sjNo, i) => {
+                          const isActive = (activeSjTab === sjNo) || (!activeSjTab && i === 0);
+                          const matchedSj = (verifSjWo.suratJalanList || []).find((s) => s.suratJalanNumber === sjNo);
+                          const matchedTx = vendorPickupTransactions.find((t) => t.woId === verifSjWo.id && t.suratJalanNumber === sjNo);
+                          const isVerifiedThis = matchedSj?.status === 'SESUAI' || matchedTx?.status === 'SESUAI' || (verifSjWo.sjVerificationStatus === 'SESUAI' && allSjNumbers.length <= 1);
+                          return (
+                            <button
+                              key={sjNo}
+                              type="button"
+                              onClick={() => handleSwitchSjTab(sjNo)}
+                              className={`px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 border ${
+                                isActive
+                                  ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
+                                  : 'bg-white text-slate-600 border-slate-200/90 hover:text-slate-900 hover:bg-slate-100'
+                              }`}
+                            >
+                              <FileCheck2 className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-amber-600'}`} />
+                              <span>{sjNo}</span>
+                              {isVerifiedThis ? (
+                                <span className={`text-[9.5px] px-1.5 py-0.5 rounded font-sans font-bold ${isActive ? 'bg-amber-600 text-amber-50' : 'bg-emerald-100 text-emerald-800'}`}>
+                                  ✓ Sesuai
+                                </span>
+                              ) : (
+                                <span className={`text-[9.5px] px-1.5 py-0.5 rounded font-sans font-medium ${isActive ? 'bg-amber-600 text-amber-50' : 'bg-slate-100 text-slate-600'}`}>
+                                  Menunggu
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
-                    {/* Catatan Vendor & Lampiran Berkas (Surat Jalan & Bukti Penerimaan) */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
-                      <div className="bg-gradient-to-br from-blue-50/70 to-indigo-50/50 p-4 rounded-2xl border border-blue-200/90 text-xs flex flex-col justify-between shadow-2xs">
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="p-1.5 rounded-lg bg-blue-600 text-white shadow-2xs">
-                              <FileText className="w-3.5 h-3.5" />
-                            </div>
-                            <span className="text-blue-950 font-bold text-xs">
-                              Catatan Pengambilan:
-                            </span>
-                          </div>
-                          <div className="bg-white/80 p-3 rounded-xl border border-blue-100 text-slate-700 italic text-[11.5px] leading-relaxed">
-                            &quot;{currentNotes}&quot;
-                          </div>
+                    {/* 2. RINGKASAN METADATA SURAT JALAN & PENGAWAS PEMERIKSA */}
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 text-xs">
+                        <div className="p-3">
+                          <span className="text-slate-400 block font-semibold text-[10.5px] uppercase tracking-wide mb-1">
+                            No. Surat Jalan & Tgl
+                          </span>
+                          <span className="font-bold font-mono text-slate-900 text-xs block truncate" title={currentSjNumber}>
+                            {currentSjNumber}
+                          </span>
+                          <span className="text-[11px] text-slate-500 mt-0.5 block">
+                            Tgl Ambil: <b className="text-slate-700">{currentSjDate}</b>
+                          </span>
                         </div>
-                        <div className="mt-3 pt-2.5 border-t border-blue-200/60 flex items-center justify-between text-[11px] text-slate-600">
-                          <span className="font-medium">Pengawas Pemeriksa:</span>
+
+                        <div className="p-3">
+                          <span className="text-slate-400 block font-semibold text-[10.5px] uppercase tracking-wide mb-1">
+                            No. Reservasi & GI
+                          </span>
+                          <span className="font-bold font-mono text-slate-900 text-xs block truncate" title={currentResNumber}>
+                            {currentResNumber}
+                          </span>
+                          <span className="text-[11px] text-slate-500 mt-0.5 block">
+                            No. GI: <b className={`font-mono ${currentGiNumber !== '-' ? 'text-indigo-700' : 'text-slate-400'}`}>{currentGiNumber}</b>
+                          </span>
+                        </div>
+
+                        <div className="p-3">
+                          <span className="text-slate-400 block font-semibold text-[10.5px] uppercase tracking-wide mb-1">
+                            Nomor SPK
+                          </span>
+                          <span className="font-bold font-mono text-slate-900 text-xs block truncate" title={verifSjWo.spkNumber || '-'}>
+                            {verifSjWo.spkNumber || '-'}
+                          </span>
+                          <span className="text-[11px] text-slate-500 mt-0.5 block truncate" title={verifSjWo.vendor}>
+                            Vendor: <b className="text-slate-700">{verifSjWo.vendor}</b>
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-slate-50/50">
+                          <label className="text-slate-500 block font-semibold text-[10.5px] uppercase tracking-wide mb-1">
+                            Pengawas Pemeriksa
+                          </label>
                           <input
                             type="text"
                             value={verifSjOfficer}
                             onChange={(e) => setVerifSjOfficer(e.target.value)}
-                            className="px-2.5 py-1 bg-white border border-blue-300 rounded-lg text-slate-800 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 shadow-2xs"
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
                           />
                         </div>
                       </div>
 
-                      {/* 1. Berkas Lampiran Surat Jalan Vendor */}
-                      <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col justify-between text-xs shadow-2xs">
+                      {currentNotes && (
+                        <div className="px-3.5 py-2 bg-blue-50/50 border-t border-slate-100 flex items-center gap-2 text-xs">
+                          <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          <span className="text-slate-500 font-medium shrink-0">Catatan Pengambilan:</span>
+                          <span className="text-slate-700 italic truncate" title={currentNotes}>
+                            &quot;{currentNotes}&quot;
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. TABEL CEKLIS FISIK MATERIAL (DI ATAS) */}
+                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Package className="w-4 h-4 text-amber-600" />
+                          <span className="text-xs font-bold text-slate-800">
+                            Daftar Material pada Surat Jalan Ini
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-semibold text-slate-500">
+                          {verifSjMaterials.length} Item Material
+                        </span>
+                      </div>
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50/60 text-slate-500 text-[10.5px] uppercase font-bold border-b border-slate-200">
+                          <tr>
+                            <th className="py-2.5 px-3 w-12 text-center">No</th>
+                            <th className="py-2.5 px-3">Uraian Material</th>
+                            <th className="py-2.5 px-3 text-center w-32">Alokasi SPK</th>
+                            <th className="py-2.5 px-3 text-center w-36">Klaim SJ Vendor</th>
+                            <th className="py-2.5 px-3 text-center w-44">Fisik Diterima Lapangan</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {verifSjMaterials.map((it, idx) => {
+                            const isSelisih = it.qtyTaken !== it.qtyVendorClaim;
+                            return (
+                              <tr key={idx} className={`hover:bg-slate-50/60 transition-colors ${isSelisih ? 'bg-amber-50/30' : ''}`}>
+                                <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
+                                <td className="py-2.5 px-3 font-semibold text-slate-800">
+                                  {it.material}
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-bold text-slate-600 font-mono">
+                                  {it.qtyAllocated} {it.unit}
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-bold text-blue-700 font-mono">
+                                  {it.qtyVendorClaim} {it.unit}
+                                </td>
+                                <td className="py-2 px-3 text-center">
+                                  <div className="inline-flex items-center gap-1.5">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={it.qtyTaken}
+                                      onChange={(e) => handleUpdateVerifSjQty(idx, e.target.value)}
+                                      className={`w-20 px-2.5 py-1 text-xs text-center font-bold font-mono rounded-lg border focus:outline-none focus:ring-2 ${
+                                        isSelisih
+                                          ? 'bg-amber-50 border-amber-300 text-amber-900 focus:ring-amber-500/20'
+                                          : 'bg-white border-slate-300 text-slate-800 focus:ring-blue-500/20'
+                                      }`}
+                                    />
+                                    <span className="text-[11px] text-slate-400 font-medium w-7 text-left">
+                                      {it.unit}
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* 4. LAMPIRAN FOTO DOKUMEN & BUKTI PENERIMAAN (DI BAWAH TABEL) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Berkas Lampiran Surat Jalan Vendor */}
+                      <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-col justify-between text-xs shadow-2xs">
                         <div>
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-bold text-slate-800 flex items-center gap-2">
-                              <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700">
+                              <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200/60">
                                 <FileCheck2 className="w-3.5 h-3.5" />
                               </div>
                               <span>Foto Surat Jalan</span>
@@ -1411,42 +1550,41 @@ export const VerifikasiPengawasView: React.FC = () => {
                           </div>
 
                           {sjPhotoList.length === 0 ? (
-                            <div className="py-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-[11px] italic">
+                            <div className="py-3 px-3 text-center text-slate-400 bg-slate-50/80 rounded-lg border border-dashed border-slate-200 text-[11px] italic">
                               Tidak ada lampiran foto fisik SJ
                             </div>
                           ) : (
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {sjPhotoList.map((url, idx) => (
-                                <div key={idx} className="relative group">
+                            <div className="flex items-center justify-between gap-2 mt-2">
+                              <div className="flex flex-wrap gap-2">
+                                {sjPhotoList.map((url, idx) => (
                                   <img
+                                    key={idx}
                                     src={url}
                                     alt={`SJ ${idx + 1}`}
-                                    className="w-14 h-14 object-cover rounded-xl border border-slate-200 shadow-2xs cursor-pointer hover:opacity-90 hover:ring-2 hover:ring-amber-500 transition"
+                                    className="w-12 h-12 object-cover rounded-lg border border-slate-200 cursor-pointer hover:opacity-90 hover:ring-2 hover:ring-amber-500 transition"
                                     onClick={() => setPreviewPhotoModal(url)}
                                     title={`Klik perbesar Surat Jalan #${idx + 1}`}
                                   />
-                                </div>
-                              ))}
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewPhotoModal(sjPhotoList[0])}
+                                className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-blue-700 cursor-pointer transition shrink-0"
+                              >
+                                Perbesar Foto
+                              </button>
                             </div>
                           )}
                         </div>
-                        {sjPhotoList.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setPreviewPhotoModal(sjPhotoList[0])}
-                            className="mt-3 text-center py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-bold text-blue-700 cursor-pointer transition shadow-2xs"
-                          >
-                            Perbesar Dokumen Surat Jalan
-                          </button>
-                        )}
                       </div>
 
-                      {/* 2. Berkas Lampiran Bukti Penerimaan Material */}
-                      <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col justify-between text-xs shadow-2xs">
+                      {/* Berkas Lampiran Bukti Penerimaan Material */}
+                      <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-col justify-between text-xs shadow-2xs">
                         <div>
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-bold text-slate-800 flex items-center gap-2">
-                              <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700">
+                              <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600 border border-blue-200/60">
                                 <Package className="w-3.5 h-3.5" />
                               </div>
                               <span>Bukti Penerimaan Material</span>
@@ -1457,110 +1595,52 @@ export const VerifikasiPengawasView: React.FC = () => {
                           </div>
 
                           {receiptPhotoList.length === 0 ? (
-                            <div className="py-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-[11px] italic">
+                            <div className="py-3 px-3 text-center text-slate-400 bg-slate-50/80 rounded-lg border border-dashed border-slate-200 text-[11px] italic">
                               Tidak ada lampiran foto serah terima fisik
                             </div>
                           ) : (
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {receiptPhotoList.map((url, idx) => (
-                                <div key={idx} className="relative group">
+                            <div className="flex items-center justify-between gap-2 mt-2">
+                              <div className="flex flex-wrap gap-2">
+                                {receiptPhotoList.map((url, idx) => (
                                   <img
+                                    key={idx}
                                     src={url}
                                     alt={`Bukti ${idx + 1}`}
-                                    className="w-14 h-14 object-cover rounded-xl border border-slate-200 shadow-2xs cursor-pointer hover:opacity-90 hover:ring-2 hover:ring-blue-500 transition"
+                                    className="w-12 h-12 object-cover rounded-lg border border-slate-200 cursor-pointer hover:opacity-90 hover:ring-2 hover:ring-blue-500 transition"
                                     onClick={() => setPreviewPhotoModal(url)}
                                     title={`Klik perbesar Bukti Terima #${idx + 1}`}
                                   />
-                                </div>
-                              ))}
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewPhotoModal(receiptPhotoList[0])}
+                                className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-blue-700 cursor-pointer transition shrink-0"
+                              >
+                                Perbesar Foto
+                              </button>
                             </div>
                           )}
                         </div>
-                        {receiptPhotoList.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setPreviewPhotoModal(receiptPhotoList[0])}
-                            className="mt-3 text-center py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-[11px] font-bold text-blue-700 cursor-pointer transition shadow-2xs"
-                          >
-                            Perbesar Foto Penerimaan
-                          </button>
-                        )}
                       </div>
+                    </div>
+
+                    {/* 5. CATATAN BERITA ACARA PENERIMAAN MATERIAL LAPANGAN */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Catatan Berita Acara Penerimaan Material Lapangan
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={verifSjNotes}
+                        onChange={(e) => setVerifSjNotes(e.target.value)}
+                        placeholder="Catatan pengawas mengenai fisik material saat tiba di lokasi proyek..."
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                      />
                     </div>
                   </div>
                 );
               })()}
-
-              {/* Tabel Ceklis Material */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3">No</th>
-                      <th className="py-2.5 px-3">Uraian Material</th>
-                      <th className="py-2.5 px-3 text-center">Alokasi SPK</th>
-                      <th className="py-2.5 px-3 text-center">Klaim SJ Vendor</th>
-                      <th className="py-2.5 px-3 text-center w-28">Fisik Diterima Lapangan</th>
-                      <th className="py-2.5 px-3">Catatan / Keterangan</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {verifSjMaterials.map((it, idx) => {
-                      const isSelisih = it.qtyTaken !== it.qtyVendorClaim;
-                      return (
-                        <tr key={idx} className={`hover:bg-slate-50/50 ${isSelisih ? 'bg-amber-50/30' : ''}`}>
-                          <td className="py-2.5 px-3 text-center text-slate-400">{idx + 1}</td>
-                          <td className="py-2.5 px-3 font-semibold text-slate-800">
-                            {it.material}
-                          </td>
-                          <td className="py-2.5 px-3 text-center font-bold text-slate-600">
-                            {it.qtyAllocated} {it.unit}
-                          </td>
-                          <td className="py-2.5 px-3 text-center font-bold text-blue-700 font-mono">
-                            {it.qtyVendorClaim} {it.unit}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            <input
-                              type="number"
-                              min={0}
-                              value={it.qtyTaken}
-                              onChange={(e) => handleUpdateVerifSjQty(idx, e.target.value)}
-                              className={`w-20 px-2 py-1 text-xs text-center font-bold rounded-lg border focus:outline-none focus:ring-2 ${
-                                isSelisih
-                                  ? 'bg-amber-50 border-amber-300 text-amber-900 focus:ring-amber-500/20'
-                                  : 'bg-white border-slate-300 text-slate-800 focus:ring-blue-500/20'
-                              }`}
-                            />
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <input
-                              type="text"
-                              value={it.note}
-                              onChange={(e) => handleUpdateVerifSjNote(idx, e.target.value)}
-                              placeholder="Kondisi material (baik / cacat)..."
-                              className="w-full px-2.5 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none"
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Catatan Umum Verifikasi */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Catatan Berita Acara Penerimaan Material Lapangan
-                </label>
-                <textarea
-                  rows={2}
-                  value={verifSjNotes}
-                  onChange={(e) => setVerifSjNotes(e.target.value)}
-                  placeholder="Catatan pengawas mengenai fisik material saat tiba di lokasi proyek..."
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                />
-              </div>
             </div>
 
             {/* Footer Modal */}

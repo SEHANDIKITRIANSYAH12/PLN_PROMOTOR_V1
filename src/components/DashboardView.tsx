@@ -53,7 +53,7 @@ export const DashboardView: React.FC = () => {
           className="px-5 py-2.5 bg-[#0066cc] hover:bg-blue-600 active:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/25 hover:shadow-lg hover:shadow-blue-500/35 flex items-center justify-center gap-2 self-start sm:self-auto shrink-0 cursor-pointer"
         >
           <Plus className="w-4 h-4 stroke-[3] text-white" />
-          <span className="text-white tracking-wide">＋ Buat Survey Baru</span>
+          <span className="text-white tracking-wide">Buat Survey Baru</span>
         </button>
       </div>
 

@@ -6,7 +6,31 @@ import { PoleData, SurveyRecord } from '@/types';
 import { GeotagMap } from '@/components/GeotagMap';
 import { Pagination } from '@/components/Pagination';
 import { RabDocumentModal } from '@/components/RabDocumentModal';
-import { getSurveyPackages, isNewPole, listSurveyDocs, parseDayaVA, resolvePerluasan, SurveyDocType } from '@/data/surveyRabCalculator';
+import {
+  countAutoMatrixPoles,
+  countSurveyNewPoles,
+  getSurveyPackages,
+  listSurveyDocs,
+  parseDayaVA,
+  resolvePerluasan,
+  SurveyDocType,
+} from '@/data/surveyRabCalculator';
+
+// Konstruksi non-jaringan (sesuai Excel ISIAN PEKERJAAN): tidak memiliki bentangan konduktor gawang
+// dan tidak diinputkan tiang jalur (tiang Gardu/Kontramask dihitung otomatis dari matriks konstruksi).
+const NON_LINE_TM_CONSTRUCTIONS = new Set([
+  'GARDUCANTOLDISTRIBUSI',
+  'GARDUCANTOLKHUSUS',
+  'GARDUPORTALDISTRIBUSI',
+  'GARDUPORTALKHUSUS',
+  'GARDUPORTALRMU',
+  'GARDUBETON',
+  'STAYSET',
+  'KONTRAMASK',
+  'COAFTAK',
+]);
+const NON_LINE_TR_CONSTRUCTIONS = new Set(['PEMBUMIANTR', 'STAYSETTR']);
+const normalizeConstKey = (v?: string) => (v || '').trim().toUpperCase().replace(/\s+/g, '');
 import {
   Plus,
   MapPin,
@@ -237,12 +261,11 @@ export const SurveyView: React.FC = () => {
 
   // Gabungan semua tiang untuk Peta & Review (di-memo agar peta tidak menggambar ulang tiap render)
   const allPoles = useMemo(() => [...tmPoles, ...trPoles], [tmPoles, trPoles]);
-  // Perluasan yang dipakai untuk review, output paket & penyimpanan (terisi otomatis bila ada tiang).
+  // Perluasan yang dipakai untuk review, output paket & penyimpanan (mengikuti isian eksplisit Step 2).
   const effectivePerluasan = resolvePerluasan(perluasanJTM, perluasanJTR, allPoles);
 
-  // Fungsi khusus tambah baris JTR (mengisi Perluasan JTR bila belum dipilih)
+  // Fungsi khusus tambah baris JTR (tidak memaksa Perluasan JTR agar sesuai ISIAN PEKERJAAN!B24)
   const addTrPoleRow = () => {
-    if (!perluasanJTR) setPerluasanJTR(jtrTypeTab);
     const nextIdx = trPoles.length + 1;
     setTrPoles([
       ...trPoles,
@@ -266,9 +289,8 @@ export const SurveyView: React.FC = () => {
     ]);
   };
 
-  // Fungsi khusus tambah baris JTM (mengisi Perluasan JTM bila belum dipilih)
+  // Fungsi khusus tambah baris JTM (tidak memaksa Perluasan JTM agar sesuai ISIAN PEKERJAAN!B20)
   const addTmPoleRow = () => {
-    if (!perluasanJTM) setPerluasanJTM(jtmTypeTab === 'SKUTM' ? 'SKUTM (MVTIC)' : jtmTypeTab);
     const nextIdx = tmPoles.length + 1;
     setTmPoles([
       ...tmPoles,
@@ -690,15 +712,6 @@ export const SurveyView: React.FC = () => {
         <div className="flex items-center gap-2.5 shrink-0">
           <button
             type="button"
-            onClick={() => setCurrentPage('pradaftung')}
-            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-300 hover:border-slate-400 rounded-lg text-xs font-semibold transition-all duration-150 shadow-2xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-            title="Lanjut ke menu Daftar Tunggu"
-          >
-            <span>Ke Daftar Tunggu</span>
-            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-          </button>
-          <button
-            type="button"
             onClick={() => {
               setIsDetailMode(false);
               setDetailSurveyId(null);
@@ -961,10 +974,10 @@ export const SurveyView: React.FC = () => {
 
       {/* Survey Modal (3 Steps) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
-          <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[96vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
             {/* Modal Header */}
-            <div className="p-4 px-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+            <div className="p-3 px-5 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
               <div>
                 <h3 className="font-bold text-slate-900 text-sm">
                   {isDetailMode ? `Detail Data Survey: ${detailSurveyId || ''} (${name})` : 'Form Survey Lapangan & Geotagging'}
@@ -986,85 +999,85 @@ export const SurveyView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className={`flex-1 py-3 px-2.5 text-center border-b-2 whitespace-nowrap transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  className={`flex-1 py-2 px-2.5 text-center border-b-2 whitespace-nowrap transition flex items-center justify-center gap-1.5 cursor-pointer ${
                     step === 1 ? 'border-blue-600 text-blue-600 bg-white font-bold shadow-xs' : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                   }`}
                 >
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 1 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>1</span>
+                  <span className={`w-4.5 h-4.5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 1 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>1</span>
                   <span>Data Pelanggan</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className={`flex-1 py-3 px-2.5 text-center border-b-2 whitespace-nowrap transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  className={`flex-1 py-2 px-2.5 text-center border-b-2 whitespace-nowrap transition flex items-center justify-center gap-1.5 cursor-pointer ${
                     step === 2 ? 'border-blue-600 text-blue-600 bg-white font-bold shadow-xs' : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                   }`}
                 >
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 2 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>2</span>
+                  <span className={`w-4.5 h-4.5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 2 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>2</span>
                   <span>Data Teknis</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setStep(3)}
-                  className={`flex-1 py-3 px-2.5 text-center border-b-2 whitespace-nowrap transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  className={`flex-1 py-2 px-2.5 text-center border-b-2 whitespace-nowrap transition flex items-center justify-center gap-1.5 cursor-pointer ${
                     step === 3 ? 'border-blue-600 text-blue-600 bg-white font-bold shadow-xs' : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                   }`}
                 >
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 3 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>3</span>
+                  <span className={`w-4.5 h-4.5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 3 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>3</span>
                   <span>Konstruksi JTM ({tmPoles.length})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setStep(4)}
-                  className={`flex-1 py-3 px-2.5 text-center border-b-2 whitespace-nowrap transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  className={`flex-1 py-2 px-2.5 text-center border-b-2 whitespace-nowrap transition flex items-center justify-center gap-1.5 cursor-pointer ${
                     step === 4 ? 'border-emerald-600 text-emerald-700 bg-white font-bold shadow-xs' : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                   }`}
                 >
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 4 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>4</span>
+                  <span className={`w-4.5 h-4.5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 4 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>4</span>
                   <span>Konstruksi JTR ({trPoles.length})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setStep(5)}
-                  className={`flex-1 py-3 px-2.5 text-center border-b-2 whitespace-nowrap transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  className={`flex-1 py-2 px-2.5 text-center border-b-2 whitespace-nowrap transition flex items-center justify-center gap-1.5 cursor-pointer ${
                     step === 5 ? 'border-blue-600 text-blue-600 bg-white font-bold shadow-xs' : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                   }`}
                 >
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 5 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>5</span>
+                  <span className={`w-4.5 h-4.5 rounded-full flex items-center justify-center text-[10px] font-bold ${step === 5 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>5</span>
                   <span>Review & Simpan</span>
                 </button>
               </div>
             )}
 
             {/* Modal Body */}
-            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+            <div className="p-3.5 sm:p-4 overflow-y-auto flex-1 space-y-3">
               {/* STEP 1: Data Pelanggan */}
               {step === 1 && (
-                <div className="space-y-5 text-xs">
+                <div className="space-y-3 text-xs">
                   {/* Notice Banner */}
-                  <div className="p-3.5 bg-blue-50/80 border border-blue-200/80 rounded-xl text-blue-900 text-xs flex items-center gap-2.5 shadow-2xs">
-                    <span className="p-1.5 rounded-lg bg-blue-600 text-white shadow-2xs">
-                      <FileText className="w-4 h-4" />
+                  <div className="p-2.5 bg-blue-50/80 border border-blue-200/80 rounded-xl text-blue-900 text-xs flex items-center gap-2 shadow-2xs">
+                    <span className="p-1 rounded-lg bg-blue-600 text-white shadow-2xs shrink-0">
+                      <FileText className="w-3.5 h-3.5" />
                     </span>
-                    <span className="leading-relaxed">
+                    <span className="leading-snug text-[11.5px]">
                       <b>Data Identitas Pemohon / Pelanggan:</b> Masukkan data identitas pemohon dan tarif daya sesuai formulir pendaftaran resmi PLN.
                     </span>
                   </div>
 
                   {/* Section 1: Data Identitas Pemohon */}
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                    <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div className="px-4 py-2 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-blue-600"></span>
                         <h4 className="font-bold text-slate-800 text-xs tracking-wide">1. Identitas Pelanggan & Lokasi</h4>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-medium">Informasi Utama</span>
+                      <span className="text-[10.5px] text-slate-400 font-medium">Informasi Utama</span>
                     </div>
 
-                    <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-3.5 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       {/* Nama Pelanggan */}
                       <div className="sm:col-span-2">
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Nama Pelanggan <span className="text-rose-500">*</span>
                         </label>
                         <input
@@ -1075,13 +1088,13 @@ export const SurveyView: React.FC = () => {
                             setNamaDasar(e.target.value);
                           }}
                           placeholder="Contoh: PT BANTEN STEEL MANUFACTURING atau PERUMAHAN MUTIARA MAJA"
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
                         />
                       </div>
 
                       {/* Alamat Lokasi */}
                       <div className="sm:col-span-2">
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Alamat Lokasi Pelanggan <span className="text-rose-500">*</span>
                         </label>
                         <input
@@ -1092,15 +1105,15 @@ export const SurveyView: React.FC = () => {
                             setLocation(e.target.value);
                           }}
                           placeholder="Contoh: Jl. Industri Modern Raya No. 88, Cikande, Serang"
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
                         />
                       </div>
 
                       {/* Koordinat Lokasi & Foto Dokumentasi Lapangan */}
-                      <div className="sm:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
+                      <div className="sm:col-span-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-2.5">
                         {/* Koordinat Lat Long */}
                         <div>
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center justify-between mb-1.5">
                             <label className="font-semibold text-slate-700 text-xs flex items-center gap-1.5">
                               <MapPin className="w-3.5 h-3.5 text-blue-600" />
                               <span>Koordinat Lokasi Pelanggan (Latitude & Longitude)</span>
@@ -1109,7 +1122,7 @@ export const SurveyView: React.FC = () => {
                               type="button"
                               onClick={handleGetCurrentLocation}
                               disabled={isGettingLocation}
-                              className="px-2.5 py-1 text-[11px] font-bold text-blue-700 bg-blue-100/80 hover:bg-blue-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                              className="px-2 py-0.5 text-[10.5px] font-bold text-blue-700 bg-blue-100/80 hover:bg-blue-200 rounded-md transition flex items-center gap-1 cursor-pointer"
                               title="Ambil koordinat GPS perangkat saat ini"
                             >
                               <MapPin className="w-3 h-3 text-blue-600" />
@@ -1117,38 +1130,38 @@ export const SurveyView: React.FC = () => {
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div>
-                              <span className="text-[10.5px] font-medium text-slate-500 block mb-1">Latitude (Lintang):</span>
+                              <span className="text-[10px] font-medium text-slate-500 block mb-0.5">Latitude (Lintang):</span>
                               <input
                                 type="text"
                                 value={latitude}
                                 onChange={(e) => setLatitude(e.target.value)}
                                 placeholder="Contoh: -6.185200"
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               />
                             </div>
                             <div>
-                              <span className="text-[10.5px] font-medium text-slate-500 block mb-1">Longitude (Bujur):</span>
+                              <span className="text-[10px] font-medium text-slate-500 block mb-0.5">Longitude (Bujur):</span>
                               <input
                                 type="text"
                                 value={longitude}
                                 onChange={(e) => setLongitude(e.target.value)}
                                 placeholder="Contoh: 106.345100"
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               />
                             </div>
                           </div>
                         </div>
 
                         {/* Foto Dokumentasi Lokasi (Disatukan di sini) */}
-                        <div className="pt-3 border-t border-slate-200/80">
-                          <div className="flex items-center justify-between mb-2.5">
+                        <div className="pt-2 border-t border-slate-200/80">
+                          <div className="flex items-center justify-between mb-1.5">
                             <label className="font-semibold text-slate-700 text-xs flex items-center gap-1.5">
                               <Camera className="w-3.5 h-3.5 text-purple-600" />
                               <span>Foto Dokumentasi Lokasi Pelanggan ({locationPhotos.length} Foto)</span>
                             </label>
-                            <label className="px-2.5 py-1 text-[11px] font-bold text-purple-700 bg-purple-100/80 hover:bg-purple-200 rounded-lg transition flex items-center gap-1 cursor-pointer">
+                            <label className="px-2 py-0.5 text-[10.5px] font-bold text-purple-700 bg-purple-100/80 hover:bg-purple-200 rounded-md transition flex items-center gap-1 cursor-pointer">
                               <Camera className="w-3 h-3 text-purple-600" />
                               <span>+ Upload / Kamera</span>
                               <input
@@ -1162,10 +1175,10 @@ export const SurveyView: React.FC = () => {
                           </div>
 
                           {locationPhotos.length === 0 ? (
-                            <label className="border-2 border-dashed border-slate-300 hover:border-purple-400 bg-white rounded-xl p-4 text-center transition flex flex-col items-center justify-center cursor-pointer group">
-                              <Camera className="w-6 h-6 text-slate-400 group-hover:text-purple-600 transition mb-1" />
+                            <label className="border-2 border-dashed border-slate-300 hover:border-purple-400 bg-white rounded-lg p-2.5 text-center transition flex flex-col items-center justify-center cursor-pointer group">
+                              <Camera className="w-5 h-5 text-slate-400 group-hover:text-purple-600 transition mb-0.5" />
                               <span className="text-xs font-semibold text-slate-700">Klik untuk ambil foto dari kamera atau pilih file</span>
-                              <span className="text-[10.5px] text-slate-400 mt-0.5">Mendukung format JPG, PNG, atau kamera HP</span>
+                              <span className="text-[10px] text-slate-400">Mendukung format JPG, PNG, atau kamera HP</span>
                               <input
                                 type="file"
                                 accept="image/*"
@@ -1175,7 +1188,7 @@ export const SurveyView: React.FC = () => {
                               />
                             </label>
                           ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                               {locationPhotos.map((photo, pIdx) => (
                                 <div key={photo.id} className="relative group bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
                                   <div
@@ -1191,7 +1204,7 @@ export const SurveyView: React.FC = () => {
                                       <Eye className="w-3.5 h-3.5" /> Lihat
                                     </div>
                                   </div>
-                                  <div className="p-2 bg-white">
+                                  <div className="p-1.5 bg-white">
                                     <input
                                       type="text"
                                       value={photo.caption}
@@ -1203,11 +1216,11 @@ export const SurveyView: React.FC = () => {
                                       placeholder="Ket. foto..."
                                       className="w-full text-[10px] font-semibold text-slate-800 border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-none py-0.5 bg-transparent truncate"
                                     />
-                                    <div className="flex items-center justify-end mt-1">
+                                    <div className="flex items-center justify-end mt-0.5">
                                       <button
                                         type="button"
                                         onClick={() => removeLocationPhoto(photo.id)}
-                                        className="text-[10px] text-rose-500 hover:text-rose-700 font-bold hover:underline cursor-pointer"
+                                        className="text-[9.5px] text-rose-500 hover:text-rose-700 font-bold hover:underline cursor-pointer"
                                       >
                                         Hapus
                                       </button>
@@ -1223,19 +1236,19 @@ export const SurveyView: React.FC = () => {
                   </div>
 
                   {/* Section 2: Tarif & Daya (Lama vs Baru) */}
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                    <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div className="px-4 py-2 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
                         <h4 className="font-bold text-slate-800 text-xs tracking-wide">2. Spesifikasi Tarif & Daya</h4>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-medium">Lama vs Baru</span>
+                      <span className="text-[10.5px] text-slate-400 font-medium">Lama vs Baru</span>
                     </div>
 
-                    <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-3.5 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       {/* Daya Baru */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Daya Baru (VA) <span className="text-rose-500">*</span>
                         </label>
                         <input
@@ -1246,13 +1259,13 @@ export const SurveyView: React.FC = () => {
                             setDaya(e.target.value);
                           }}
                           placeholder="Contoh: 1.300"
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono transition"
                         />
                       </div>
 
                       {/* Tarif Baru */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Tarif Baru <span className="text-rose-500">*</span>
                         </label>
                         <input
@@ -1263,13 +1276,13 @@ export const SurveyView: React.FC = () => {
                             setTarif(e.target.value);
                           }}
                           placeholder="Contoh: R1T"
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
                         />
                       </div>
 
                       {/* Daya Lama */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Daya Lama (VA) <span className="text-[10px] text-slate-400 font-normal">(opsional jika perubahan daya)</span>
                         </label>
                         <input
@@ -1277,13 +1290,13 @@ export const SurveyView: React.FC = () => {
                           value={dayaLama}
                           onChange={(e) => setDayaLama(e.target.value)}
                           placeholder="Kosongkan jika Pasang Baru"
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono transition"
                         />
                       </div>
 
                       {/* Tarif Lama */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Tarif Lama <span className="text-[10px] text-slate-400 font-normal">(opsional jika perubahan daya)</span>
                         </label>
                         <input
@@ -1291,7 +1304,7 @@ export const SurveyView: React.FC = () => {
                           value={tarifLama}
                           onChange={(e) => setTarifLama(e.target.value)}
                           placeholder="Kosongkan jika Pasang Baru"
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
                         />
                       </div>
                     </div>
@@ -1301,45 +1314,45 @@ export const SurveyView: React.FC = () => {
 
               {/* STEP 2: Data Teknis */}
               {step === 2 && (
-                <div className="space-y-5 text-xs">
+                <div className="space-y-3 text-xs">
                   {/* Notice Banner */}
-                  <div className="p-3.5 bg-blue-50/80 border border-blue-200/80 rounded-xl text-blue-900 text-xs flex items-center gap-2.5 shadow-2xs">
-                    <span className="p-1.5 rounded-lg bg-blue-600 text-white shadow-2xs">
-                      <Wrench className="w-4 h-4" />
+                  <div className="p-2.5 bg-blue-50/80 border border-blue-200/80 rounded-xl text-blue-900 text-xs flex items-center gap-2 shadow-2xs">
+                    <span className="p-1 rounded-lg bg-blue-600 text-white shadow-2xs shrink-0">
+                      <Wrench className="w-3.5 h-3.5" />
                     </span>
-                    <span className="leading-relaxed">
+                    <span className="leading-snug text-[11.5px]">
                       <b>Data Teknis Jaringan & Distribusi:</b> Masukkan data gardu induk, penyulang, gardu, perluasan jaringan, mutasi trafo, dan gardu beton sesuai kebutuhan survey lapangan PLN.
                     </span>
                   </div>
 
                   {/* Section 1: Data Gardu Induk & Penyulang */}
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                    <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div className="px-4 py-2 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-blue-600"></span>
                         <h4 className="font-bold text-slate-800 text-xs tracking-wide">1. Gardu Induk & Titik Pasok</h4>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-medium">Wajib diisi</span>
+                      <span className="text-[10.5px] text-slate-400 font-medium">Wajib diisi</span>
                     </div>
 
-                    <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-3.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                       {/* Gardu Induk */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Gardu Induk <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="text"
                           value={garduInduk}
                           onChange={(e) => setGarduInduk(e.target.value)}
-                          placeholder="Contoh: RANGKASBITUNG BARU (ONA)"
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                          placeholder="Contoh: RANGKASBITUNG BARU"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
                         />
                       </div>
 
                       {/* Penyulang */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Penyulang <span className="text-rose-500">*</span>
                         </label>
                         <input
@@ -1347,13 +1360,13 @@ export const SurveyView: React.FC = () => {
                           value={penyulang}
                           onChange={(e) => setPenyulang(e.target.value)}
                           placeholder="Contoh: CITRA"
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
                         />
                       </div>
 
                       {/* Gardu */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Gardu Distribusi <span className="text-rose-500">*</span>
                         </label>
                         <input
@@ -1361,19 +1374,19 @@ export const SurveyView: React.FC = () => {
                           value={gardu}
                           onChange={(e) => setGardu(e.target.value)}
                           placeholder="Contoh: MAJA045"
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono transition"
                         />
                       </div>
 
                       {/* ULP */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Unit Layanan Pelanggan (ULP) <span className="text-rose-500">*</span>
                         </label>
                         <select
                           value={ulp}
                           onChange={(e) => setUlp(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition"
                         >
                           <option value="ULP Rangkasbitung">ULP Rangkasbitung</option>
                           <option value="ULP Pandeglang">ULP Pandeglang</option>
@@ -1385,64 +1398,67 @@ export const SurveyView: React.FC = () => {
                   </div>
 
                   {/* Section 2: Spesifikasi Distribusi & Perluasan Jaringan */}
-                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                    <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div className="px-4 py-2 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
                         <h4 className="font-bold text-slate-800 text-xs tracking-wide">2. Spesifikasi Gardu & Jaringan</h4>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-medium">Konstruksi Distribusi</span>
+                      <span className="text-[10.5px] text-slate-400 font-medium">Konstruksi Distribusi</span>
                     </div>
 
-                    <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-3.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
                       {/* Perluasan JTM */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Perluasan JTM
                         </label>
                         <select
                           value={perluasanJTM}
                           onChange={(e) => setPerluasanJTM(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition"
                         >
-                          <option value="">— Kosongkan / Tidak Ada —</option>
-                          <option value="SUTM">SUTM (Saluran Udara Tegangan Menengah)</option>
-                          {perluasanJTM && perluasanJTM !== 'SUTM' && (
-                            <option value={perluasanJTM}>{perluasanJTM} (data lama)</option>
+                          <option value="">— Tidak Ada —</option>
+                          <option value="SUTM">SUTM (Saluran Udara)</option>
+                          <option value="SKUTM (MVTIC)">SKUTM (MVTIC)</option>
+                          <option value="SKTM">SKTM (Kabel Tanah)</option>
+                          {perluasanJTM && !['SUTM', 'SKUTM (MVTIC)', 'SKTM'].includes(perluasanJTM) && (
+                            <option value={perluasanJTM}>{perluasanJTM}</option>
                           )}
                         </select>
                       </div>
 
                       {/* Tipe Pembangunan Gardu */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
-                          Tipe Pembangunan Gardu
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
+                          Pembangunan Gardu
                         </label>
                         <select
                           value={tipeGardu}
                           onChange={(e) => setTipeGardu(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition"
                         >
-                          <option value="">— Kosongkan / Tidak Ada —</option>
+                          <option value="">— Tidak Ada —</option>
                           <option value="Gardu Cantol Distribusi">Gardu Cantol Distribusi</option>
                           <option value="Gardu Cantol Khusus">Gardu Cantol Khusus</option>
                           <option value="Gardu Portal Distribusi">Gardu Portal Distribusi</option>
                           <option value="Gardu Portal Khusus">Gardu Portal Khusus</option>
                           <option value="Gardu Portal RMU">Gardu Portal RMU</option>
+                          <option value="Gardu Beton">Gardu Beton</option>
                         </select>
                       </div>
 
                       {/* Kapasitas Trafo */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
                           Kapasitas Trafo
                         </label>
                         <select
                           value={kapasitasTrafo}
                           onChange={(e) => setKapasitasTrafo(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono transition"
                         >
-                          <option value="">— Kosongkan / Tidak Ada —</option>
+                          <option value="">— Tidak Ada —</option>
                           <option value="25 kVA">25 kVA</option>
                           <option value="50 kVA">50 kVA</option>
                           <option value="100 kVA">100 kVA</option>
@@ -1456,15 +1472,15 @@ export const SurveyView: React.FC = () => {
 
                       {/* Jumlah Kabel Naik */}
                       <div>
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
-                          Jumlah Kabel Naik
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
+                          Kabel Naik
                         </label>
                         <select
                           value={jumlahKabelNaik}
                           onChange={(e) => setJumlahKabelNaik(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono transition"
                         >
-                          <option value="">— Kosongkan / Tidak Ada —</option>
+                          <option value="">— Tidak Ada —</option>
                           <option value="1">1 Jurusan</option>
                           <option value="2">2 Jurusan</option>
                           <option value="3">3 Jurusan</option>
@@ -1473,19 +1489,21 @@ export const SurveyView: React.FC = () => {
                       </div>
 
                       {/* Perluasan JTR */}
-                      <div className="sm:col-span-2">
-                        <label className="block font-semibold text-slate-700 text-xs mb-1.5">
-                          Perluasan JTR (Jaringan Tegangan Rendah)
+                      <div>
+                        <label className="block font-semibold text-slate-700 text-xs mb-1">
+                          Perluasan JTR
                         </label>
                         <select
                           value={perluasanJTR}
                           onChange={(e) => setPerluasanJTR(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition"
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition"
                         >
-                          <option value="">— Kosongkan / Tidak Ada —</option>
-                          <option value="SKUTR">SKUTR (Saluran Kabel Udara Tegangan Rendah)</option>
-                          {perluasanJTR && perluasanJTR !== 'SKUTR' && (
-                            <option value={perluasanJTR}>{perluasanJTR} (data lama)</option>
+                          <option value="">— Tidak Ada —</option>
+                          <option value="SKUTR">SKUTR (Kabel Udara)</option>
+                          <option value="SUTR">SUTR (Saluran Udara)</option>
+                          <option value="SKTR">SKTR (Kabel Tanah)</option>
+                          {perluasanJTR && !['SKUTR', 'SUTR', 'SKTR'].includes(perluasanJTR) && (
+                            <option value={perluasanJTR}>{perluasanJTR}</option>
                           )}
                         </select>
                       </div>
@@ -1493,55 +1511,57 @@ export const SurveyView: React.FC = () => {
                   </div>
 
                   {/* Section 3: Tambahan (Mutasi Trafo & Gardu Beton) */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     {/* Mutasi Trafo Distribusi */}
-                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs flex flex-col">
-                      <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
+                    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs flex flex-col">
+                      <div className="px-4 py-2 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
                           <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                           <h4 className="font-bold text-slate-800 text-xs tracking-wide">Mutasi Trafo Distribusi</h4>
                         </div>
                         <span className="text-[10px] text-slate-400">Opsional</span>
                       </div>
 
-                      <div className="p-5 space-y-4 flex-1">
+                      <div className="p-3 grid grid-cols-2 gap-2.5 flex-1">
                         <div>
-                          <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                          <label className="block font-semibold text-slate-700 text-[11px] mb-1">
                             Trafo Lama (Eksisting)
                           </label>
                           <select
                             value={trafoLama}
                             onChange={(e) => setTrafoLama(e.target.value)}
-                            className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono transition"
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono transition"
                           >
-                            <option value="">— Tidak Ada Mutasi —</option>
+                            <option value="">— Tidak Ada —</option>
                             <option value="25 kVA">25 kVA</option>
                             <option value="50 kVA">50 kVA</option>
                             <option value="100 kVA">100 kVA</option>
                             <option value="160 kVA">160 kVA</option>
                             <option value="200 kVA">200 kVA</option>
                             <option value="250 kVA">250 kVA</option>
+                            <option value="315 kVA">315 kVA</option>
                             <option value="400 kVA">400 kVA</option>
                             <option value="630 kVA">630 kVA</option>
                           </select>
                         </div>
 
                         <div>
-                          <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                          <label className="block font-semibold text-slate-700 text-[11px] mb-1">
                             Trafo Baru (Pengganti)
                           </label>
                           <select
                             value={trafoBaru}
                             onChange={(e) => setTrafoBaru(e.target.value)}
-                            className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono transition"
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono transition"
                           >
-                            <option value="">— Tidak Ada Mutasi —</option>
+                            <option value="">— Tidak Ada —</option>
                             <option value="25 kVA">25 kVA</option>
                             <option value="50 kVA">50 kVA</option>
                             <option value="100 kVA">100 kVA</option>
                             <option value="160 kVA">160 kVA</option>
                             <option value="200 kVA">200 kVA</option>
                             <option value="250 kVA">250 kVA</option>
+                            <option value="315 kVA">315 kVA</option>
                             <option value="400 kVA">400 kVA</option>
                             <option value="630 kVA">630 kVA</option>
                           </select>
@@ -1550,39 +1570,39 @@ export const SurveyView: React.FC = () => {
                     </div>
 
                     {/* Gardu Beton Distribusi */}
-                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs flex flex-col">
-                      <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
+                    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs flex flex-col">
+                      <div className="px-4 py-2 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
                           <span className="w-2 h-2 rounded-full bg-purple-600"></span>
                           <h4 className="font-bold text-slate-800 text-xs tracking-wide">Gardu Beton Distribusi</h4>
                         </div>
                         <span className="text-[10px] text-slate-400">Opsional</span>
                       </div>
 
-                      <div className="p-5 space-y-4 flex-1">
+                      <div className="p-3 grid grid-cols-2 gap-2.5 flex-1">
                         <div>
-                          <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                          <label className="block font-semibold text-slate-700 text-[11px] mb-1">
                             Jenis Pekerjaan
                           </label>
                           <select
                             value={jenisPekerjaanGardu}
                             onChange={(e) => setJenisPekerjaanGardu(e.target.value)}
-                            className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition"
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer transition"
                           >
-                            <option value="">— Tidak Ada Pekerjaan —</option>
-                            <option value="Pemasangan Instalasi Gardu">Pemasangan Instalasi Gardu</option>
-                            <option value="Bongkar Pasang CT TM Gardu">Bongkar Pasang CT TM Gardu</option>
+                            <option value="">— Tidak Ada —</option>
+                            <option value="Pemasangan Instalasi Gardu">Pemasangan Instalasi</option>
+                            <option value="Bongkar Pasang CT TM Gardu">Bongkar Pasang CT TM</option>
                           </select>
                         </div>
 
                         <div>
-                          <label className="block font-semibold text-slate-700 text-xs mb-1.5">
+                          <label className="block font-semibold text-slate-700 text-[11px] mb-1">
                             Jumlah Kubikel LBS
                           </label>
                           <select
                             value={jumlahKubikelLBS}
                             onChange={(e) => setJumlahKubikelLBS(e.target.value)}
-                            className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono transition"
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer font-mono transition"
                           >
                             <option value="">— Tidak Ada —</option>
                             <option value="1">1 Unit</option>
@@ -1619,10 +1639,7 @@ export const SurveyView: React.FC = () => {
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/90 shadow-2xs">
                     <button
                       type="button"
-                      onClick={() => {
-                        setJtmTypeTab('SUTM');
-                        setPerluasanJTM('SUTM');
-                      }}
+                      onClick={() => setJtmTypeTab('SUTM')}
                       className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
                         jtmTypeTab === 'SUTM'
                           ? 'bg-white text-blue-700 shadow-xs border border-blue-200'
@@ -1711,9 +1728,16 @@ export const SurveyView: React.FC = () => {
                                           ))}
                                         </optgroup>
                                       </select>
-                                      {p.poleType === 'Tanpa Tiang' && (
+                                      {p.poleType === 'Tanpa Tiang' && countAutoMatrixPoles(p) === 0 && (
                                         <span className="text-[10px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-medium mt-1 inline-block border border-slate-300">
                                           ⚫ Tiang Eksisting
+                                        </span>
+                                      )}
+                                      {countAutoMatrixPoles(p) > 0 && (
+                                        <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded font-medium mt-1 inline-block border border-blue-200">
+                                          ⚡ {(p.tmConstruction || '').toUpperCase().includes('KONTRAMASK')
+                                            ? `Otomatis ${countAutoMatrixPoles(p)} btg Tiang 9/200 Kontramask`
+                                            : `Otomatis ${countAutoMatrixPoles(p)} btg Tiang 12/350 Gardu`}
                                         </span>
                                       )}
                                     </td>
@@ -1723,8 +1747,25 @@ export const SurveyView: React.FC = () => {
                                       <select
                                         value={p.tmConstruction || 'TM - 1B'}
                                         onChange={(e) => {
+                                          const nextConst = e.target.value;
+                                          const prevIsNonLine = NON_LINE_TM_CONSTRUCTIONS.has(normalizeConstKey(p.tmConstruction));
+                                          const nextIsNonLine = NON_LINE_TM_CONSTRUCTIONS.has(normalizeConstKey(nextConst));
                                           const updated = [...tmPoles];
-                                          updated[idx].tmConstruction = e.target.value;
+                                          updated[idx] = {
+                                            ...updated[idx],
+                                            tmConstruction: nextConst,
+                                          };
+                                          if (nextIsNonLine) {
+                                            updated[idx].poleType = 'Tanpa Tiang';
+                                            updated[idx].poleStatus = 'EXISTING';
+                                            updated[idx].conductorLength = 0;
+                                            updated[idx].a3cs = '0 m';
+                                          } else if (prevIsNonLine) {
+                                            updated[idx].poleType = '12/200';
+                                            updated[idx].poleStatus = 'RENCANA';
+                                            updated[idx].conductorLength = 50;
+                                            updated[idx].a3cs = '50 m';
+                                          }
                                           setTmPoles(updated);
                                         }}
                                         className="w-full p-2 border border-slate-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-medium"
@@ -1733,6 +1774,7 @@ export const SurveyView: React.FC = () => {
                                         {(constructionRules?.jtm?.konstruksiList || [
                                           'TM - 1B', 'TM - 2B', 'TM - 3B', 'TM - 4B', 'TM - 5B', 'TM - 6B',
                                           'TM - 7B', 'TM - 8B', 'TM - 9B', 'TM - 10B', 'TM - 11B', 'TM - 12B',
+                                          'TM - 13B', 'TM - 14B',
                                           'GARDU CANTOL DISTRIBUSI', 'GARDU CANTOL KHUSUS',
                                           'GARDU PORTAL DISTRIBUSI', 'GARDU PORTAL KHUSUS',
                                           'GARDU PORTAL RMU', 'GARDU BETON',
@@ -1837,7 +1879,7 @@ export const SurveyView: React.FC = () => {
                               className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-xs inline-flex items-center gap-1.5 cursor-pointer transition"
                             >
                               <Plus className="w-4 h-4" />
-                              <span>+ Tambah Baris Tiang JTM</span>
+                              <span>Tambah Baris Tiang JTM</span>
                             </button>
                           </div>
                         )}
@@ -1935,10 +1977,7 @@ export const SurveyView: React.FC = () => {
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/90 shadow-2xs">
                     <button
                       type="button"
-                      onClick={() => {
-                        setJtrTypeTab('SKUTR');
-                        setPerluasanJTR('SKUTR');
-                      }}
+                      onClick={() => setJtrTypeTab('SKUTR')}
                       className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer ${
                         jtrTypeTab === 'SKUTR'
                           ? 'bg-white text-emerald-700 shadow-xs border border-emerald-200'
@@ -2021,7 +2060,6 @@ export const SurveyView: React.FC = () => {
                             };
                           });
                           setTrPoles((prev) => [...prev, ...newTrPoles]);
-                          if (!perluasanJTR) setPerluasanJTR(jtrTypeTab);
                           showToast(`✓ Berhasil menambahkan ${newTrPoles.length} tiang terusan dari JTM ke JTR`);
                         }}
                         className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition shrink-0 shadow-2xs flex items-center gap-1.5 cursor-pointer text-xs"
@@ -2093,7 +2131,7 @@ export const SurveyView: React.FC = () => {
                                     )}
 
                                     <optgroup label="━━ Tiang Standar TR (Dari Standar Konstruksi) ━━">
-                                      {(constructionRules?.jtr?.tiangList || ['9/200', '9/350', '11/200', 'Tiang Besi 9m', 'Tiang Besi 11m']).map((t) => (
+                                      {(constructionRules?.jtr?.tiangList || ['9/200', '9/350']).map((t) => (
                                         <option key={t} value={t}>{t}</option>
                                       ))}
                                     </optgroup>
@@ -2115,8 +2153,25 @@ export const SurveyView: React.FC = () => {
                                   <select
                                     value={p.trConstruction || 'TR - 1B'}
                                     onChange={(e) => {
+                                      const nextConst = e.target.value;
+                                      const prevIsNonLine = NON_LINE_TR_CONSTRUCTIONS.has(normalizeConstKey(p.trConstruction));
+                                      const nextIsNonLine = NON_LINE_TR_CONSTRUCTIONS.has(normalizeConstKey(nextConst));
                                       const updated = [...trPoles];
-                                      updated[idx].trConstruction = e.target.value;
+                                      updated[idx] = {
+                                        ...updated[idx],
+                                        trConstruction: nextConst,
+                                      };
+                                      if (nextIsNonLine) {
+                                        updated[idx].poleType = 'Tanpa Tiang';
+                                        updated[idx].poleStatus = 'EXISTING';
+                                        updated[idx].conductorLength = 0;
+                                        updated[idx].lvTwisted = '0 m';
+                                      } else if (prevIsNonLine) {
+                                        updated[idx].poleType = '9/200';
+                                        updated[idx].poleStatus = 'RENCANA';
+                                        updated[idx].conductorLength = 45;
+                                        updated[idx].lvTwisted = '45 m';
+                                      }
                                       setTrPoles(updated);
                                     }}
                                     className="w-full p-2 border border-slate-200 rounded-xl text-xs bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition font-medium"
@@ -2124,7 +2179,7 @@ export const SurveyView: React.FC = () => {
                                     <option value="">Pilih Konstruksi TR</option>
                                     {(constructionRules?.jtr?.konstruksiList || [
                                       'TR - 1B', 'TR - 2B', 'TR - 3B', 'TR - 4B', 'TR - 5B', 'TR - 6B', 'TR - 7B',
-                                      'TR - 8B', 'TR - 9B', 'TR - 10B AWAL', 'TR - 10B AKHIR', 'TR - 11B', 'PEMBUMIAN TR', 'STAY SET TR'
+                                      'TR - 8B', 'TR - 9B', 'TR - 10B AWAL', 'TR - 10 B AKHIR', 'TR - 11B', 'PEMBUMIAN TR', 'STAY SET TR'
                                     ]).map((c) => (
                                       <option key={c} value={c}>{c}</option>
                                     ))}
@@ -2228,7 +2283,7 @@ export const SurveyView: React.FC = () => {
                           className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs inline-flex items-center gap-1.5 cursor-pointer transition"
                         >
                           <Plus className="w-4 h-4" />
-                          <span>+ Tambah Baris Tiang JTR</span>
+                          <span>Tambah Baris Tiang JTR</span>
                         </button>
                       </div>
                     )}
@@ -2408,16 +2463,18 @@ export const SurveyView: React.FC = () => {
                     const reasons: Record<SurveyDocType, string> = {
                       paket1: [
                         effectivePerluasan.jtm && `Perluasan ${effectivePerluasan.jtm}`,
-                        tipeGardu && `Gardu ${tipeGardu}`,
+                        !effectivePerluasan.jtm && tmPoles.length > 0 && `${tmPoles.length} item konstruksi JTM`,
+                        tipeGardu && tipeGardu,
                         (trafoLama || trafoBaru) && 'Mutasi Trafo',
-                        jenisPekerjaanGardu && 'Gardu Beton',
+                        jenisPekerjaanGardu && jenisPekerjaanGardu,
                       ].filter(Boolean).join(' • '),
                       paket2: [
-                        parseDayaVA(dayaBaru || daya) >= 53000 && `Daya Baru ${dayaBaru || daya} VA ≥ 53.000 VA`,
-                        parseDayaVA(dayaLama) >= 53000 && `Daya Lama ${dayaLama} VA ≥ 53.000 VA`,
+                        parseDayaVA(dayaBaru || daya) >= 53000 && `Daya Baru ${dayaBaru || daya} ≥ 53.000 VA`,
+                        parseDayaVA(dayaLama) >= 53000 && `Daya Lama ${dayaLama} ≥ 53.000 VA`,
                         effectivePerluasan.jtr && `Perluasan ${effectivePerluasan.jtr}`,
+                        !effectivePerluasan.jtr && trPoles.length > 0 && `${trPoles.length} item konstruksi JTR`,
                       ].filter(Boolean).join(' • '),
-                      tiang: `${allPoles.filter(isNewPole).length} tiang baru JTM/JTR`,
+                      tiang: `${countSurveyNewPoles(allPoles)} tiang baru JTM/JTR`,
                     };
                     return (
                       <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2.5">

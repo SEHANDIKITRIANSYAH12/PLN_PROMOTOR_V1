@@ -203,6 +203,7 @@ model WorkOrder {
   approvalStatus    String?
   rejectionReason   String?
   approvedAt        String?
+  submittedToAsmanAt String?
   appliedAt         String?
   daftungId         String?
   surveyId          String?
@@ -313,7 +314,11 @@ model WoMaterial {
   qtyReksis          Float    @default(0)
   qtyAllocated       Float    @default(0)
   qtyReserved        Float?
+  qtyReservedSap     Float?
+  qtyReservedNonSap  Float?
   qtyTaken           Float?
+  qtyTakenSap        Float?
+  qtyTakenNonSap     Float?
   isTaken            Boolean?
   takenAt            String?
   qtyInstalled       Float?
@@ -338,19 +343,22 @@ model WoMaterial {
 
 /// Item pekerjaan/jasa dari RAB yang jadi dasar realisasi lapangan.
 model WoJasa {
-  woId          String
-  idx           Int
-  id            String?
-  kode          String?
-  deskripsi     String
-  subKategori   String?
-  qtyTarget     Float    @default(0)
-  qtyRealisasi  Float    @default(0)
-  unit          String   @default("")
-  hargaSatuan   Float?
-  bobotPersen   Float?
-  progresPersen Float?
-  catatan       String?
+  woId            String
+  idx             Int
+  id              String?
+  kode            String?
+  deskripsi       String
+  subKategori     String?
+  qtyTarget       Float    @default(0)
+  qtyRealisasi    Float    @default(0)
+  unit            String   @default("")
+  hargaSatuan     Float?
+  bobotPersen     Float?
+  progresPersen   Float?
+  catatan         String?
+  kendala         String?
+  evidencePhoto   String?
+  evidenceCaption String?
 
   workOrder WorkOrder @relation("WoJasaItems", fields: [woId], references: [id], onDelete: Cascade)
 
@@ -395,6 +403,10 @@ model VendorPickupTransaction {
   suratJalanPhotos  String[] @default([])
   notes             String?
   items             Json     @default("[]")
+  status            String?
+  verifiedAt        String?
+  verifiedBy        String?
+  verificationNotes String?
 
   sysIdx       Int      @default(0)
   sysCreatedAt DateTime @default(now())
@@ -513,16 +525,17 @@ model Supervisor {
 
 /// Stok gudang. Kuncinya `code`, sama seperti di aplikasi (bukan id).
 model Stock {
-  code     String  @id
-  name     String
-  category String
-  qtyFisik Float   @default(0)
-  qtySap   Float?
-  qtyMrwi  Float?
-  qtyAlokasi Float @default(0)
-  qtySisa    Float @default(0)
-  unit     String
-  status   String
+  code          String  @id
+  name          String
+  category      String
+  qtyFisik      Float   @default(0)
+  qtySap        Float?
+  qtyMrwi       Float?
+  qtyAlokasi    Float   @default(0)
+  qtySisa       Float   @default(0)
+  unit          String
+  status        String
+  lastUpdatedAt String?
 
   sysIdx       Int      @default(0)
   sysCreatedAt DateTime @default(now())

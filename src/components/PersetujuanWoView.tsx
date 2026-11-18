@@ -257,16 +257,6 @@ export const PersetujuanWoView: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <span className="font-semibold text-slate-700">{totalItems} Item</span>
-                        {wo.volumeEditedAt ? (
-                          <div
-                            className="text-[10px] font-semibold text-indigo-700"
-                            title={`Direvisi ${wo.volumeEditedBy || 'Asman'} • ${wo.volumeEditedAt}`}
-                          >
-                            Volume direvisi Asman
-                          </div>
-                        ) : (
-                          <div className="text-[10px] text-slate-400">Siap dialokasikan</div>
-                        )}
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">

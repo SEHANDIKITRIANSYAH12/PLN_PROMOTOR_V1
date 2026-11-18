@@ -31,7 +31,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { usePromotorStore } from '@/store/usePromotorStore';
-import { WorkOrderRecord, WoJasaItem } from '@/types';
+import { WorkOrderRecord, WoJasaItem, WoMaterialItem } from '@/types';
 import { calculateRabFromSurvey } from '@/data/rabMasterData';
 import { ModalRekapProgresJasa } from '@/components/ModalRekapProgresJasa';
 
@@ -46,6 +46,26 @@ const parseSupervisor = (s?: string) => {
   return { name, role };
 };
 
+// Helper: Ambil kuantitas yang sudah diambil per jalur (SAP vs Non-SAP)
+const getPrevTaken = (m: WoMaterialItem, channel: 'SAP' | 'NON_SAP') => {
+  const isTiang = (m.kategori || '').toUpperCase().includes('TIANG') ||
+    m.material.toLowerCase().includes('pole;concrete') ||
+    m.material.toLowerCase().startsWith('tiang beton') ||
+    (m.material.toLowerCase().includes('tiang') && !m.material.toLowerCase().includes('serandang')) ||
+    (m.kode && m.kode.toLowerCase().includes('tng'));
+
+  const resSap = m.qtyReservedSap !== undefined ? m.qtyReservedSap : (isTiang ? 0 : (m.qtyReserved || 0));
+  const resNonSap = m.qtyReservedNonSap !== undefined ? m.qtyReservedNonSap : (isTiang ? (m.qtyReserved || 0) : 0);
+
+  if (channel === 'SAP') {
+    if (m.qtyTakenSap !== undefined) return m.qtyTakenSap;
+    return Math.min(m.qtyTaken || 0, resSap);
+  } else {
+    if (m.qtyTakenNonSap !== undefined) return m.qtyTakenNonSap;
+    return Math.max(0, (m.qtyTaken || 0) - resSap);
+  }
+};
+
 export const VendorPengambilanView: React.FC = () => {
   const { 
     workOrders, 
@@ -54,6 +74,7 @@ export const VendorPengambilanView: React.FC = () => {
     vendorConfirmMaterialTaken, 
     vendorSubmitRealization, 
     vendorSubmitProgress,
+    deleteWorkOrder,
     showToast,
     vendorPickupTransactions
   } = usePromotorStore();
@@ -68,6 +89,7 @@ export const VendorPengambilanView: React.FC = () => {
 
   // Modal 2: Konfirmasi Material Diterima & Upload Surat Jalan
   const [uploadSjWo, setUploadSjWo] = useState<WorkOrderRecord | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<'SAP' | 'NON_SAP'>('SAP');
   const [noSjInput, setNoSjInput] = useState('');
   const [tglSjInput, setTglSjInput] = useState('');
   const [noReservasiInput, setNoReservasiInput] = useState('');
@@ -204,22 +226,23 @@ export const VendorPengambilanView: React.FC = () => {
     const mats = wo.materials || [];
     if (mats.length === 0) return wo.progressMaterial || 0;
 
+    // HANYA hitung item yang sudah diverifikasi pengawas (isVerified === true) dan tidak di-hold
+    const verifiedMats = mats.filter((m) => m.isVerified && !m.isHold);
+    if (verifiedMats.length === 0) return 0;
+
     const hasHeld = mats.some((m) => m.isHold);
-    const hasRemainingToTake = mats.some((m) => {
-      if (m.isHold) return true;
-      const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
+    const hasRemainingToTakeOrVerify = mats.some((m) => {
+      if (m.isHold || !m.isVerified) return true;
+      const req = m.qtyAllocated || m.qtyReksis || 1;
       return (m.qtyTaken || 0) < req;
     });
 
-    const isAllCompleted = !hasRemainingToTake && !hasHeld;
+    const isAllCompleted = !hasRemainingToTakeOrVerify && !hasHeld;
     if (isAllCompleted) return 100;
 
-    const totalTaken = mats.reduce((acc, m) => acc + (m.qtyTaken || 0), 0);
-    if (totalTaken === 0) return 0;
-
     const totalFulfillment = mats.reduce((sum, m) => {
-      if (m.isHold) return sum;
-      const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
+      if (m.isHold || !m.isVerified) return sum;
+      const req = m.qtyAllocated || m.qtyReksis || 1;
       const taken = m.qtyTaken || 0;
       return sum + (req > 0 ? Math.min(1, taken / req) : 0);
     }, 0);
@@ -358,6 +381,13 @@ export const VendorPengambilanView: React.FC = () => {
     return Array.from(new Set(approvedWos.map((w) => w.vendor))).filter(Boolean);
   }, [approvedWos]);
 
+  // Helper cek apakah WO sudah 100% diambil & seluruh SJ telah diverifikasi pengawas
+  const isWoPickupAndSjDone = (w: WorkOrderRecord) => {
+    const mats = w.materials || [];
+    const allTaken = mats.length > 0 && mats.every((m) => !m.isHold && (m.qtyTaken || 0) >= (m.qtyAllocated || m.qtyReksis || 1));
+    return allTaken && w.sjVerificationStatus === 'SESUAI';
+  };
+
   // Tab Filtering
   const filteredWos = useMemo(() => {
     return approvedWos.filter((w) => {
@@ -377,10 +407,10 @@ export const VendorPengambilanView: React.FC = () => {
         const mats = w.materials || [];
         const hasRemainingToTake = mats.some((m) => {
           if (m.isHold) return false;
-          const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
-          return (m.qtyTaken || 0) < req;
+          const req = m.qtyReserved !== undefined ? m.qtyReserved : 0;
+          return req > 0 && (m.qtyTaken || 0) < req;
         });
-        return (w.reservationStatus === 'Siap Ambil' || w.reservationStatus === 'Siap Ambil Sebagian') && hasRemainingToTake;
+        return (w.reservationStatus === 'Siap Ambil' || w.reservationStatus === 'Siap Ambil Sebagian' || w.reservationStatus === 'Reservasi Sebagian') && hasRemainingToTake;
       }
       if (activeTab === 'VERIFIKASI_SJ') {
         return Boolean(w.suratJalanNumber) && (!w.sjVerificationStatus || w.sjVerificationStatus === 'BELUM_DIPERIKSA');
@@ -392,7 +422,7 @@ export const VendorPengambilanView: React.FC = () => {
         return w.vendorReceiptConfirmed && (!w.pengawasRealizationVerified);
       }
       if (activeTab === 'SELESAI') {
-        return w.pengawasRealizationVerified || w.status === 'Selesai' || w.status === 'Closeout';
+        return isWoPickupAndSjDone(w) || w.pengawasRealizationVerified || w.status === 'Selesai' || w.status === 'Closeout';
       }
 
       return true;
@@ -407,23 +437,35 @@ export const VendorPengambilanView: React.FC = () => {
         const mats = w.materials || [];
         const hasRemainingToTake = mats.some((m) => {
           if (m.isHold) return false;
-          const req = m.qtyReserved !== undefined ? m.qtyReserved : (m.qtyAllocated || m.qtyReksis || 1);
-          return (m.qtyTaken || 0) < req;
+          const req = m.qtyReserved !== undefined ? m.qtyReserved : 0;
+          return req > 0 && (m.qtyTaken || 0) < req;
         });
-        return (w.reservationStatus === 'Siap Ambil' || w.reservationStatus === 'Siap Ambil Sebagian') && hasRemainingToTake;
+        return (w.reservationStatus === 'Siap Ambil' || w.reservationStatus === 'Siap Ambil Sebagian' || w.reservationStatus === 'Reservasi Sebagian') && hasRemainingToTake;
       }).length,
       verifikasiSj: approvedWos.filter((w) => Boolean(w.suratJalanNumber) && (!w.sjVerificationStatus || w.sjVerificationStatus === 'BELUM_DIPERIKSA')).length,
       progresJasa: approvedWos.filter((w) => w.progressStatus === 'MENUNGGU_VERIFIKASI_PROGRESS').length,
       realisasi: approvedWos.filter((w) => w.vendorReceiptConfirmed && !w.pengawasRealizationVerified).length,
-      selesai: approvedWos.filter((w) => w.pengawasRealizationVerified || w.status === 'Selesai' || w.status === 'Closeout').length,
+      selesai: approvedWos.filter((w) => isWoPickupAndSjDone(w) || w.pengawasRealizationVerified || w.status === 'Selesai' || w.status === 'Closeout').length,
     };
   }, [approvedWos]);
 
   // Handlers Modal 2: Konfirmasi Ambil & Upload SJ & Bukti Penerimaan
-  const handleOpenUploadSj = (wo: WorkOrderRecord) => {
+  const handleOpenUploadSj = (wo: WorkOrderRecord, initialChannel?: 'SAP' | 'NON_SAP') => {
     setUploadSjWo(wo);
     const mats = wo.materials || [];
     const hasAnyTaken = mats.some((m) => (m.qtyTaken || 0) > 0);
+
+    // Tentukan channel pengambilan: SAP (Stok Gudang) atau NON_SAP (Pabrikan/Tiang)
+    const hasSapReserved = mats.some((m) => (m.qtyReservedSap !== undefined ? m.qtyReservedSap : (m.qtyReserved || 0)) > 0);
+    const hasNonSapReserved = mats.some((m) => (m.qtyReservedNonSap || 0) > 0);
+    
+    let activeChannel: 'SAP' | 'NON_SAP' = initialChannel || 'SAP';
+    if (!initialChannel) {
+      if (hasSapReserved) activeChannel = 'SAP';
+      else if (hasNonSapReserved) activeChannel = 'NON_SAP';
+      else activeChannel = 'SAP';
+    }
+    setSelectedChannel(activeChannel);
 
     // Untuk penamaan Surat Jalan berikutnya jika bertahap
     const defaultNoSj = hasAnyTaken
@@ -432,16 +474,25 @@ export const VendorPengambilanView: React.FC = () => {
 
     setNoSjInput(defaultNoSj);
     setTglSjInput(new Date().toISOString().split('T')[0]);
-    const initialResNo = wo.reservationNumber || wo.reservationNumberNonStock || '';
+    
+    // Nomor Reservasi awal sesuai channel
+    const initialResNo = activeChannel === 'NON_SAP'
+      ? (wo.reservationNumberNonStock || wo.reservationNumber || '')
+      : (wo.reservationNumber || wo.reservationNumberNonStock || '');
     setNoReservasiInput(initialResNo);
     setNoGiInput(wo.giNumber || '');
 
     // Inisialisasi daftar berkas foto Surat Jalan & Bukti Penerimaan (Multi-file support)
-    const existingSjPhotos = wo.suratJalanPhotos && wo.suratJalanPhotos.length > 0
-      ? wo.suratJalanPhotos
-      : (wo.suratJalanPhoto ? [wo.suratJalanPhoto] : []);
+    // Jangan membawa foto dari SJ tahap sebelumnya atau dummy URL otomatis
+    const cleanDummyPhotos = (arr?: string[]) =>
+      (arr || []).filter((u) => Boolean(u) && !u.includes('photo-1586528116311-ad8dd3c8310d'));
+    const existingSjPhotos = cleanDummyPhotos(
+      wo.suratJalanPhotos && wo.suratJalanPhotos.length > 0
+        ? wo.suratJalanPhotos
+        : (wo.suratJalanPhoto ? [wo.suratJalanPhoto] : [])
+    );
     setSjPhotos(hasAnyTaken ? [] : existingSjPhotos);
-    setReceiptPhotos(wo.receiptPhotos || []);
+    setReceiptPhotos(hasAnyTaken ? [] : cleanDummyPhotos(wo.receiptPhotos));
 
     setVendorReceiptNote(
       hasAnyTaken
@@ -450,20 +501,70 @@ export const VendorPengambilanView: React.FC = () => {
     );
 
     // Inisialisasi kuantitas yang diambil pada batch saat ini:
-    // HANYA untuk material yang direservasi pengawas saat itu (qtyReserved > 0).
-    // Material yang bernilai 0 atau tidak direservasi tidak diambil sekarang (menunggu reservasi pengawas tahap berikutnya).
+    // HANYA untuk material yang direservasi pengawas saat itu (qtyReserved > 0)
+    // dan sesuai dengan channel yang sedang aktif (SAP vs Non-SAP).
     const initialBatch: Record<string, number> = {};
     mats.forEach((m) => {
-      const resQty = m.qtyReserved !== undefined ? m.qtyReserved : 0;
-      if (m.isHold || resQty <= 0) {
+      const isTiang = (m.kategori || '').toUpperCase().includes('TIANG') ||
+        m.material.toLowerCase().includes('pole;concrete') ||
+        m.material.toLowerCase().startsWith('tiang beton') ||
+        (m.material.toLowerCase().includes('tiang') && !m.material.toLowerCase().includes('serandang')) ||
+        (m.kode && m.kode.toLowerCase().includes('tng'));
+
+      const resSap = m.qtyReservedSap !== undefined ? m.qtyReservedSap : (isTiang ? 0 : (m.qtyReserved || 0));
+      const resNonSap = m.qtyReservedNonSap !== undefined ? m.qtyReservedNonSap : (isTiang ? (m.qtyReserved || 0) : 0);
+      const resForChannel = activeChannel === 'SAP' ? resSap : resNonSap;
+
+      if (m.isHold || resForChannel <= 0) {
         initialBatch[m.material] = 0;
       } else {
-        const prevTaken = m.qtyTaken || 0;
-        const sisa = Math.max(0, resQty - prevTaken);
+        const prevTaken = getPrevTaken(m, activeChannel);
+        const sisa = Math.max(0, resForChannel - prevTaken);
         initialBatch[m.material] = sisa;
       }
     });
     setBatchTaken(initialBatch);
+  };
+
+  // Helper untuk switch tab channel SAP / Non-SAP di dalam modal pengambilan
+  const switchChannel = (channel: 'SAP' | 'NON_SAP') => {
+    if (!uploadSjWo) return;
+    setSelectedChannel(channel);
+    
+    // Sesuaikan default No Reservasi
+    if (channel === 'NON_SAP') {
+      if (uploadSjWo.reservationNumberNonStock) {
+        setNoReservasiInput(uploadSjWo.reservationNumberNonStock);
+      }
+    } else {
+      if (uploadSjWo.reservationNumber) {
+        setNoReservasiInput(uploadSjWo.reservationNumber);
+      }
+    }
+
+    // Hitung ulang batch taken sesuai material channel ini
+    const mats = uploadSjWo.materials || [];
+    const newBatch: Record<string, number> = {};
+    mats.forEach((m) => {
+      const isTiang = (m.kategori || '').toUpperCase().includes('TIANG') ||
+        m.material.toLowerCase().includes('pole;concrete') ||
+        m.material.toLowerCase().startsWith('tiang beton') ||
+        (m.material.toLowerCase().includes('tiang') && !m.material.toLowerCase().includes('serandang')) ||
+        (m.kode && m.kode.toLowerCase().includes('tng'));
+
+      const resSap = m.qtyReservedSap !== undefined ? m.qtyReservedSap : (isTiang ? 0 : (m.qtyReserved || 0));
+      const resNonSap = m.qtyReservedNonSap !== undefined ? m.qtyReservedNonSap : (isTiang ? (m.qtyReserved || 0) : 0);
+      const resForChannel = channel === 'SAP' ? resSap : resNonSap;
+
+      if (m.isHold || resForChannel <= 0) {
+        newBatch[m.material] = 0;
+      } else {
+        const prevTaken = getPrevTaken(m, channel);
+        const sisa = Math.max(0, resForChannel - prevTaken);
+        newBatch[m.material] = sisa;
+      }
+    });
+    setBatchTaken(newBatch);
   };
 
   const handleBatchQtyChange = (materialName: string, val: number, maxAllowed: number) => {
@@ -543,21 +644,46 @@ export const VendorPengambilanView: React.FC = () => {
       alert('Mohon isi nomor surat jalan gudang');
       return;
     }
-    const finalSjPhotos = sjPhotos.length > 0
-      ? sjPhotos
-      : ['https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80'];
+    const finalSjPhotos = sjPhotos.filter((u) => Boolean(u) && !u.includes('photo-1586528116311-ad8dd3c8310d'));
 
     // Hitung total akumulasi yang diambil per material = (sudah diambil sebelumnya) + (diambil tahap ini)
     const finalTakenItems = (uploadSjWo.materials || []).map((m) => {
-      const resQty = m.qtyReserved !== undefined ? m.qtyReserved : 0;
-      if (m.isHold || resQty <= 0) {
-        return { material: m.material, qtyTaken: m.qtyTaken || 0 };
+      const isTiang = (m.kategori || '').toUpperCase().includes('TIANG') ||
+        m.material.toLowerCase().includes('pole;concrete') ||
+        m.material.toLowerCase().startsWith('tiang beton') ||
+        (m.material.toLowerCase().includes('tiang') && !m.material.toLowerCase().includes('serandang')) ||
+        (m.kode && m.kode.toLowerCase().includes('tng'));
+
+      const resSap = m.qtyReservedSap !== undefined ? m.qtyReservedSap : (isTiang ? 0 : (m.qtyReserved || 0));
+      const resNonSap = m.qtyReservedNonSap !== undefined ? m.qtyReservedNonSap : (isTiang ? (m.qtyReserved || 0) : 0);
+
+      const prevTakenSap = getPrevTaken(m, 'SAP');
+      const prevTakenNonSap = getPrevTaken(m, 'NON_SAP');
+
+      let newTakenSap = prevTakenSap;
+      let newTakenNonSap = prevTakenNonSap;
+      let actualBatch = 0;
+
+      if (!m.isHold) {
+        const thisBatch = batchTaken[m.material] !== undefined ? batchTaken[m.material] : 0;
+        if (selectedChannel === 'SAP' && resSap > 0) {
+          actualBatch = thisBatch;
+          newTakenSap = prevTakenSap + thisBatch;
+        } else if (selectedChannel === 'NON_SAP' && resNonSap > 0) {
+          actualBatch = thisBatch;
+          newTakenNonSap = prevTakenNonSap + thisBatch;
+        }
       }
-      const prevTaken = m.qtyTaken || 0;
-      const thisBatch = batchTaken[m.material] !== undefined ? batchTaken[m.material] : 0;
+
+      const totalTaken = newTakenSap + newTakenNonSap;
+
       return {
         material: m.material,
-        qtyTaken: prevTaken + thisBatch,
+        qtyTaken: totalTaken,
+        qtyTakenSap: newTakenSap,
+        qtyTakenNonSap: newTakenNonSap,
+        qtyTakenBatch: actualBatch,
+        channel: selectedChannel,
       };
     });
 
@@ -934,16 +1060,17 @@ export const VendorPengambilanView: React.FC = () => {
                 <th className="py-3 px-3.5 min-w-[170px]">VENDOR PELAKSANA</th>
                 <th className="py-3 px-3.5 min-w-[170px]">PENGAWAS LAPANGAN</th>
                 <th className="py-3 px-3 text-center min-w-[130px]">STATUS RESERVASI</th>
-                <th className="py-3 px-3 text-center min-w-[130px]">SURAT JALAN</th>
+                <th className="py-3 px-3 text-center min-w-[145px] bg-blue-50/50 text-blue-900">SURAT JALAN SAP</th>
+                <th className="py-3 px-3 text-center min-w-[145px] bg-indigo-50/50 text-indigo-900">SURAT JALAN NON-SAP</th>
                 <th className="py-3 px-3 text-center min-w-[140px]">PROGRES JASA</th>
                 <th className="py-3 px-3 text-center min-w-[130px]">RETUR SISA GUDANG</th>
-                <th className="py-3 px-3.5 text-center min-w-[170px] w-56">AKSI VENDOR</th>
+                <th className="py-3 px-3.5 text-center min-w-[190px] w-64">AKSI VENDOR</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredWos.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={12} className="py-12 text-center text-slate-400">
                     <Package className="w-8 h-8 mx-auto mb-2 opacity-40 text-blue-500" />
                     Tidak ada Work Order yang sesuai dengan filter.
                   </td>
@@ -1158,53 +1285,152 @@ export const VendorPengambilanView: React.FC = () => {
                         )}
                       </td>
 
-                      {/* Surat Jalan & Verifikasi (Kompak & Bersih) */}
-                      <td className="py-3.5 px-3 text-center whitespace-nowrap align-top">
-                        {hasSj ? (
-                          <div className="inline-flex flex-col items-center gap-1 max-w-[145px]">
-                            {/* Nomor SJ Utama */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedSjIndex(0);
-                                setViewSjPhotoWo(wo);
-                              }}
-                              className="w-full px-2 py-0.5 rounded text-[10.5px] font-mono font-bold bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 flex items-center justify-between gap-1 cursor-pointer transition shadow-2xs"
-                              title="Klik untuk melihat dokumen Surat Jalan & Bukti Penerimaan"
-                            >
-                              <div className="flex items-center gap-1 truncate">
-                                <FileCheck2 className="w-3 h-3 text-blue-600 shrink-0" />
-                                <span className="truncate">{wo.suratJalanNumber}</span>
-                              </div>
-                              {wo.suratJalanList && wo.suratJalanList.length > 1 && (
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-100 text-indigo-700 font-bold shrink-0 font-sans" title={`${wo.suratJalanList.length} Surat Jalan Bertahap`}>
-                                  {wo.suratJalanList.length}x
-                                </span>
-                              )}
-                            </button>
+                      {/* 1. SURAT JALAN SAP (Gudang PLN) */}
+                      <td className="py-3.5 px-3 text-center whitespace-nowrap align-top bg-blue-50/20">
+                        {(() => {
+                          const allSj = wo.suratJalanList || (wo.suratJalanNumber ? [{
+                            suratJalanNumber: wo.suratJalanNumber,
+                            suratJalanDate: wo.suratJalanDate || '',
+                            reservationNumber: wo.reservationNumber,
+                            giNumber: wo.giNumber,
+                            photos: wo.suratJalanPhotos || (wo.suratJalanPhoto ? [wo.suratJalanPhoto] : []),
+                            status: wo.sjVerificationStatus || 'BELUM_DIPERIKSA',
+                          }] : []);
 
-                            {/* Sub Tag: GI & Status Pengesahan Pengawas */}
-                            <div className="flex items-center gap-1 justify-center flex-wrap">
-                              {wo.giNumber && (
-                                <span className="text-[9px] font-mono font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1 py-0.2 rounded" title={`No. Goods Issue (GI): ${wo.giNumber}`}>
-                                  GI:{wo.giNumber}
-                                </span>
-                              )}
-                              <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold ${
-                                wo.sjVerificationStatus === 'SESUAI' ? 'bg-emerald-100 text-emerald-800' :
-                                wo.sjVerificationStatus === 'ADA_SELISIH' ? 'bg-amber-100 text-amber-800' :
-                                wo.sjVerificationStatus === 'RETUR_GUDANG' ? 'bg-indigo-100 text-indigo-800' :
-                                'bg-slate-100 text-slate-600'
-                              }`}>
-                                {wo.sjVerificationStatus === 'SESUAI' ? '✓ Disahkan' :
-                                 wo.sjVerificationStatus === 'ADA_SELISIH' ? '⚠️ Ada Selisih' :
-                                 wo.sjVerificationStatus === 'RETUR_GUDANG' ? '📦 Retur' : '⏳ Verif Pengawas'}
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-[10.5px] italic">Belum Upload SJ</span>
-                        )}
+                          // Cari SJ yang berasal dari jalur SAP
+                          const sapSjList = allSj.filter((s) => {
+                            if (s.reservationNumber && wo.reservationNumber && s.reservationNumber === wo.reservationNumber) return true;
+                            if (s.suratJalanNumber && s.suratJalanNumber.toLowerCase().includes('sap')) return true;
+                            return !s.reservationNumber || s.reservationNumber !== wo.reservationNumberNonStock;
+                          });
+
+                          const activeSapSj = sapSjList[0];
+                          const hasSapSj = Boolean(activeSapSj && (wo.suratJalanNumber || activeSapSj.suratJalanNumber));
+
+                          if (hasSapSj && activeSapSj) {
+                            return (
+                              <div className="inline-flex flex-col items-center gap-1 max-w-[145px]">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedSjIndex(0);
+                                    setViewSjPhotoWo(wo);
+                                  }}
+                                  className="w-full px-2 py-0.5 rounded text-[10.5px] font-mono font-bold bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 flex items-center justify-between gap-1 cursor-pointer transition shadow-2xs"
+                                  title="Klik untuk melihat dokumen Surat Jalan SAP & Bukti Penerimaan"
+                                >
+                                  <div className="flex items-center gap-1 truncate">
+                                    <FileCheck2 className="w-3 h-3 text-blue-600 shrink-0" />
+                                    <span className="truncate">{activeSapSj.suratJalanNumber}</span>
+                                  </div>
+                                  {sapSjList.length > 1 && (
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-blue-200 text-blue-800 font-bold shrink-0 font-sans">
+                                      {sapSjList.length}x
+                                    </span>
+                                  )}
+                                </button>
+
+                                <div className="flex items-center gap-1 justify-center flex-wrap">
+                                  {activeSapSj.giNumber && (
+                                    <span className="text-[9px] font-mono font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1 py-0.2 rounded" title={`No. Goods Issue (GI): ${activeSapSj.giNumber}`}>
+                                      GI:{activeSapSj.giNumber}
+                                    </span>
+                                  )}
+                                  {(() => {
+                                    const sapSesuai = sapSjList.every((s) => s.status === 'SESUAI') || (sapSjList.length === 1 && !sapSjList[0].status && wo.sjVerificationStatus === 'SESUAI');
+                                    const sapSelisih = sapSjList.some((s) => s.status === 'ADA_SELISIH');
+                                    return (
+                                      <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold ${
+                                        sapSesuai ? 'bg-emerald-100 text-emerald-800' :
+                                        sapSelisih ? 'bg-amber-100 text-amber-800' :
+                                        'bg-slate-100 text-slate-600'
+                                      }`}>
+                                        {sapSesuai ? '✓ Disahkan' :
+                                         sapSelisih ? '⚠️ Selisih' : '⏳ Verif'}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return <span className="text-slate-400 text-[10.5px] italic">Belum Upload SJ</span>;
+                        })()}
+                      </td>
+
+                      {/* 2. SURAT JALAN NON-SAP (Pabrikan / Tiang) */}
+                      <td className="py-3.5 px-3 text-center whitespace-nowrap align-top bg-indigo-50/20">
+                        {(() => {
+                          const allSj = wo.suratJalanList || (wo.suratJalanNumber ? [{
+                            suratJalanNumber: wo.suratJalanNumber,
+                            suratJalanDate: wo.suratJalanDate || '',
+                            reservationNumber: wo.reservationNumberNonStock || wo.reservationNumber,
+                            giNumber: wo.giNumber,
+                            photos: wo.suratJalanPhotos || (wo.suratJalanPhoto ? [wo.suratJalanPhoto] : []),
+                            status: wo.sjVerificationStatus || 'BELUM_DIPERIKSA',
+                          }] : []);
+
+                          // Cari SJ yang berasal dari jalur Non-SAP
+                          const nonSapSjList = allSj.filter((s) => {
+                            if (s.reservationNumber && wo.reservationNumberNonStock && s.reservationNumber === wo.reservationNumberNonStock) return true;
+                            if (s.suratJalanNumber && s.suratJalanNumber.toLowerCase().includes('nonsap')) return true;
+                            return Boolean(wo.reservationNumberNonStock && s.reservationNumber === wo.reservationNumberNonStock);
+                          });
+
+                          const activeNonSapSj = nonSapSjList[0];
+                          const hasNonSapSj = Boolean(activeNonSapSj && activeNonSapSj.suratJalanNumber);
+
+                          if (hasNonSapSj && activeNonSapSj) {
+                            return (
+                              <div className="inline-flex flex-col items-center gap-1 max-w-[145px]">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedSjIndex(0);
+                                    setViewSjPhotoWo(wo);
+                                  }}
+                                  className="w-full px-2 py-0.5 rounded text-[10.5px] font-mono font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100 flex items-center justify-between gap-1 cursor-pointer transition shadow-2xs"
+                                  title="Klik untuk melihat dokumen Surat Jalan Non-SAP & Bukti Penerimaan"
+                                >
+                                  <div className="flex items-center gap-1 truncate">
+                                    <FileCheck2 className="w-3 h-3 text-indigo-600 shrink-0" />
+                                    <span className="truncate">{activeNonSapSj.suratJalanNumber}</span>
+                                  </div>
+                                  {nonSapSjList.length > 1 && (
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-200 text-indigo-800 font-bold shrink-0 font-sans">
+                                      {nonSapSjList.length}x
+                                    </span>
+                                  )}
+                                </button>
+
+                                <div className="flex items-center gap-1 justify-center flex-wrap">
+                                  {activeNonSapSj.giNumber && (
+                                    <span className="text-[9px] font-mono font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1 py-0.2 rounded" title={`No. Goods Issue (GI): ${activeNonSapSj.giNumber}`}>
+                                      GI:{activeNonSapSj.giNumber}
+                                    </span>
+                                  )}
+                                  {(() => {
+                                    const nonSapSesuai = nonSapSjList.every((s) => s.status === 'SESUAI') || (nonSapSjList.length === 1 && !nonSapSjList[0].status && wo.sjVerificationStatus === 'SESUAI');
+                                    const nonSapSelisih = nonSapSjList.some((s) => s.status === 'ADA_SELISIH');
+                                    return (
+                                      <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold ${
+                                        nonSapSesuai ? 'bg-emerald-100 text-emerald-800' :
+                                        nonSapSelisih ? 'bg-amber-100 text-amber-800' :
+                                        'bg-slate-100 text-slate-600'
+                                      }`}>
+                                        {nonSapSesuai ? '✓ Disahkan' :
+                                         nonSapSelisih ? '⚠️ Selisih' : '⏳ Verif'}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return <span className="text-slate-400 text-[10.5px] italic">Belum Upload SJ</span>;
+                        })()}
                       </td>
 
                       {/* Progres Jasa Konstruksi Lapangan */}
@@ -1307,16 +1533,91 @@ export const VendorPengambilanView: React.FC = () => {
 
                       {/* Aksi Vendor: Clean & UI Friendly Layout */}
                       <td className="py-3.5 px-3 text-center align-middle">
-                        <div className="flex flex-col gap-1.5 items-center justify-center max-w-[170px] mx-auto w-full">
+                        <div className="flex flex-col gap-1.5 items-center justify-center max-w-[190px] mx-auto w-full">
                           {/* 1. Tombol Utama (Status / Pengambilan / SJ) */}
                           {isReserved ? (
                             (() => {
+                              const mats = wo.materials || [];
+                              const hasSapPending = mats.some((m) => {
+                                const isTiang = (m.kategori || '').toUpperCase().includes('TIANG') ||
+                                  m.material.toLowerCase().includes('pole;concrete') ||
+                                  m.material.toLowerCase().startsWith('tiang beton') ||
+                                  (m.material.toLowerCase().includes('tiang') && !m.material.toLowerCase().includes('serandang')) ||
+                                  (m.kode && m.kode.toLowerCase().includes('tng'));
+                                const resSap = m.qtyReservedSap !== undefined ? m.qtyReservedSap : (isTiang ? 0 : (m.qtyReserved || 0));
+                                return !m.isHold && resSap > getPrevTaken(m, 'SAP');
+                              });
+
+                              const hasNonSapPending = mats.some((m) => {
+                                const isTiang = (m.kategori || '').toUpperCase().includes('TIANG') ||
+                                  m.material.toLowerCase().includes('pole;concrete') ||
+                                  m.material.toLowerCase().startsWith('tiang beton') ||
+                                  (m.material.toLowerCase().includes('tiang') && !m.material.toLowerCase().includes('serandang')) ||
+                                  (m.kode && m.kode.toLowerCase().includes('tng'));
+                                const resNonSap = m.qtyReservedNonSap !== undefined ? m.qtyReservedNonSap : (isTiang ? (m.qtyReserved || 0) : 0);
+                                return !m.isHold && resNonSap > getPrevTaken(m, 'NON_SAP');
+                              });
+
+                              // Jika pengawas menerbitkan KEDUA jalur (SAP & Non-SAP) dan keduanya masih ada sisa
+                              if (hasSapPending && hasNonSapPending) {
+                                return (
+                                  <div className="w-full flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenUploadSj(wo, 'SAP')}
+                                      className="flex-1 py-1.5 px-2 rounded-lg font-bold text-[10px] bg-blue-600 hover:bg-blue-700 text-white transition flex items-center justify-center gap-1 cursor-pointer shadow-xs whitespace-nowrap min-w-0"
+                                      title="Ambil Material Jalur SAP (Gudang PLN)"
+                                    >
+                                      <Boxes className="w-3.5 h-3.5 shrink-0" />
+                                      <span className="truncate">Ambil SAP</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenUploadSj(wo, 'NON_SAP')}
+                                      className="flex-1 py-1.5 px-2 rounded-lg font-bold text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center justify-center gap-1 cursor-pointer shadow-xs whitespace-nowrap min-w-0"
+                                      title="Ambil Material Jalur Non-SAP (Pabrikan / Tiang)"
+                                    >
+                                      <Building2 className="w-3.5 h-3.5 shrink-0" />
+                                      <span className="truncate">Ambil Non-SAP</span>
+                                    </button>
+                                  </div>
+                                );
+                              }
+
+                              if (hasSapPending) {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenUploadSj(wo, 'SAP')}
+                                    className="w-full py-1.5 px-2 rounded-lg font-bold text-[11px] bg-blue-600 hover:bg-blue-700 text-white transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs whitespace-nowrap"
+                                    title="Ambil Material Jalur SAP (Gudang PLN)"
+                                  >
+                                    <Boxes className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{hasTakenAny ? 'Ambil Sisa SAP' : 'Ambil SAP & Upload SJ'}</span>
+                                  </button>
+                                );
+                              }
+
+                              if (hasNonSapPending) {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenUploadSj(wo, 'NON_SAP')}
+                                    className="w-full py-1.5 px-2 rounded-lg font-bold text-[11px] bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs whitespace-nowrap"
+                                    title="Ambil Material Jalur Non-SAP (Pabrikan / Tiang)"
+                                  >
+                                    <Building2 className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{hasTakenAny ? 'Ambil Sisa Non-SAP' : 'Ambil Non-SAP & SJ'}</span>
+                                  </button>
+                                );
+                              }
+
                               // Kasus A: Masih ada sisa material yang belum diambil (Pengambilan Bertahap)
                               if (hasUnheldPending) {
                                 return (
                                   <button
                                     type="button"
-                                    onClick={() => handleOpenUploadSj(wo)}
+                                    onClick={() => handleOpenUploadSj(wo, hasSapPending ? 'SAP' : 'NON_SAP')}
                                     className="w-full py-1.5 px-2 rounded-lg font-bold text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs whitespace-nowrap"
                                     title={hasTakenAny ? "Ambil sisa material berikutnya (Pengambilan Bertahap)" : "Konfirmasi Material Diterima dan Upload Surat Jalan Gudang"}
                                   >
@@ -1342,15 +1643,32 @@ export const VendorPengambilanView: React.FC = () => {
                               }
 
                               // Kasus C: Pengambilan sudah lengkap / lunas
+                              if (isAllCompleted && wo.sjVerificationStatus === 'SESUAI') {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedSjIndex(0);
+                                      setViewSjPhotoWo(wo);
+                                    }}
+                                    className="w-full py-1.5 px-2 rounded-lg font-bold text-[11px] bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-2xs"
+                                    title="Seluruh material telah diambil & Surat Jalan telah disahkan Pengawas. Klik untuk melihat dokumen SJ."
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                    <span>Pengambilan Selesai ✓</span>
+                                  </button>
+                                );
+                              }
+
                               return (
                                 <button
                                   type="button"
                                   onClick={() => handleOpenUploadSj(wo)}
                                   className="w-full py-1.5 px-2 rounded-lg font-bold text-[11px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-2xs"
-                                  title="Lihat / Perbarui Surat Jalan Gudang"
+                                  title="Lihat / Perbarui Surat Jalan Gudang (Menunggu Verifikasi Pengawas)"
                                 >
                                   <FileCheck2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                                  <span>Surat Jalan Gudang</span>
+                                  <span>{isAllCompleted ? 'Menunggu Verif SJ' : 'Surat Jalan Gudang'}</span>
                                 </button>
                               );
                             })()
@@ -1405,64 +1723,59 @@ export const VendorPengambilanView: React.FC = () => {
                             </button>
                           )}
 
-                          {/* 2. Baris Bawah: Rincian Kebutuhan & Status/Aksi Pendukung */}
-                          {isReceiptConfirmed && isAllCompleted ? (
-                            /* Sub-baris saat material SUDAH LENGKAP DIAMBIL 100%: Tombol Kebutuhan + Lapor Retur */
-                            <div className="w-full grid grid-cols-2 gap-1 items-center">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedWoForDetail(wo)}
-                                className="py-1 px-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-[10px] transition flex items-center justify-center gap-1 cursor-pointer shadow-2xs whitespace-nowrap"
-                                title="Lihat Rincian Kebutuhan Material WO"
-                              >
-                                <Eye className="w-3 h-3 text-slate-500 shrink-0" />
-                                <span>Kebutuhan</span>
-                              </button>
+                          {/* 2. Baris Bawah: Tombol Ikon Kebutuhan Material & Hapus WO (Icon-Only Bersih & Kompak) */}
+                          <div className="w-full flex items-center justify-center gap-1.5 pt-0.5">
+                            {/* Tombol Ikon Kebutuhan Material */}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedWoForDetail(wo)}
+                              className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 transition shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
+                              title="Lihat Kebutuhan Material WO"
+                              aria-label="Lihat Kebutuhan Material"
+                            >
+                              <Eye className="w-4 h-4 text-slate-600" />
+                            </button>
+
+                            {/* Tombol Lapor Retur (hanya jika sudah selesai ambil) */}
+                            {isReceiptConfirmed && isAllCompleted && (
                               <button
                                 type="button"
                                 onClick={() => handleOpenRealization(wo)}
-                                className="py-1 px-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[10px] transition flex items-center justify-center gap-1 cursor-pointer shadow-2xs whitespace-nowrap"
-                                title="Seluruh material telah diambil lengkap. Klik untuk lapor jika ada sisa material yang diretur ke Gudang PLN."
+                                className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
+                                title={wo.vendorRealizationSubmitted ? 'Ubah Laporan Retur Material' : 'Lapor Retur Sisa Material ke Gudang'}
+                                aria-label="Lapor Retur Material"
                               >
-                                <RotateCcw className="w-3 h-3 text-emerald-600 shrink-0" />
-                                <span>{wo.vendorRealizationSubmitted ? 'Ubah Retur' : 'Lapor Retur'}</span>
+                                <RotateCcw className="w-4 h-4 text-emerald-600" />
                               </button>
-                            </div>
-                          ) : (
-                            /* Sub-baris saat material BELUM LENGKAP: Tombol Kebutuhan (+ Info jika ada item Hold) */
-                            <div className="w-full">
-                              {hasHeld && !hasUnheldPending ? (
-                                <div className="w-full grid grid-cols-2 gap-1 items-center">
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedWoForDetail(wo)}
-                                    className="py-1 px-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-[10px] transition flex items-center justify-center gap-1 cursor-pointer shadow-2xs whitespace-nowrap"
-                                    title="Lihat Rincian Kebutuhan Material WO"
-                                  >
-                                    <Eye className="w-3 h-3 text-slate-500 shrink-0" />
-                                    <span>Kebutuhan</span>
-                                  </button>
-                                  <div
-                                    className="py-1 px-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold flex items-center justify-center gap-1 cursor-default text-center whitespace-nowrap"
-                                    title={`Sisa ${heldItems.length} material masih ditahan pengawas: ${heldItems.map((h) => h.holdReason || h.material).join(', ')}`}
-                                  >
-                                    <ShieldAlert className="w-3 h-3 text-rose-500 shrink-0" />
-                                    <span>Hold ({heldItems.length})</span>
-                                  </div>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedWoForDetail(wo)}
-                                  className="w-full py-1 px-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-[10.5px] transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs whitespace-nowrap"
-                                  title="Lihat Rincian Kebutuhan Material WO"
-                                >
-                                  <Eye className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                  <span>Lihat Kebutuhan Material</span>
-                                </button>
-                              )}
-                            </div>
-                          )}
+                            )}
+
+                            {/* Info Item Ditahan jika ada */}
+                            {hasHeld && !hasUnheldPending && (
+                              <span
+                                className="px-1.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[9px] font-bold flex items-center gap-1 cursor-help"
+                                title={`Sisa ${heldItems.length} material masih ditahan pengawas: ${heldItems.map((h) => h.holdReason || h.material).join(', ')}`}
+                              >
+                                <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
+                                <span>Hold ({heldItems.length})</span>
+                              </span>
+                            )}
+
+                            {/* Tombol Ikon Hapus WO dengan Alert Konfirmasi */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`⚠️ PERINGATAN HAPUS:\nApakah Anda yakin ingin menghapus Work Order ini:\n"${wo.noWorkOrder || wo.id}" (${wo.customerName})?\n\nData yang dihapus akan terhapus secara permanen.`)) {
+                                  deleteWorkOrder(wo.id);
+                                  showToast(`✓ WO ${wo.noWorkOrder || wo.id} berhasil dihapus.`);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
+                              title="Hapus Work Order"
+                              aria-label="Hapus Work Order"
+                            >
+                              <Trash2 className="w-4 h-4 text-rose-600" />
+                            </button>
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -1654,7 +1967,7 @@ export const VendorPengambilanView: React.FC = () => {
               <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed flex items-start gap-2">
                 <Info className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
                 <span>
-                  <b>Petunjuk Rekanan:</b> Pengawas telah melakukan reservasi material di gudang (No: <b>{uploadSjWo.reservationNumber || 'RES-PLN-2026'}</b>). Silakan konfirmasi jumlah fisik yang diterima di loket gudang dan unggah foto fisik Surat Jalan resmi dari Gudang PLN.
+                  <b>Petunjuk Rekanan:</b> Pengawas telah menerbitkan reservasi material jalur <b>{selectedChannel === 'SAP' ? 'SAP (Gudang PLN)' : 'Non-SAP (Pabrikan / Tiang)'}</b>. Konfirmasi jumlah aktual yang diambil di loket gudang/suplai dan pastikan Nomor Surat Jalan serta Nomor GI terisi lengkap.
                 </span>
               </div>
 
@@ -1750,10 +2063,10 @@ export const VendorPengambilanView: React.FC = () => {
                       {uploadSjWo.reservationNumber && (
                         <button
                           type="button"
-                          onClick={() => setNoReservasiInput(uploadSjWo.reservationNumber!)}
+                          onClick={() => switchChannel('SAP')}
                           className={`text-[9.5px] px-2 py-0.5 rounded-md font-mono font-bold border transition cursor-pointer ${
-                            noReservasiInput === uploadSjWo.reservationNumber
-                              ? 'bg-blue-100 text-blue-800 border-blue-300'
+                            selectedChannel === 'SAP'
+                              ? 'bg-blue-100 text-blue-900 border-blue-400 ring-2 ring-blue-500/30'
                               : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-blue-50 hover:text-blue-700'
                           }`}
                         >
@@ -1763,10 +2076,10 @@ export const VendorPengambilanView: React.FC = () => {
                       {uploadSjWo.reservationNumberNonStock && (
                         <button
                           type="button"
-                          onClick={() => setNoReservasiInput(uploadSjWo.reservationNumberNonStock!)}
+                          onClick={() => switchChannel('NON_SAP')}
                           className={`text-[9.5px] px-2 py-0.5 rounded-md font-mono font-bold border transition cursor-pointer ${
-                            noReservasiInput === uploadSjWo.reservationNumberNonStock
-                              ? 'bg-indigo-100 text-indigo-800 border-indigo-300'
+                            selectedChannel === 'NON_SAP'
+                              ? 'bg-indigo-100 text-indigo-900 border-indigo-400 ring-2 ring-indigo-500/30'
                               : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-indigo-50 hover:text-indigo-700'
                           }`}
                         >
@@ -1839,9 +2152,20 @@ export const VendorPengambilanView: React.FC = () => {
                       {(() => {
                         const mats = uploadSjWo.materials || [];
                         // HANYA tampilkan material yang direservasi oleh pengawas saat itu (qtyReserved > 0)
+                        // dan sesuai dengan channel yang dipilih (SAP vs Non-SAP)
                         const displayedMats = mats.filter((m) => {
-                          const resQty = m.qtyReserved !== undefined ? m.qtyReserved : 0;
-                          return resQty > 0 || (m.qtyTaken || 0) > 0;
+                          const isTiang = (m.kategori || '').toUpperCase().includes('TIANG') ||
+                            m.material.toLowerCase().includes('pole;concrete') ||
+                            m.material.toLowerCase().startsWith('tiang beton') ||
+                            (m.material.toLowerCase().includes('tiang') && !m.material.toLowerCase().includes('serandang')) ||
+                            (m.kode && m.kode.toLowerCase().includes('tng'));
+
+                          const resSap = m.qtyReservedSap !== undefined ? m.qtyReservedSap : (isTiang ? 0 : (m.qtyReserved || 0));
+                          const resNonSap = m.qtyReservedNonSap !== undefined ? m.qtyReservedNonSap : (isTiang ? (m.qtyReserved || 0) : 0);
+                          const resForChannel = selectedChannel === 'SAP' ? resSap : resNonSap;
+                          const prevTakenForChannel = getPrevTaken(m, selectedChannel);
+
+                          return resForChannel > 0 || prevTakenForChannel > 0;
                         });
 
                         if (displayedMats.length === 0) {
@@ -1849,7 +2173,9 @@ export const VendorPengambilanView: React.FC = () => {
                             <tr>
                               <td colSpan={9} className="py-8 text-center text-slate-500 bg-slate-50">
                                 <div className="max-w-md mx-auto space-y-1">
-                                  <p className="font-semibold text-slate-700">Belum ada material yang direservasi oleh Pengawas pada transaksi ini.</p>
+                                  <p className="font-semibold text-slate-700">
+                                    Belum ada material yang direservasi pada jalur {selectedChannel === 'SAP' ? 'SAP (Gudang PLN)' : 'Non-SAP (Pabrikan / Tiang)'}.
+                                  </p>
                                   <p className="text-[11px] text-slate-400">Material dengan kuantitas reservasi 0 akan diterbitkan oleh Pengawas pada reservasi tahap berikutnya.</p>
                                 </div>
                               </td>
@@ -1859,8 +2185,17 @@ export const VendorPengambilanView: React.FC = () => {
 
                         return displayedMats.map((m, idx) => {
                           const isHeld = Boolean(m.isHold);
-                          const req = m.qtyReserved !== undefined ? m.qtyReserved : 0;
-                          const prevTaken = m.qtyTaken || 0;
+                          const isTiang = (m.kategori || '').toUpperCase().includes('TIANG') ||
+                            m.material.toLowerCase().includes('pole;concrete') ||
+                            m.material.toLowerCase().startsWith('tiang beton') ||
+                            (m.material.toLowerCase().includes('tiang') && !m.material.toLowerCase().includes('serandang')) ||
+                            (m.kode && m.kode.toLowerCase().includes('tng'));
+
+                          const resSap = m.qtyReservedSap !== undefined ? m.qtyReservedSap : (isTiang ? 0 : (m.qtyReserved || 0));
+                          const resNonSap = m.qtyReservedNonSap !== undefined ? m.qtyReservedNonSap : (isTiang ? (m.qtyReserved || 0) : 0);
+                          const req = selectedChannel === 'SAP' ? resSap : resNonSap;
+
+                          const prevTaken = getPrevTaken(m, selectedChannel);
                           const sisa = Math.max(0, req - prevTaken);
                           const currentBatch = isHeld ? 0 : (batchTaken[m.material] !== undefined ? batchTaken[m.material] : sisa);
                           const newTotal = prevTaken + currentBatch;
@@ -2536,79 +2871,88 @@ export const VendorPengambilanView: React.FC = () => {
 
                     {/* Seksi 1: Foto Berkas Surat Jalan */}
                     <div className="pt-3 border-t border-slate-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <FileCheck2 className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Berkas Surat Jalan ({activeSj?.suratJalanNumber || 'Gudang'})</span>
-                        </span>
-                        <span className="text-[10px] text-slate-500">
-                          {(() => {
-                            const list = activeSj?.photos && activeSj.photos.length > 0
-                              ? activeSj.photos
-                              : (viewSjPhotoWo.suratJalanPhotos || []);
-                            return `${list.length} File`;
-                          })()}
-                        </span>
-                      </div>
                       {(() => {
-                        const list = activeSj?.photos && activeSj.photos.length > 0
-                          ? activeSj.photos
-                          : (viewSjPhotoWo.suratJalanPhotos && viewSjPhotoWo.suratJalanPhotos.length > 0
-                            ? viewSjPhotoWo.suratJalanPhotos
-                            : (viewSjPhotoWo.suratJalanPhoto ? [viewSjPhotoWo.suratJalanPhoto] : []));
-                        if (list.length === 0) {
-                          return <p className="text-xs text-slate-400 italic">Belum ada foto surat jalan yang diunggah.</p>;
-                        }
+                        const cleanPhotos = (arr?: string[]) =>
+                          (arr || []).filter((u) => Boolean(u) && !u.includes('photo-1586528116311-ad8dd3c8310d'));
+                        const list = activeSj
+                          ? cleanPhotos(activeSj.photos?.length ? activeSj.photos : matchedTx?.suratJalanPhotos)
+                          : cleanPhotos(
+                              viewSjPhotoWo.suratJalanPhotos && viewSjPhotoWo.suratJalanPhotos.length > 0
+                                ? viewSjPhotoWo.suratJalanPhotos
+                                : (viewSjPhotoWo.suratJalanPhoto ? [viewSjPhotoWo.suratJalanPhoto] : [])
+                            );
                         return (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {list.map((url, idx) => (
-                              <div
-                                key={idx}
-                                className="relative group rounded-lg overflow-hidden border border-slate-200 bg-slate-100 aspect-4/3 flex items-center justify-center cursor-pointer hover:shadow-md transition"
-                                onClick={() => setFullscreenImage({ title: `Surat Jalan (File #${idx + 1})`, url })}
-                              >
-                                <img src={url} alt={`Surat Jalan ${idx + 1}`} className="w-full h-full object-cover" />
-                                <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[9px] font-mono px-1 rounded">
-                                  SJ #{idx + 1}
-                                </span>
+                          <>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                <FileCheck2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Berkas Surat Jalan ({activeSj?.suratJalanNumber || 'Gudang'})</span>
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                {list.length} File
+                              </span>
+                            </div>
+                            {list.length === 0 ? (
+                              <p className="text-xs text-slate-400 italic">Belum ada foto surat jalan yang diunggah.</p>
+                            ) : (
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                {list.map((url, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="relative group rounded-lg overflow-hidden border border-slate-200 bg-slate-100 aspect-4/3 flex items-center justify-center cursor-pointer hover:shadow-md transition"
+                                    onClick={() => setFullscreenImage({ title: `Surat Jalan (File #${idx + 1})`, url })}
+                                  >
+                                    <img src={url} alt={`Surat Jalan ${idx + 1}`} className="w-full h-full object-cover" />
+                                    <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[9px] font-mono px-1 rounded">
+                                      SJ #{idx + 1}
+                                    </span>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
+                            )}
+                          </>
                         );
                       })()}
                     </div>
 
                     {/* Seksi 2: Foto Bukti Penerimaan Material */}
                     <div className="pt-3 border-t border-slate-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <Package className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Foto Bukti Penerimaan Material di Gudang</span>
-                        </span>
-                        <span className="text-[10px] text-slate-500">
-                          {(viewSjPhotoWo.receiptPhotos || []).length} File
-                        </span>
-                      </div>
                       {(() => {
-                        const list = viewSjPhotoWo.receiptPhotos || [];
-                        if (list.length === 0) {
-                          return <p className="text-xs text-slate-400 italic">Belum ada foto bukti penerimaan yang diunggah.</p>;
-                        }
+                        const cleanPhotos = (arr?: string[]) =>
+                          (arr || []).filter((u) => Boolean(u) && !u.includes('photo-1586528116311-ad8dd3c8310d'));
+                        const list = activeSj && activeSj.receiptPhotos !== undefined
+                          ? cleanPhotos(activeSj.receiptPhotos)
+                          : cleanPhotos(viewSjPhotoWo.receiptPhotos);
                         return (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {list.map((url, idx) => (
-                              <div
-                                key={idx}
-                                className="relative group rounded-lg overflow-hidden border border-slate-200 bg-slate-100 aspect-4/3 flex items-center justify-center cursor-pointer hover:shadow-md transition"
-                                onClick={() => setFullscreenImage({ title: `Bukti Penerimaan Material (File #${idx + 1})`, url })}
-                              >
-                                <img src={url} alt={`Bukti Penerimaan ${idx + 1}`} className="w-full h-full object-cover" />
-                                <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[9px] font-mono px-1 rounded">
-                                  Bukti #{idx + 1}
-                                </span>
+                          <>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                <Package className="w-3.5 h-3.5 text-blue-600" />
+                                <span>Foto Bukti Penerimaan Material di Gudang</span>
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                {list.length} File
+                              </span>
+                            </div>
+                            {list.length === 0 ? (
+                              <p className="text-xs text-slate-400 italic">Belum ada foto bukti penerimaan yang diunggah.</p>
+                            ) : (
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                {list.map((url, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="relative group rounded-lg overflow-hidden border border-slate-200 bg-slate-100 aspect-4/3 flex items-center justify-center cursor-pointer hover:shadow-md transition"
+                                    onClick={() => setFullscreenImage({ title: `Bukti Penerimaan Material (File #${idx + 1})`, url })}
+                                  >
+                                    <img src={url} alt={`Bukti Penerimaan ${idx + 1}`} className="w-full h-full object-cover" />
+                                    <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[9px] font-mono px-1 rounded">
+                                      Bukti #{idx + 1}
+                                    </span>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
+                            )}
+                          </>
                         );
                       })()}
                     </div>
@@ -2734,7 +3078,7 @@ export const VendorPengambilanView: React.FC = () => {
                           <b className={matProg === 100 ? 'text-emerald-700' : 'text-amber-700'}>
                             {matProg}%
                           </b>{' '}
-                          {matProg === 100 ? '(Material Lengkap Diambil)' : '(Dalam Proses Gudang)'}
+                          {matProg === 100 ? '(Material Lengkap & Diverifikasi)' : progressWo.status === 'Verifikasi SJ' ? '(Menunggu Verifikasi Pengawas)' : '(Dalam Proses Pengambilan)'}
                         </span>
                       </div>
                     );

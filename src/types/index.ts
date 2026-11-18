@@ -104,7 +104,9 @@ export interface WoMaterialItem {
   qtyReserved?: number;
   qtyReservedSap?: number; // Reservasi jalur SAP (Stok Gudang)
   qtyReservedNonSap?: number; // Reservasi jalur Non-SAP (Pabrikan / Pengadaan Luar)
-  qtyTaken?: number; // Jumlah yang diambil dari gudang
+  qtyTaken?: number; // Jumlah total yang diambil dari gudang/pabrikan
+  qtyTakenSap?: number; // Jumlah yang diambil jalur SAP (Gudang PLN)
+  qtyTakenNonSap?: number; // Jumlah yang diambil jalur Non-SAP (Pabrikan / Pengadaan Luar)
   isTaken?: boolean; // Status centang pengambilan di gudang
   takenAt?: string; // Waktu pengambilan
   qtyInstalled?: number; // Jumlah fisik terpasang di lapangan (input vendor & pengawas)
@@ -286,9 +288,10 @@ export interface WorkOrderRecord {
   milestones?: WoMilestones; // 6 Tahap Progres Fisik Standar PLN
   // 'Closeout' = progres jasa dikunci pengawas; WO ditutup dari sisi pelaksanaan vendor.
   status: 'Menunggu Persetujuan Asman' | 'Dikembalikan' | 'Konstruksi' | 'Verifikasi SJ' | 'Selesai' | 'Draf' | 'Closeout';
-  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approvalStatus?: 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED';
   rejectionReason?: string;
   approvedAt?: string;
+  submittedToAsmanAt?: string;
   appliedAt?: string;
   daftungId?: string;
   reservationStatus: 'Belum Reservasi' | 'Hold' | 'Reservasi Sebagian' | 'Siap Ambil' | 'Siap Ambil Sebagian' | 'Selesai' | 'Suplai Pabrikan';
