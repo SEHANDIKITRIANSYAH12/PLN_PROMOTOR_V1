@@ -1,4 +1,28 @@
-export type Role = 'Admin Daftung' | 'Admin WO' | 'Pengawas' | 'Admin Gudang';
+export type Role =
+  | 'Super Admin'
+  | 'Admin Survey'
+  | 'Admin Daftung'
+  | 'Admin WO'
+  | 'Pengawas'
+  | 'Vendor'
+  | 'Admin Gudang'
+  | 'Approval';
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  username: string;
+  role: Role;
+  vendorId?: string;       // Untuk role Vendor (e.g. 'v-1')
+  vendorName?: string;     // e.g. 'PT. HILMAN PRIMA PERKASA'
+  supervisorId?: string;   // Untuk role Pengawas (e.g. 'sup-1')
+  supervisorName?: string; // e.g. 'Hasian Sitorus'
+  nip?: string;
+  unit?: string;
+  phone?: string;
+  email?: string;
+  status: 'AKTIF' | 'NONAKTIF';
+}
 
 export interface PoleData {
   id: string; // T1, T2
@@ -67,7 +91,10 @@ export interface SurveyRecord {
   paymentStatus?: 'Sudah Bayar' | 'Belum Bayar';
   nidi?: boolean;
   slo?: boolean;
-  status: 'Menunggu verifikasi Daftung' | 'Masuk Antrean AP2T' | 'Terverifikasi' | 'Draf' | 'Siap Apply WO';
+  status: 'Menunggu verifikasi Daftung' | 'Masuk Antrean AP2T' | 'Terverifikasi' | 'Draf' | 'Siap Apply WO' | 'Perlu Revisi';
+  revisiReason?: string;
+  revisiRequestedAt?: string;
+  revisiRequestedBy?: string;
   isOfflineDraft?: boolean; // Indikator survey disimpan saat blankspot / offline
   offlineCreatedAt?: string; // Waktu pembuatan draf di HP saat offline
   syncedAt?: string; // Waktu berhasil disinkronkan ke server
@@ -397,6 +424,16 @@ export interface WorkOrderRecord {
   // dan menjadi acuan dokumen WO, bukan hasil hitung ulang dari survey.
   volumeEditedAt?: string;
   volumeEditedBy?: string;
+
+  // === Riwayat Pengalihan Pengawas ===
+  supervisorHistory?: {
+    type: '1' | '2';
+    previousSupervisor: string;
+    newSupervisor: string;
+    reason: string;
+    changedAt: string;
+    changedBy: string;
+  }[];
 }
 
 export interface StockMaterial {

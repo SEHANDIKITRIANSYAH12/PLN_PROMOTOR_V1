@@ -87,17 +87,17 @@ export async function flushSlice(key: SyncedKey) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slice: key, payload }),
+      keepalive: true,
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       logOnce(`Sinkronisasi database gagal pada slice ${key} (HTTP ${res.status}) ${detail}`.trim());
-      setStatus('unavailable');
+      // Jangan set status unavailable total agar perubahan berikutnya tetap masuk queue & backup lokal
       return;
     }
     setStatus('live');
   } catch (err) {
     logOnce(`Sinkronisasi database gagal pada slice ${key}: ${String(err)}`);
-    setStatus('unavailable');
   }
 }
 
@@ -211,7 +211,7 @@ export async function startDbSync() {
 
   // 3. Write-through otomatis dengan debounce + backup lokal
   usePromotorStore.subscribe((state, prev) => {
-    if (applyingRemote || status === 'unavailable') return;
+    if (applyingRemote) return;
     for (const key of SYNCED_KEYS) {
       if (state[key] !== prev[key]) {
         queueSlice(key);

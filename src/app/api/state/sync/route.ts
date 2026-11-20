@@ -39,7 +39,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    await prisma.$transaction((tx) => spec.write(tx, payload as never));
+    await prisma.$transaction((tx) => spec.write(tx, payload as never), {
+      maxWait: 15000,
+      timeout: 30000,
+    });
     return NextResponse.json({ success: true, slice, count: Array.isArray(payload) ? payload.length : undefined });
   } catch (error) {
     return NextResponse.json(

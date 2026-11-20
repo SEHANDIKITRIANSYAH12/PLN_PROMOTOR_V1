@@ -24,6 +24,7 @@ import { usePromotorStore } from '@/store/usePromotorStore';
 import { WorkOrderRecord, WoMaterialItem } from '@/types';
 import { calculateRabFromSurvey } from '@/data/surveyRabCalculator';
 import type { RabRowItem } from '@/data/rabMasterData';
+import { filterWorkOrdersForUser } from '@/lib/permissions';
 
 const parseSupervisor = (s?: string) => {
   if (!s || s === '—' || s === '-') return { name: '—', role: '' };
@@ -46,7 +47,9 @@ export const ReservasiMaterialView: React.FC = () => {
     unholdMaterialWo,
     deleteWorkOrder,
     showToast,
-    setCurrentPage
+    setCurrentPage,
+    currentUser,
+    currentRole
   } = usePromotorStore();
 
   const [activeTab, setActiveTab] = useState<'all' | 'belum' | 'terbit' | 'selesai' | 'hold'>('all');
@@ -134,12 +137,31 @@ export const ReservasiMaterialView: React.FC = () => {
   // --------------------------------------------------------------------------
   const [detailWo, setDetailWo] = useState<WorkOrderRecord | null>(null);
 
-  // Filter WO yang berstatus APPROVED atau dalam tahap pengerjaan
+  // Filter WO yang berstatus APPROVED atau dalam tahap pengerjaan (disesuaikan dengan kepemilikan user)
+  const visibleWorkOrders = useMemo(
+    () => filterWorkOrdersForUser(workOrders, currentUser),
+    [workOrders, currentUser]
+  );
+
   const approvedWos = useMemo(() => {
-    return workOrders.filter(
+    return visibleWorkOrders.filter(
       (w) => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Verifikasi SJ' || w.status === 'Selesai' || w.status === 'Closeout'
     );
-  }, [workOrders]);
+  }, [visibleWorkOrders]);
+
+  // Hak akses penerbitan reservasi: Hanya Pengawas yang ditugaskan pada WO atau Super Admin
+  const canUserIssueReservation = (wo?: WorkOrderRecord | null): boolean => {
+    if (!wo) return false;
+    if (currentRole === 'Super Admin') return true;
+    if (currentRole === 'Pengawas') {
+      const myName = (currentUser?.supervisorName || currentUser?.name || '').toLowerCase().trim();
+      const s1 = (wo.supervisor1 || '').toLowerCase();
+      const s2 = (wo.supervisor2 || '').toLowerCase();
+      const sGen = (wo.supervisor || '').toLowerCase();
+      return s1.includes(myName) || s2.includes(myName) || sGen.includes(myName);
+    }
+    return false;
+  };
 
   // Helper pencarian stok gudang untuk material secara cerdas
   const findMatchingStock = (matName: string, matKode?: string) => {
@@ -495,6 +517,11 @@ export const ReservasiMaterialView: React.FC = () => {
   const handleSaveReservation = (e: React.FormEvent) => {
     e.preventDefault();
     if (!reservationWo) return;
+
+    if (!canUserIssueReservation(reservationWo)) {
+      showToast('⚠️ Wewenang penerbitan reservasi material hanya dimiliki oleh Pengawas Lapangan yang ditugaskan pada WO ini.');
+      return;
+    }
 
     const allAlreadyTaken =
       (reservationWo.materials || []).length > 0 &&
@@ -1976,42 +2003,51 @@ export const ReservasiMaterialView: React.FC = () => {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  {reservationWo.isHold ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleConfirmUnhold(reservationWo);
-                        setReservationWo({ ...reservationWo, isHold: false, holdReason: undefined });
-                      }}
-                      className="px-4 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                    >
-                      <PlayCircle className="w-4 h-4" />
-                      <span>Buka Penahanan (Unhold)</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleOpenHoldModal(reservationWo);
-                        setReservationWo(null);
-                      }}
-                      className="px-4 py-2 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-300 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                    >
-                      <PauseCircle className="w-4 h-4" />
-                      <span>Tahan Reservasi (Hold)</span>
-                    </button>
-                  )}
+                  {canUserIssueReservation(reservationWo) ? (
+                    <>
+                      {reservationWo.isHold ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleConfirmUnhold(reservationWo);
+                            setReservationWo({ ...reservationWo, isHold: false, holdReason: undefined });
+                          }}
+                          className="px-4 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <PlayCircle className="w-4 h-4" />
+                          <span>Buka Penahanan (Unhold)</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleOpenHoldModal(reservationWo);
+                            setReservationWo(null);
+                          }}
+                          className="px-4 py-2 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-300 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <PauseCircle className="w-4 h-4" />
+                          <span>Tahan Reservasi (Hold)</span>
+                        </button>
+                      )}
 
-                  <button
-                    type="button"
-                    onClick={handleSaveReservation}
-                    className="px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer bg-blue-600 hover:bg-blue-700"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>
-                      Simpan & Terbitkan Reservasi
-                    </span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveReservation}
+                        className="px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer bg-blue-600 hover:bg-blue-700"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>
+                          Simpan & Terbitkan Reservasi
+                        </span>
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs text-amber-800 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+                      <Lock className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Mode Tinjau: Penerbitan reservasi hanya untuk Pengawas WO ({reservationWo.supervisor1 || reservationWo.supervisor})</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

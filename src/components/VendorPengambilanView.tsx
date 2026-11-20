@@ -34,6 +34,8 @@ import { usePromotorStore } from '@/store/usePromotorStore';
 import { WorkOrderRecord, WoJasaItem, WoMaterialItem } from '@/types';
 import { calculateRabFromSurvey } from '@/data/rabMasterData';
 import { ModalRekapProgresJasa } from '@/components/ModalRekapProgresJasa';
+import { SweepingWoModal } from '@/components/SweepingWoModal';
+import { filterWorkOrdersForUser } from '@/lib/permissions';
 
 // Nomor Surat Jalan baru (dipanggil hanya dari event handler).
 const generateSjNumber = () => `SJ-${String(Date.now()).slice(-5)}/GDG-PLN/${new Date().getFullYear()}`;
@@ -76,7 +78,9 @@ export const VendorPengambilanView: React.FC = () => {
     vendorSubmitProgress,
     deleteWorkOrder,
     showToast,
-    vendorPickupTransactions
+    vendorPickupTransactions,
+    currentUser,
+    currentRole
   } = usePromotorStore();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -124,6 +128,9 @@ export const VendorPengambilanView: React.FC = () => {
 
   // Modal 6: Rekap Read-Only Status Capaian Jasa per Sub-Bab
   const [rekapWo, setRekapWo] = useState<WorkOrderRecord | null>(null);
+
+  // Modal 7: Sweeping Material otomatis per WO
+  const [sweepingWo, setSweepingWo] = useState<WorkOrderRecord | null>(null);
 
   // --------------------------------------------------------------------------
   // Helper: Kelompok Jasa & Perhitungan Progres Riil per WO
@@ -369,12 +376,17 @@ export const VendorPengambilanView: React.FC = () => {
     setProgressWo(null);
   };
 
-  // Filter WO aktif untuk rekanan vendor
+  // Filter WO aktif untuk rekanan vendor (dibatasi sesuai akun vendor login)
+  const visibleWorkOrders = useMemo(
+    () => filterWorkOrdersForUser(workOrders, currentUser),
+    [workOrders, currentUser]
+  );
+
   const approvedWos = useMemo(() => {
-    return workOrders.filter(
+    return visibleWorkOrders.filter(
       (w) => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Verifikasi SJ' || w.status === 'Selesai' || w.status === 'Closeout'
     );
-  }, [workOrders]);
+  }, [visibleWorkOrders]);
 
   // Daftar nama vendor unik
   const vendorOptions = useMemo(() => {
@@ -1736,19 +1748,6 @@ export const VendorPengambilanView: React.FC = () => {
                               <Eye className="w-4 h-4 text-slate-600" />
                             </button>
 
-                            {/* Tombol Lapor Retur (hanya jika sudah selesai ambil) */}
-                            {isReceiptConfirmed && isAllCompleted && (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenRealization(wo)}
-                                className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
-                                title={wo.vendorRealizationSubmitted ? 'Ubah Laporan Retur Material' : 'Lapor Retur Sisa Material ke Gudang'}
-                                aria-label="Lapor Retur Material"
-                              >
-                                <RotateCcw className="w-4 h-4 text-emerald-600" />
-                              </button>
-                            )}
-
                             {/* Info Item Ditahan jika ada */}
                             {hasHeld && !hasUnheldPending && (
                               <span
@@ -2673,19 +2672,24 @@ export const VendorPengambilanView: React.FC = () => {
       {/* MODAL 4: LIHAT DOKUMEN SURAT JALAN & BUKTI PENERIMAAN MATERIAL             */}
       {/* ========================================================================= */}
       {viewSjPhotoWo && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 flex flex-col max-h-[90vh]">
-            <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <FileCheck2 className="w-4 h-4 text-emerald-400" />
-                <span className="font-bold text-xs font-mono">
-                  Dokumen Surat Jalan: {viewSjPhotoWo.suratJalanNumber}
-                </span>
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-100 flex flex-col max-h-[92vh]">
+
+            {/* ── HEADER ── */}
+            <div className="px-5 py-4 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                  <FileCheck2 className="w-4 h-4 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] text-blue-200 font-medium uppercase tracking-wide">Dokumen Surat Jalan</p>
+                  <p className="text-sm font-bold text-white truncate">{viewSjPhotoWo.suratJalanNumber || '-'}</p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setViewSjPhotoWo(null)}
-                className="p-1 rounded text-slate-400 hover:text-white transition cursor-pointer"
+                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/25 flex items-center justify-center text-white/80 hover:text-white transition cursor-pointer shrink-0"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2704,7 +2708,6 @@ export const VendorPengambilanView: React.FC = () => {
 
               const activeSj = allSjRecords[selectedSjIndex] || allSjRecords[0];
 
-              // Cari data material yang tercatat pada Surat Jalan ini
               const matchedTx = vendorPickupTransactions.find(
                 (tx) => tx.woId === viewSjPhotoWo.id && tx.suratJalanNumber === activeSj?.suratJalanNumber
               );
@@ -2715,257 +2718,250 @@ export const VendorPengambilanView: React.FC = () => {
 
               return (
                 <>
-                  {/* Selector Tab Jika Ada Lebih Dari 1 Surat Jalan */}
+                  {/* ── TAB PILIH SJ BERTAHAP ── */}
                   {allSjRecords.length > 1 && (
-                    <div className="px-4 py-2 bg-slate-100 border-b border-slate-200 flex items-center gap-2 overflow-x-auto shrink-0">
-                      <span className="text-[10.5px] font-bold text-slate-600 shrink-0">
-                        Pilih Surat Jalan Bertahap ({allSjRecords.length}):
+                    <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-2 overflow-x-auto shrink-0">
+                      <span className="text-[10px] font-semibold text-slate-500 shrink-0 uppercase tracking-wide">
+                        Tahap SJ:
                       </span>
                       {allSjRecords.map((s, idx) => (
                         <button
                           key={idx}
                           type="button"
                           onClick={() => setSelectedSjIndex(idx)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold font-mono transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                          className={`px-3 py-1 rounded-full text-[11px] font-semibold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer border ${
                             selectedSjIndex === idx
-                              ? 'bg-blue-600 text-white shadow-xs'
-                              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600'
                           }`}
                         >
-                          <FileCheck2 className="w-3.5 h-3.5" />
-                          <span>Tahap #{allSjRecords.length - idx}: {s.suratJalanNumber}</span>
+                          <FileCheck2 className="w-3 h-3" />
+                          <span>Tahap #{allSjRecords.length - idx}</span>
+                          <span className="font-mono opacity-75 text-[10px]">{s.suratJalanNumber}</span>
                         </button>
                       ))}
                     </div>
                   )}
 
-                  {/* Info Metadata Surat Jalan: Vendor, No SJ, No Reservasi, No GI, Tgl */}
-                  <div className="p-3 bg-slate-50 border-b border-slate-200 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs shrink-0">
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-medium">Vendor Pelaksana:</span>
-                      <span className="font-bold text-slate-800 text-[11px] truncate block" title={viewSjPhotoWo.vendor}>
-                        {viewSjPhotoWo.vendor || '-'}
+                  {/* ── METADATA CARDS ── */}
+                  <div className="px-5 py-3 bg-white border-b border-slate-100 grid grid-cols-2 sm:grid-cols-3 gap-3 shrink-0">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Vendor Pelaksana</span>
+                      <span className="text-xs font-semibold text-slate-800 leading-tight truncate" title={viewSjPhotoWo.vendor}>
+                        {viewSjPhotoWo.vendor || '—'}
                       </span>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-medium">No. Surat Jalan:</span>
-                      <span className="font-bold font-mono text-slate-800 text-[11px] truncate block">
-                        {activeSj?.suratJalanNumber || '-'}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">No. Surat Jalan</span>
+                      <span className="text-xs font-semibold font-mono text-blue-700 truncate">
+                        {activeSj?.suratJalanNumber || '—'}
                       </span>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-medium">No. Reservasi:</span>
-                      <span className="font-bold font-mono text-slate-800 text-[11px] truncate block">
-                        {viewSjPhotoWo.reservationNumber || '-'}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">No. Reservasi</span>
+                      <span className="text-xs font-semibold font-mono text-slate-700 truncate">
+                        {viewSjPhotoWo.reservationNumber || '—'}
                       </span>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-medium">No. GI (Goods Issue):</span>
-                      <span className="font-bold font-mono text-slate-800 text-[11px] truncate block">
-                        {activeSj?.giNumber || viewSjPhotoWo.giNumber || '-'}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">No. GI (Goods Issue)</span>
+                      <span className="text-xs font-semibold font-mono text-slate-700 truncate">
+                        {activeSj?.giNumber || viewSjPhotoWo.giNumber || '—'}
                       </span>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-medium">Tgl Pengambilan:</span>
-                      <span className="font-bold text-slate-800 text-[11px] truncate block">
-                        {activeSj?.suratJalanDate || viewSjPhotoWo.suratJalanDate || '-'}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Tgl Pengambilan</span>
+                      <span className="text-xs font-semibold text-slate-700 truncate">
+                        {activeSj?.suratJalanDate || viewSjPhotoWo.suratJalanDate || '—'}
                       </span>
                     </div>
                   </div>
 
-                  <div className="p-4 overflow-y-auto space-y-4 flex-1">
-                    {/* Seksi 0: Rincian Material yang Diambil pada Surat Jalan Ini */}
+                  {/* ── BODY ── */}
+                  <div className="p-5 overflow-y-auto space-y-5 flex-1">
+
+                    {/* Seksi Material */}
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <Boxes className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Daftar Material yang Diambil (Klaim SJ)</span>
-                        </span>
-                        <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                          {itemsToShow.filter((it: { material: string; qtyTaken: number }) => it.qtyTaken > 0).length} Material
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center">
+                            <Boxes className="w-3.5 h-3.5 text-blue-600" />
+                          </div>
+                          <span className="text-sm font-bold text-slate-800">Daftar Material yang Diambil</span>
+                        </div>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100 text-[11px] font-bold">
+                          {itemsToShow.filter((it: { material: string; qtyTaken: number }) => it.qtyTaken > 0).length} Item
                         </span>
                       </div>
 
                       {(() => {
-                        if (itemsToShow.length === 0) {
-                          // Fallback jika data historis belum mencatat item spesifik: tampilkan material WO yang diambil
-                          const fallbackMats = (viewSjPhotoWo.materials || []).filter(m => (m.qtyTaken || 0) > 0);
-                          if (fallbackMats.length === 0) {
-                            return (
-                              <div className="p-3 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                                Tidak ada data rincian material pada dokumen ini.
-                              </div>
-                            );
-                          }
-                          return (
-                            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                              <table className="w-full text-left text-xs border-collapse">
-                                <thead className="bg-slate-50 text-slate-600 text-[10.5px] uppercase font-bold border-b border-slate-200">
-                                  <tr>
-                                    <th className="py-2 px-3 text-center w-10">No</th>
-                                    <th className="py-2 px-3">Nama Material</th>
-                                    <th className="py-2 px-2 text-center w-16">Satuan</th>
-                                    <th className="py-2 px-3 text-center w-28 bg-slate-100 text-slate-700">Kebutuhan WO</th>
-                                    <th className="py-2 px-3 text-center w-28 bg-blue-50/60 text-blue-900 font-bold">Qty Diambil</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                  {fallbackMats.map((m, idx) => {
-                                    const req = m.qtyAllocated || m.qtyReksis || 1;
-                                    return (
-                                      <tr key={idx} className="hover:bg-slate-50/60">
-                                        <td className="py-2 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
-                                        <td className="py-2 px-3 font-semibold text-slate-800">{m.material}</td>
-                                        <td className="py-2 px-2 text-center text-slate-500">{m.unit || 'bh'}</td>
-                                        <td className="py-2 px-3 text-center font-mono font-bold text-slate-600 bg-slate-50/50">
-                                          {req}
-                                        </td>
-                                        <td className="py-2 px-3 text-center font-mono font-bold text-blue-700 bg-blue-50/30">
-                                          {m.qtyTaken}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          );
-                        }
-
-                        return (
-                          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                            <table className="w-full text-left text-xs border-collapse">
-                              <thead className="bg-slate-50 text-slate-600 text-[10.5px] uppercase font-bold border-b border-slate-200">
-                                <tr>
-                                  <th className="py-2 px-3 text-center w-10">No</th>
-                                  <th className="py-2 px-3">Nama Material</th>
-                                  <th className="py-2 px-2 text-center w-16">Satuan</th>
-                                  <th className="py-2 px-3 text-center w-28 bg-slate-100 text-slate-700">Kebutuhan WO</th>
-                                  <th className="py-2 px-3 text-center w-28 bg-blue-50/60 text-blue-900 font-bold">Qty Diambil</th>
+                        const renderTable = (rows: { no: number; material: string; unit: string; req: number | string; qty: number }[]) => (
+                          <div className="rounded-xl overflow-hidden border border-slate-200">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200">
+                                  <th className="py-2.5 px-3 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wide w-10">No</th>
+                                  <th className="py-2.5 px-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wide">Nama Material</th>
+                                  <th className="py-2.5 px-3 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wide w-16">Sat</th>
+                                  <th className="py-2.5 px-3 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wide w-24">Kebutuhan WO</th>
+                                  <th className="py-2.5 px-3 text-center text-[10px] font-bold text-blue-600 uppercase tracking-wide w-24">Qty Diambil</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                {itemsToShow.map((it: { material: string; qtyTaken: number }, idx: number) => {
-                                  const origMat = (viewSjPhotoWo.materials || []).find((m) => m.material === it.material);
-                                  const req = origMat ? (origMat.qtyAllocated || origMat.qtyReksis || 1) : '-';
-                                  return (
-                                    <tr key={idx} className={`hover:bg-slate-50/60 ${it.qtyTaken > 0 ? '' : 'opacity-40'}`}>
-                                      <td className="py-2 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
-                                      <td className="py-2 px-3 font-semibold text-slate-800">{it.material}</td>
-                                      <td className="py-2 px-2 text-center text-slate-500">{origMat?.unit || 'bh'}</td>
-                                      <td className="py-2 px-3 text-center font-mono font-bold text-slate-600 bg-slate-50/50">
-                                        {req}
-                                      </td>
-                                      <td className="py-2 px-3 text-center font-mono font-bold text-blue-700 bg-blue-50/30">
-                                        {it.qtyTaken}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
+                              <tbody>
+                                {rows.map((r, i) => (
+                                  <tr key={i} className={`border-b border-slate-100 last:border-0 transition-colors ${r.qty > 0 ? 'hover:bg-slate-50' : 'opacity-40 hover:bg-slate-50'}`}>
+                                    <td className="py-2.5 px-3 text-center text-slate-400">{r.no}</td>
+                                    <td className="py-2.5 px-3 font-medium text-slate-800">{r.material}</td>
+                                    <td className="py-2.5 px-3 text-center text-slate-500">{r.unit}</td>
+                                    <td className="py-2.5 px-3 text-center font-semibold text-slate-600 bg-slate-50/60">{r.req}</td>
+                                    <td className="py-2.5 px-3 text-center font-bold text-blue-700 bg-blue-50/40">{r.qty}</td>
+                                  </tr>
+                                ))}
                               </tbody>
                             </table>
                           </div>
                         );
+
+                        if (itemsToShow.length === 0) {
+                          const fallbackMats = (viewSjPhotoWo.materials || []).filter(m => (m.qtyTaken || 0) > 0);
+                          if (fallbackMats.length === 0) {
+                            return (
+                              <div className="py-8 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                <Boxes className="w-6 h-6 mx-auto mb-2 opacity-30" />
+                                Tidak ada data rincian material pada dokumen ini.
+                              </div>
+                            );
+                          }
+                          return renderTable(fallbackMats.map((m, i) => ({
+                            no: i + 1,
+                            material: m.material,
+                            unit: m.unit || 'bh',
+                            req: m.qtyAllocated || m.qtyReksis || 1,
+                            qty: m.qtyTaken || 0,
+                          })));
+                        }
+
+                        return renderTable(itemsToShow.map((it: { material: string; qtyTaken: number }, i: number) => {
+                          const origMat = (viewSjPhotoWo.materials || []).find((m) => m.material === it.material);
+                          return {
+                            no: i + 1,
+                            material: it.material,
+                            unit: origMat?.unit || 'bh',
+                            req: origMat ? (origMat.qtyAllocated || origMat.qtyReksis || 1) : '-',
+                            qty: it.qtyTaken,
+                          };
+                        }));
                       })()}
                     </div>
 
-                    {/* Seksi 1: Foto Berkas Surat Jalan */}
-                    <div className="pt-3 border-t border-slate-200">
-                      {(() => {
-                        const cleanPhotos = (arr?: string[]) =>
-                          (arr || []).filter((u) => Boolean(u) && !u.includes('photo-1586528116311-ad8dd3c8310d'));
-                        const list = activeSj
-                          ? cleanPhotos(activeSj.photos?.length ? activeSj.photos : matchedTx?.suratJalanPhotos)
-                          : cleanPhotos(
-                              viewSjPhotoWo.suratJalanPhotos && viewSjPhotoWo.suratJalanPhotos.length > 0
-                                ? viewSjPhotoWo.suratJalanPhotos
-                                : (viewSjPhotoWo.suratJalanPhoto ? [viewSjPhotoWo.suratJalanPhoto] : [])
-                            );
-                        return (
-                          <>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    {/* Seksi 1: Berkas Surat Jalan */}
+                    {(() => {
+                      const cleanPhotos = (arr?: string[]) =>
+                        (arr || []).filter((u) => Boolean(u) && !u.includes('photo-1586528116311-ad8dd3c8310d'));
+                      const list = activeSj
+                        ? cleanPhotos(activeSj.photos?.length ? activeSj.photos : matchedTx?.suratJalanPhotos)
+                        : cleanPhotos(
+                            viewSjPhotoWo.suratJalanPhotos && viewSjPhotoWo.suratJalanPhotos.length > 0
+                              ? viewSjPhotoWo.suratJalanPhotos
+                              : (viewSjPhotoWo.suratJalanPhoto ? [viewSjPhotoWo.suratJalanPhoto] : [])
+                          );
+                      return (
+                        <div className="border-t border-slate-100 pt-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-md bg-emerald-50 flex items-center justify-center">
                                 <FileCheck2 className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Berkas Surat Jalan ({activeSj?.suratJalanNumber || 'Gudang'})</span>
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                {list.length} File
-                              </span>
-                            </div>
-                            {list.length === 0 ? (
-                              <p className="text-xs text-slate-400 italic">Belum ada foto surat jalan yang diunggah.</p>
-                            ) : (
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {list.map((url, idx) => (
-                                  <div
-                                    key={idx}
-                                    className="relative group rounded-lg overflow-hidden border border-slate-200 bg-slate-100 aspect-4/3 flex items-center justify-center cursor-pointer hover:shadow-md transition"
-                                    onClick={() => setFullscreenImage({ title: `Surat Jalan (File #${idx + 1})`, url })}
-                                  >
-                                    <img src={url} alt={`Surat Jalan ${idx + 1}`} className="w-full h-full object-cover" />
-                                    <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[9px] font-mono px-1 rounded">
-                                      SJ #{idx + 1}
-                                    </span>
-                                  </div>
-                                ))}
                               </div>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
+                              <span className="text-sm font-bold text-slate-800">Berkas Surat Jalan</span>
+                              <span className="text-[10px] text-slate-400 font-mono">({activeSj?.suratJalanNumber || 'Gudang'})</span>
+                            </div>
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${list.length > 0 ? 'text-emerald-700 bg-emerald-50 border-emerald-100' : 'text-slate-400 bg-slate-50 border-slate-100'}`}>
+                              {list.length} File
+                            </span>
+                          </div>
+                          {list.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 py-5 text-center">
+                              <FileCheck2 className="w-5 h-5 mx-auto mb-1.5 text-slate-300" />
+                              <p className="text-xs text-slate-400">Belum ada foto surat jalan yang diunggah.</p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {list.map((url, idx) => (
+                                <div
+                                  key={idx}
+                                  className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-4/3 cursor-pointer hover:shadow-md hover:border-blue-300 transition"
+                                  onClick={() => setFullscreenImage({ title: `Surat Jalan (File #${idx + 1})`, url })}
+                                >
+                                  <img src={url} alt={`Surat Jalan ${idx + 1}`} className="w-full h-full object-cover" />
+                                  <span className="absolute bottom-1.5 left-1.5 bg-black/60 backdrop-blur-sm text-white text-[9px] font-mono px-1.5 py-0.5 rounded-md">
+                                    SJ #{idx + 1}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Seksi 2: Foto Bukti Penerimaan Material */}
-                    <div className="pt-3 border-t border-slate-200">
-                      {(() => {
-                        const cleanPhotos = (arr?: string[]) =>
-                          (arr || []).filter((u) => Boolean(u) && !u.includes('photo-1586528116311-ad8dd3c8310d'));
-                        const list = activeSj && activeSj.receiptPhotos !== undefined
-                          ? cleanPhotos(activeSj.receiptPhotos)
-                          : cleanPhotos(viewSjPhotoWo.receiptPhotos);
-                        return (
-                          <>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    {(() => {
+                      const cleanPhotos = (arr?: string[]) =>
+                        (arr || []).filter((u) => Boolean(u) && !u.includes('photo-1586528116311-ad8dd3c8310d'));
+                      const list = activeSj && activeSj.receiptPhotos !== undefined
+                        ? cleanPhotos(activeSj.receiptPhotos)
+                        : cleanPhotos(viewSjPhotoWo.receiptPhotos);
+                      return (
+                        <div className="border-t border-slate-100 pt-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center">
                                 <Package className="w-3.5 h-3.5 text-blue-600" />
-                                <span>Foto Bukti Penerimaan Material di Gudang</span>
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                {list.length} File
-                              </span>
-                            </div>
-                            {list.length === 0 ? (
-                              <p className="text-xs text-slate-400 italic">Belum ada foto bukti penerimaan yang diunggah.</p>
-                            ) : (
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {list.map((url, idx) => (
-                                  <div
-                                    key={idx}
-                                    className="relative group rounded-lg overflow-hidden border border-slate-200 bg-slate-100 aspect-4/3 flex items-center justify-center cursor-pointer hover:shadow-md transition"
-                                    onClick={() => setFullscreenImage({ title: `Bukti Penerimaan Material (File #${idx + 1})`, url })}
-                                  >
-                                    <img src={url} alt={`Bukti Penerimaan ${idx + 1}`} className="w-full h-full object-cover" />
-                                    <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[9px] font-mono px-1 rounded">
-                                      Bukti #{idx + 1}
-                                    </span>
-                                  </div>
-                                ))}
                               </div>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
+                              <span className="text-sm font-bold text-slate-800">Foto Bukti Penerimaan Material di Gudang</span>
+                            </div>
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${list.length > 0 ? 'text-blue-700 bg-blue-50 border-blue-100' : 'text-slate-400 bg-slate-50 border-slate-100'}`}>
+                              {list.length} File
+                            </span>
+                          </div>
+                          {list.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 py-5 text-center">
+                              <Package className="w-5 h-5 mx-auto mb-1.5 text-slate-300" />
+                              <p className="text-xs text-slate-400">Belum ada foto bukti penerimaan yang diunggah.</p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {list.map((url, idx) => (
+                                <div
+                                  key={idx}
+                                  className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-4/3 cursor-pointer hover:shadow-md hover:border-blue-300 transition"
+                                  onClick={() => setFullscreenImage({ title: `Bukti Penerimaan Material (File #${idx + 1})`, url })}
+                                >
+                                  <img src={url} alt={`Bukti Penerimaan ${idx + 1}`} className="w-full h-full object-cover" />
+                                  <span className="absolute bottom-1.5 left-1.5 bg-black/60 backdrop-blur-sm text-white text-[9px] font-mono px-1.5 py-0.5 rounded-md">
+                                    Bukti #{idx + 1}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </>
               );
             })()}
 
-            <div className="p-3 bg-white border-t border-slate-200 flex items-center justify-end text-xs shrink-0">
+            {/* ── FOOTER ── */}
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+              <span className="text-[11px] text-slate-400 font-mono truncate">
+                {viewSjPhotoWo.suratJalanNumber || '—'}
+              </span>
               <button
                 type="button"
                 onClick={() => setViewSjPhotoWo(null)}
-                className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg font-semibold cursor-pointer"
+                className="px-5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition cursor-pointer"
               >
                 Tutup
               </button>
@@ -3531,6 +3527,14 @@ export const VendorPengambilanView: React.FC = () => {
       })()}
 
       {/* Modal 6: Rekap Read-Only Status Capaian Jasa per Sub-Bab */}
+      {sweepingWo && (
+        <SweepingWoModal
+          wo={workOrders.find((w) => w.id === sweepingWo.id) || sweepingWo}
+          transactions={vendorPickupTransactions}
+          onClose={() => setSweepingWo(null)}
+        />
+      )}
+
       {rekapWo && (
         <ModalRekapProgresJasa
           wo={rekapWo}

@@ -28,6 +28,7 @@ import { usePromotorStore } from '@/store/usePromotorStore';
 import { WorkOrderRecord, WoJasaItem } from '@/types';
 import { calculateRabFromSurvey } from '@/data/rabMasterData';
 import { ModalRekapProgresJasa } from '@/components/ModalRekapProgresJasa';
+import { filterWorkOrdersForUser } from '@/lib/permissions';
 
 const parseSupervisor = (s?: string) => {
   if (!s || s === '—' || s === '-') return { name: '—', role: '' };
@@ -52,7 +53,9 @@ export const VerifikasiPengawasView: React.FC = () => {
     pengawasUnlockProgressJasa,
     deleteWorkOrder,
     showToast,
-    setCurrentPage
+    setCurrentPage,
+    currentUser,
+    currentRole
   } = usePromotorStore();
 
   const [activeTab, setActiveTab] = useState<'all' | 'menunggu_verif_progress' | 'menunggu_sj' | 'jasa_belum_mulai' | 'konstruksi' | 'jasa_selesai' | 'realisasi' | 'closeout'>('all');
@@ -235,12 +238,17 @@ export const VerifikasiPengawasView: React.FC = () => {
   const [verifRealizationNotes, setVerifRealizationNotes] = useState('');
   const [verifRealizationOfficer, setVerifRealizationOfficer] = useState('');
 
-  // Filter WO yang berstatus APPROVED atau dalam tahap pengerjaan
+  // Filter WO yang berstatus APPROVED atau dalam tahap pengerjaan (dibatasi sesuai penugasan pengawas)
+  const visibleWorkOrders = useMemo(
+    () => filterWorkOrdersForUser(workOrders, currentUser),
+    [workOrders, currentUser]
+  );
+
   const activeWos = useMemo(() => {
-    return workOrders.filter(
+    return visibleWorkOrders.filter(
       (w) => w.approvalStatus === 'APPROVED' || w.status === 'Konstruksi' || w.status === 'Verifikasi SJ' || w.status === 'Selesai' || w.status === 'Closeout'
     );
-  }, [workOrders]);
+  }, [visibleWorkOrders]);
 
   // Tab Filtering
   const filteredWos = useMemo(() => {
@@ -2203,6 +2211,10 @@ export const VerifikasiPengawasView: React.FC = () => {
                   onClick={() => {
                     if (isJasaLocked) {
                       pengawasUnlockProgressJasa(liveWo.id, lockedByLabel);
+                      return;
+                    }
+                    if (liveWo.returStatus === 'MENUNGGU_VERIFIKASI_GUDANG') {
+                      showToast(`⚠️ WO ${liveWo.id} masih dalam proses verifikasi retur material ke gudang. Tunggu persetujuan gudang sebelum Closeout.`);
                       return;
                     }
                     if (

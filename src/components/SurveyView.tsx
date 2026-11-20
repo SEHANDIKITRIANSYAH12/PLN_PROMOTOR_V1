@@ -54,8 +54,11 @@ import {
   Upload,
   Radio,
   AlertTriangle,
-  Layers
+  Layers,
+  Lock,
+  RotateCcw
 } from 'lucide-react';
+import { isSurveyEditable } from '@/lib/permissions';
 
 /** Label & warna dokumen output RAB per paket survey. */
 const SURVEY_DOC_BADGES: Record<SurveyDocType, { long: string; className: string }> = {
@@ -79,6 +82,7 @@ const getOnlineServerSnapshot = () => true;
 export const SurveyView: React.FC = () => {
   const { 
     surveys, 
+    workOrders,
     addSurvey, 
     updateSurvey,
     updateSurveyStatus, 
@@ -88,7 +92,8 @@ export const SurveyView: React.FC = () => {
     showToast, 
     setCurrentPage,
     setActiveDaftungTab,
-    constructionRules
+    constructionRules,
+    currentRole
   } = usePromotorStore();
 
   // Connectivity & Offline (Blankspot) state
@@ -781,7 +786,15 @@ export const SurveyView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                paginatedSurveys.map((s) => (
+                paginatedSurveys.map((s) => {
+                  const relatedWos = workOrders.filter(
+                    (w) =>
+                      w.surveyId === s.id ||
+                      w.daftungId === s.id ||
+                      (w.customerName && s.customerName && w.customerName.toLowerCase().trim() === s.customerName.toLowerCase().trim())
+                  );
+                  const editLock = isSurveyEditable(s, currentRole, relatedWos.length);
+                  return (
                 <tr key={s.id} className="hover:bg-slate-50/80 transition-colors divide-x divide-slate-200">
                   <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
                     <div className="flex items-center gap-1.5">
@@ -799,6 +812,21 @@ export const SurveyView: React.FC = () => {
                         <WifiOff className="w-3 h-3 text-amber-600" />
                         <span>Draf Offline (Blankspot)</span>
                       </span>
+                    ) : s.status === 'Perlu Revisi' ? (
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span
+                          className="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300 inline-flex items-center gap-1 cursor-help"
+                          title={`Alasan: ${s.revisiReason || 'Perlu perbaikan teknis'}${s.revisiRequestedBy ? ` (Oleh: ${s.revisiRequestedBy})` : ''}`}
+                        >
+                          <AlertTriangle className="w-3 h-3 text-rose-600 animate-pulse" />
+                          <span>Perlu Revisi</span>
+                        </span>
+                        {s.revisiReason && (
+                          <span className="text-[10px] text-rose-600 font-medium max-w-[130px] truncate" title={s.revisiReason}>
+                            {s.revisiReason}
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
                         s.status === 'Terverifikasi'
@@ -884,6 +912,65 @@ export const SurveyView: React.FC = () => {
                         Detail
                       </button>
 
+                      {/* Tombol Revisi jika status Perlu Revisi */}
+                      {s.status === 'Perlu Revisi' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsDetailMode(false);
+                            setDetailSurveyId(s.id);
+                            const tm = s.poles.filter((p) => (p.networkType || 'JTM') === 'JTM' || p.networkType === 'SUTM');
+                            const tr = s.poles.filter((p) => p.networkType === 'JTR' || p.networkType === 'SUTR');
+                            setTmPoles(tm.length > 0 ? tm : []);
+                            setTrPoles(tr.length > 0 ? tr : []);
+                            setName(s.customerName);
+                            setNamaDasar(s.namaDasar || s.customerName);
+                            setJumlahUnit(s.jumlahUnit ? String(s.jumlahUnit) : '');
+                            setDayaPerUnit(s.dayaPerUnit || '1.300');
+                            setDayaLama(s.dayaLama || '');
+                            setTarifLama(s.tarifLama || '');
+                            setDayaBaru(s.dayaBaru || s.daya || '1.300');
+                            setTarifBaru(s.tarifBaru || s.tarif || 'R1T');
+                            setKampung(s.kampung || '');
+                            setDesa(s.desa || '');
+                            setKecamatan(s.kecamatan || '');
+                            setKabupaten(s.kabupaten || 'Kabupaten Lebak');
+                            setIdpel(s.idpel || '');
+                            setLocation(s.location);
+                            setAddress(s.address || '');
+                            setLatitude(s.latitude !== undefined && s.latitude !== null ? String(s.latitude) : '');
+                            setLongitude(s.longitude !== undefined && s.longitude !== null ? String(s.longitude) : '');
+                            setOfficer(s.officerName || '');
+                            setDaya(s.daya || '197,000');
+                            setTarif(s.tarif || 'I2');
+                            setPenyulang(s.penyulang || 'GI Rangkasbitung Baru (ONA) ; P. Leuwidamar');
+                            setTipeGardu(s.tipePembangunanGardu || s.tipeGardu || '');
+                            setKapasitasTrafo(s.kapasitasTrafo || '');
+                            setJumlahKabelNaik(s.jumlahKabelNaik || '');
+                            const loadedPerluasan = resolvePerluasan(s.perluasanJTM, s.perluasanJTR, s.poles);
+                            setPerluasanJTM(loadedPerluasan.jtm);
+                            setPerluasanJTR(loadedPerluasan.jtr);
+                            setTrafoLama(s.trafoLama || '');
+                            setTrafoBaru(s.trafoBaru || '');
+                            setJenisPekerjaanGardu(s.jenisPekerjaanGardu || '');
+                            setJumlahKubikelLBS(s.jumlahKubikelLBS || '');
+                            setLocationPhotos((s.locationPhotos || []).map((url, idx) => ({
+                              id: `FOTO-DETAIL-${idx}`,
+                              url,
+                              caption: `Foto Lokasi #${idx + 1}`,
+                              date: 'Tersimpan',
+                            })));
+                            setStep(1);
+                            setIsModalOpen(true);
+                          }}
+                          className="px-2.5 py-1.5 text-xs text-white bg-amber-600 hover:bg-amber-500 font-bold rounded-lg transition shadow-xs flex items-center gap-1 cursor-pointer"
+                          title={`Revisi teknis survey: ${s.revisiReason || ''}`}
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Revisi Survey</span>
+                        </button>
+                      )}
+
                       {s.status === 'Menunggu verifikasi Daftung' && (
                         <button
                           onClick={() => {
@@ -941,22 +1028,34 @@ export const SurveyView: React.FC = () => {
                         </button>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`Apakah Anda yakin ingin menghapus data survey ${s.id} (${s.customerName})?`)) {
-                            deleteSurvey(s.id);
-                          }
-                        }}
-                        className="p-1.5 text-xs text-rose-600 bg-rose-50 hover:bg-rose-100 hover:text-rose-700 font-semibold rounded-lg transition border border-rose-200 cursor-pointer"
-                        title="Hapus data survey"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {editLock.editable ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Apakah Anda yakin ingin menghapus data survey ${s.id} (${s.customerName})?`)) {
+                              deleteSurvey(s.id);
+                            }
+                          }}
+                          className="p-1.5 text-xs text-rose-600 bg-rose-50 hover:bg-rose-100 hover:text-rose-700 font-semibold rounded-lg transition border border-rose-200 cursor-pointer"
+                          title="Hapus data survey"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          className="p-1.5 text-xs text-slate-300 bg-slate-100 rounded-lg border border-slate-200 cursor-not-allowed inline-flex items-center"
+                          title={`Terkunci: ${editLock.reason || 'Data tidak dapat diubah'}`}
+                        >
+                          <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
-              ))
+                  );
+                })
             )}
           </tbody>
           </table>

@@ -10,7 +10,8 @@ import {
   Trash2,
   FileText,
   ShieldCheck,
-  Clock
+  Clock,
+  RotateCcw
 } from 'lucide-react';
 import { SurveyRecord } from '@/types';
 import { Pagination } from '@/components/Pagination';
@@ -25,7 +26,10 @@ export const PraDaftungView: React.FC = () => {
     deleteSurvey, 
     setSelectedDaftungIdForWo,
     setCurrentPage, 
-    showToast 
+    showToast,
+    returnSurveyToRevision,
+    currentUser,
+    currentRole
   } = usePromotorStore();
   
   // State Verifikasi Modal
@@ -38,6 +42,10 @@ export const PraDaftungView: React.FC = () => {
   const [paymentStatus, setPaymentStatus] = useState<'Sudah Bayar' | 'Belum Bayar'>('Sudah Bayar');
   const [nidiVal, setNidiVal] = useState(true);
   const [sloVal, setSloVal] = useState(true);
+
+  // State Modal Kembalikan ke Survey (Perlu Revisi)
+  const [revisionSurvey, setRevisionSurvey] = useState<SurveyRecord | null>(null);
+  const [revisionReasonInput, setRevisionReasonInput] = useState('');
   
   // Modal RAB Preview
   const [selectedRabDoc, setSelectedRabDoc] = useState<{ survey: SurveyRecord; paket: SurveyDocType } | null>(null);
@@ -397,6 +405,21 @@ export const PraDaftungView: React.FC = () => {
                               </button>
                             )}
 
+                            {/* Tombol Kembalikan ke Survey untuk Revisi Teknis (Admin Daftung & Super Admin) */}
+                            {!isWoApplied && (currentRole === 'Admin Daftung' || currentRole === 'Super Admin') && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRevisionSurvey(s);
+                                  setRevisionReasonInput('');
+                                }}
+                                className="p-1.5 text-xs text-amber-700 bg-amber-50 hover:bg-amber-100 font-semibold rounded-lg transition border border-amber-200 cursor-pointer"
+                                title="Kembalikan data ke Admin Survey (Perlu Revisi Teknis)"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
                             <button
                               type="button"
                               onClick={() => {
@@ -636,6 +659,90 @@ export const PraDaftungView: React.FC = () => {
                   className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-xs transition cursor-pointer"
                 >
                   Simpan & Proses Verifikasi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KEMBALIKAN KE SURVEY (PERLU REVISI) */}
+      {revisionSurvey && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-4 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">Kembalikan ke Admin Survey</h3>
+                  <p className="text-[11px] text-amber-800 font-medium">Permintaan Revisi Teknis / Lapangan</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRevisionSurvey(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!revisionReasonInput.trim()) {
+                  showToast('⚠️ Silakan masukkan alasan revisi data survey!');
+                  return;
+                }
+                returnSurveyToRevision(revisionSurvey.id, revisionReasonInput, currentUser.name);
+                setRevisionSurvey(null);
+              }}
+              className="p-5 space-y-4 text-xs"
+            >
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-slate-700 space-y-1">
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">ID & Pelanggan:</span>
+                  <span className="font-bold text-slate-800">{revisionSurvey.id} — {revisionSurvey.customerName}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Lokasi:</span>
+                  <span className="text-slate-600">{revisionSurvey.location}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">
+                  Alasan Pengembalian / Catatan Revisi: <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={revisionReasonInput}
+                  onChange={(e) => setRevisionReasonInput(e.target.value)}
+                  placeholder="Contoh: Titik tiang #3 terhalang bangunan, mohon geser koordinat atau ukur ulang jarak gawang..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                <p className="text-[10.5px] text-slate-500 mt-1">
+                  Status survey akan berubah menjadi <b>Perlu Revisi</b> sehingga dapat diedit kembali oleh Admin Survey.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setRevisionSurvey(null)}
+                  className="px-4 py-2 border border-slate-200 rounded-xl text-slate-600 font-semibold hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Kirim Permintaan Revisi</span>
                 </button>
               </div>
             </form>

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   Role,
+  UserProfile,
   SurveyRecord,
   DaftungRecord,
   WorkOrderRecord,
@@ -20,6 +21,7 @@ import {
   VendorPickupTransaction,
   SweepingRecord
 } from '@/types';
+import { SEED_USERS } from '@/lib/permissions';
 import { calculateRabFromSurvey } from '@/data/rabMasterData';
 import {
   SEED_CONSTRUCTION_RULES,
@@ -38,6 +40,33 @@ import {
   SEED_SUPERVISORS,
   SEED_SWEEPINGS,
 } from '@/data/seedData';
+
+function getInitialUsers(): UserProfile[] {
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('promotor_users');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {
+      // fallback
+    }
+  }
+  return SEED_USERS;
+}
+
+function persistUsers(users: UserProfile[]) {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('promotor_users', JSON.stringify(users));
+    } catch {
+      // fallback
+    }
+  }
+}
 
 export function generateDaftungId(existingDaftungs: { id?: string }[] = []): string {
   const now = new Date();
@@ -65,6 +94,12 @@ export function generateDaftungId(existingDaftungs: { id?: string }[] = []): str
 interface PromotorState {
   currentRole: Role;
   setCurrentRole: (role: Role) => void;
+  currentUser: UserProfile;
+  setCurrentUser: (user: UserProfile) => void;
+  users: UserProfile[];
+  addUser: (user: Omit<UserProfile, 'id'>) => string;
+  updateUser: (id: string, updates: Partial<UserProfile>) => void;
+  deleteUser: (id: string) => void;
   currentPage: string;
   setCurrentPage: (page: string) => void;
 
@@ -76,6 +111,7 @@ interface PromotorState {
   updateSurvey: (id: string, partial: Partial<SurveyRecord>) => void;
   updateSurveyPoles: (id: string, poles: PoleData[]) => void;
   updateSurveyStatus: (id: string, status: SurveyRecord['status']) => void;
+  returnSurveyToRevision: (surveyId: string, reason: string, officerName: string) => void;
   deleteSurvey: (id: string) => void;
 
   // Daftung
@@ -124,6 +160,13 @@ interface PromotorState {
       creatorRole?: string;
       creatorSignature?: string;
     }
+  ) => void;
+  reassignSupervisor: (
+    woId: string,
+    supervisorType: '1' | '2',
+    newSupervisorName: string,
+    reason: string,
+    changedBy: string
   ) => void;
   selectedDaftungIdForWo: string | null;
   setSelectedDaftungIdForWo: (id: string | null) => void;
@@ -572,8 +615,53 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
       }
     }));
   },
-  currentRole: 'Admin Daftung',
-  setCurrentRole: (role) => set({ currentRole: role }),
+  users: getInitialUsers(),
+  currentUser: getInitialUsers()[0] || SEED_USERS[0],
+  currentRole: 'Super Admin',
+  setCurrentUser: (user) => set({ currentUser: user, currentRole: user.role }),
+  setCurrentRole: (role) => {
+    const match = get().users.find((u) => u.role === role) || {
+      id: `usr-${role.toLowerCase().replace(/\s+/g, '')}`,
+      name: `User ${role}`,
+      username: role.toLowerCase().replace(/\s+/g, ''),
+      role,
+      status: 'AKTIF' as const,
+    };
+    set({ currentRole: role, currentUser: match });
+  },
+  addUser: (userData) => {
+    const newId = `usr-${Date.now()}`;
+    const newUser: UserProfile = { ...userData, id: newId };
+    set((state) => {
+      const updated = [newUser, ...state.users];
+      persistUsers(updated);
+      return { users: updated };
+    });
+    get().addAudit(`Tambah Pengguna Baru: ${newUser.name} (${newUser.role})`, newId, 'Manajemen User');
+    get().showToast(`✓ Pengguna ${newUser.name} (${newUser.role}) berhasil ditambahkan.`);
+    return newId;
+  },
+  updateUser: (id, updates) => {
+    set((state) => {
+      const updated = state.users.map((u) => (u.id === id ? { ...u, ...updates } : u));
+      persistUsers(updated);
+      return {
+        users: updated,
+        currentUser: state.currentUser.id === id ? { ...state.currentUser, ...updates } : state.currentUser,
+      };
+    });
+    get().addAudit(`Perbarui Pengguna ${id}`, id, 'Manajemen User');
+    get().showToast(`✓ Data pengguna berhasil diperbarui.`);
+  },
+  deleteUser: (id) => {
+    set((state) => {
+      const updated = state.users.filter((u) => u.id !== id);
+      persistUsers(updated);
+      return { users: updated };
+    });
+    get().addAudit(`Hapus Pengguna ${id}`, id, 'Manajemen User');
+    get().showToast(`✓ Pengguna berhasil dihapus.`);
+  },
   currentPage: 'dashboard',
   setCurrentPage: (page) => set({ currentPage: page }),
   activeDaftungTab: 'ap2t',
@@ -718,6 +806,25 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
     set((state) => ({
       surveys: state.surveys.map((s) => (s.id === id ? { ...s, status } : s)),
     }));
+  },
+
+  returnSurveyToRevision: (surveyId, reason, officerName) => {
+    const nowStr = new Date().toISOString();
+    set((state) => ({
+      surveys: state.surveys.map((s) =>
+        s.id === surveyId
+          ? {
+              ...s,
+              status: 'Perlu Revisi' as const,
+              revisiReason: reason,
+              revisiRequestedAt: nowStr,
+              revisiRequestedBy: officerName,
+            }
+          : s
+      ),
+    }));
+    get().addAudit(`Admin Daftung (${officerName}) mengembalikan survey ${surveyId} untuk direvisi: ${reason}`, surveyId, 'Potensi Daftung');
+    get().showToast(`Survey ${surveyId} dikembalikan ke Admin Survey (Status: Perlu Revisi).`);
   },
 
   deleteSurvey: (id) => {
@@ -1151,13 +1258,14 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
 
     const count = newWos.length;
     const woLabels = newWos.map((w) => w.id).join(' & ');
+    const oldWoIds = get().workOrders.filter((w) => w.daftungId === daftungId).map((w) => w.id);
 
     set((state) => ({
-      // Jika sebelumnya pernah ada WO untuk daftung ini (misal ditolak/dikembalikan), gantikan dengan yang baru diajukan
-      reservationTransactions: [],
-  vendorPickupTransactions: [],
+      // Jika sebelumnya pernah ada WO untuk daftung ini (misal ditolak/dikembalikan), hanya gantikan transaksi WO terkait
+      reservationTransactions: state.reservationTransactions.filter((tx) => !oldWoIds.includes(tx.woId)),
+      vendorPickupTransactions: state.vendorPickupTransactions.filter((tx) => !oldWoIds.includes(tx.woId)),
 
-  workOrders: [...newWos, ...state.workOrders.filter((w) => w.daftungId !== daftungId)],
+      workOrders: [...newWos, ...state.workOrders.filter((w) => w.daftungId !== daftungId)],
       daftungs: state.daftungs.map((d) => 
         d.id === daftungId 
           ? { ...d, woIssued: `${count} Diajukan ke Asman`, status: 'Menunggu Approval' as const, rejectionReason: undefined } 
@@ -1525,6 +1633,37 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
           : w
       ),
     }));
+  },
+
+  reassignSupervisor: (woId, supervisorType, newSupervisorName, reason, changedBy) => {
+    const nowStr = new Date().toLocaleString('id-ID');
+    set((state) => ({
+      workOrders: state.workOrders.map((w) => {
+        if (w.id !== woId) return w;
+        const prevSup = supervisorType === '1' ? (w.supervisor1 || w.supervisor || '—') : (w.supervisor2 || '—');
+        const newHist = {
+          type: supervisorType,
+          previousSupervisor: prevSup,
+          newSupervisor: newSupervisorName,
+          reason,
+          changedAt: nowStr,
+          changedBy,
+        };
+        return {
+          ...w,
+          supervisor1: supervisorType === '1' ? newSupervisorName : w.supervisor1,
+          supervisor: supervisorType === '1' ? newSupervisorName : w.supervisor,
+          supervisor2: supervisorType === '2' ? newSupervisorName : w.supervisor2,
+          supervisorHistory: [...(w.supervisorHistory || []), newHist],
+        };
+      }),
+    }));
+    get().addAudit(
+      `${changedBy} MENGALIHKAN Pengawas ${supervisorType} WO ${woId} dari "${supervisorType === '1' ? (get().workOrders.find(w => w.id === woId)?.supervisor1 || '—') : (get().workOrders.find(w => w.id === woId)?.supervisor2 || '—')}" ke "${newSupervisorName}" — Alasan: ${reason}`,
+      woId,
+      'Work Order'
+    );
+    get().showToast(`✓ Berhasil mengalihkan Pengawas ${supervisorType} WO ${woId} ke ${newSupervisorName}.`);
   },
 
   updateWoProgress: (id, progress, note, progressMaterial, progressJasa, updatedJasaItems, updatedMaterials, milestones) => {
@@ -2117,7 +2256,8 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
           matProgress = isAllCompleted ? 100 : Math.min(99, calculatedMatProgress);
         }
 
-        const overallProgress = Math.round((matProgress + (w.progressJasa || 0)) / 2);
+        const hasJasa = (w.jasaItems || []).length > 0;
+        const overallProgress = hasJasa ? Math.round((matProgress + (w.progressJasa || 0)) / 2) : matProgress;
         const nextStatus: Exclude<WorkOrderRecord['status'], 'Closeout'> =
           overallProgress >= 100
             ? 'Selesai'
@@ -2235,8 +2375,13 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
 
       const updatedWorkOrders = state.workOrders.map((w) => {
         if (w.id !== woId) return w;
+        const isProgressComplete = (w.progress || 0) >= 100 || (w.progressJasa || 0) >= 100;
+        const currentNonCloseout: Exclude<WorkOrderRecord['status'], 'Closeout'> =
+          w.status === 'Closeout' ? (w.statusBeforeCloseout || 'Konstruksi') : w.status;
+        const nextStatus = isProgressComplete ? ('Selesai' as const) : currentNonCloseout;
         return {
           ...w,
+          ...applyWoStatus(w, nextStatus),
           returStatus: 'RETUR_DISETUJUI' as const,
           returApprovedAt: nowStr,
           returApprovedBy: adminName,
@@ -2691,9 +2836,29 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
   },
 
   updateSweeping: (id, updates) => {
-    set((state) => ({
-      sweepings: state.sweepings.map((s) => (s.id === id ? { ...s, ...updates } : s)),
-    }));
+    const swp = get().sweepings.find((s) => s.id === id);
+    set((state) => {
+      let updatedWos = state.workOrders;
+      if (updates.status === 'DISETUJUI_GUDANG' && swp) {
+        const targetWoIds = swp.woIds || [];
+        updatedWos = updatedWos.map((w) => {
+          if (!targetWoIds.includes(w.id)) return w;
+          const isAllJasaDone = (w.jasaItems || []).length === 0 || (w.progressJasa || 0) >= 100;
+          const currentNonCloseout: Exclude<WorkOrderRecord['status'], 'Closeout'> =
+            w.status === 'Closeout' ? (w.statusBeforeCloseout || 'Konstruksi') : w.status;
+          const nextStatus = isAllJasaDone ? ('Selesai' as const) : currentNonCloseout;
+          return {
+            ...w,
+            ...applyWoStatus(w, nextStatus),
+          };
+        });
+      }
+
+      return {
+        sweepings: state.sweepings.map((s) => (s.id === id ? { ...s, ...updates } : s)),
+        workOrders: updatedWos,
+      };
+    });
     get().addAudit(`Perbarui Dokumen Sweeping Material ${id}`, id, 'Sweeping Material');
     get().showToast('✓ Dokumen Sweeping Material berhasil diperbarui');
   },
@@ -2823,6 +2988,13 @@ export const usePromotorStore = create<PromotorState>((set, get) => ({
     if (target.progressStatus === 'MENUNGGU_VERIFIKASI_PROGRESS') {
       get().showToast(
         `⚠️ WO ${woId} masih punya pengajuan progres vendor. Setujui atau tolak dulu sebelum dikunci.`
+      );
+      return;
+    }
+    // Pengembalian retur material yang masih menggantung di gudang
+    if (target.returStatus === 'MENUNGGU_VERIFIKASI_GUDANG') {
+      get().showToast(
+        `⚠️ WO ${woId} masih memiliki pengajuan retur material ke gudang yang menunggu verifikasi. Tunggu persetujuan gudang sebelum Closeout.`
       );
       return;
     }

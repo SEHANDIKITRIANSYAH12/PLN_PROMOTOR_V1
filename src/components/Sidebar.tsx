@@ -74,54 +74,55 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, collapsed, on
       id: 'workspace',
       title: 'WORKSPACE',
       items: [
-        { id: 'dashboard',  label: 'Dashboard',         icon: LayoutGrid, allowedRoles: ['Admin Daftung', 'Admin WO', 'Pengawas', 'Admin Gudang'] },
-        { id: 'survey',     label: 'Survey Pelanggan',  icon: Crosshair, allowedRoles: ['Admin Daftung', 'Pengawas', 'Admin WO'] },
-        { id: 'pradaftung', label: 'Potensi Daftung',   icon: FileCheck2, allowedRoles: ['Admin Daftung', 'Admin WO'] },
+        { id: 'dashboard',  label: 'Dashboard',         icon: LayoutGrid, allowedRoles: ['Super Admin', 'Admin Survey', 'Admin Daftung', 'Admin WO', 'Pengawas', 'Vendor', 'Admin Gudang', 'Approval'] },
+        { id: 'survey',     label: 'Survey Pelanggan',  icon: Crosshair, allowedRoles: ['Super Admin', 'Admin Survey', 'Admin Daftung', 'Admin WO'] },
+        { id: 'pradaftung', label: 'Potensi Daftung',   icon: FileCheck2, allowedRoles: ['Super Admin', 'Admin Daftung', 'Admin Survey', 'Admin WO'] },
       ],
     },
     {
       id: 'pelaksanaan',
       title: 'PELAKSANAAN',
       items: [
-        { id: 'wo',             label: 'Work Order',                 icon: HardHat, allowedRoles: ['Admin Daftung', 'Admin WO'] },
-        { id: 'persetujuan-wo', label: 'Persetujuan WO',             icon: ShieldCheck, allowedRoles: ['Admin Daftung', 'Admin WO'] },
-        { id: 'daftung',        label: 'Daftar Tunggu (Daftung)',    icon: FileText, allowedRoles: ['Admin Daftung', 'Admin WO'] },
+        { id: 'wo',             label: 'Work Order',                 icon: HardHat, allowedRoles: ['Super Admin', 'Admin WO', 'Admin Daftung', 'Pengawas', 'Vendor', 'Admin Gudang', 'Approval'] },
+        { id: 'persetujuan-wo', label: 'Persetujuan WO',             icon: ShieldCheck, allowedRoles: ['Super Admin', 'Approval', 'Admin WO'] },
+        { id: 'daftung',        label: 'Daftar Tunggu (Daftung)',    icon: FileText, allowedRoles: ['Super Admin', 'Admin Daftung', 'Admin WO'] },
       ],
     },
     {
       id: 'pengawasan',
       title: 'PENGAWASAN',
       items: [
-        { id: 'reservasi-material',  label: 'Reservasi Material (Gudang)',      icon: Boxes, allowedRoles: ['Admin Daftung', 'Pengawas', 'Admin WO', 'Admin Gudang'] },
-        { id: 'verifikasi-pengawas', label: 'Verifikasi & Progres Lapangan',    icon: UserCheck, allowedRoles: ['Admin Daftung', 'Pengawas', 'Admin WO'] },
+        { id: 'reservasi-material',  label: 'Reservasi Material (Gudang)',      icon: Boxes, allowedRoles: ['Super Admin', 'Pengawas', 'Admin Gudang', 'Admin WO', 'Vendor'] },
+        { id: 'verifikasi-pengawas', label: 'Verifikasi & Progres Lapangan',    icon: UserCheck, allowedRoles: ['Super Admin', 'Pengawas', 'Admin WO', 'Vendor'] },
       ],
     },
     {
       id: 'vendor',
       title: 'VENDOR',
       items: [
-        { id: 'vendor-ambil',        label: 'Menu Vendor (Pelaksanaan & SJ)',   icon: HardDrive, allowedRoles: ['Admin Daftung', 'Pengawas', 'Admin WO'] },
+        { id: 'vendor-ambil',        label: 'Menu Vendor (Pelaksanaan & SJ)',   icon: HardDrive, allowedRoles: ['Super Admin', 'Vendor', 'Pengawas', 'Admin WO', 'Admin Gudang'] },
+        { id: 'sweeping-material',   label: 'Sweeping Material',                icon: ClipboardCheck, allowedRoles: ['Super Admin', 'Vendor', 'Pengawas', 'Admin Gudang', 'Admin WO'] },
       ],
     },
     {
       id: 'persediaan',
       title: 'PERSEDIAAN',
       items: [
-        { id: 'stok-gudang', label: 'Stok Gudang', icon: Warehouse, allowedRoles: ['Admin Daftung', 'Admin Gudang', 'Admin WO'] },
-        { id: 'analisis-material', label: 'Analisis Kebutuhan Material', icon: Calculator, allowedRoles: ['Admin Daftung', 'Admin Gudang', 'Admin WO', 'Pengawas'] },
-
+        { id: 'stok-gudang', label: 'Stok Gudang', icon: Warehouse, allowedRoles: ['Super Admin', 'Admin Gudang', 'Admin WO', 'Vendor'] },
+        { id: 'analisis-material', label: 'Analisis Kebutuhan Material', icon: Calculator, allowedRoles: ['Super Admin', 'Admin Daftung', 'Admin Gudang', 'Admin WO', 'Pengawas'] },
+        { id: 'mutasi-material', label: 'Mutasi Material & GI', icon: ArrowLeftRight, allowedRoles: ['Super Admin', 'Admin Gudang', 'Admin WO', 'Pengawas'] },
       ],
     },
     {
       id: 'master',
       title: 'MASTER DATA & STANDAR',
       items: [
-        { id: 'kontrak',         label: 'Master Kontrak (KHS)',        icon: FileSpreadsheet, allowedRoles: ['Admin Daftung', 'Admin WO'] },
-        { id: 'master-material', label: 'Kontrak Pengadaan Material',  icon: Boxes, allowedRoles: ['Admin Daftung', 'Admin WO', 'Admin Gudang'] },
-        { id: 'pengawas',        label: 'Master Pengawas',             icon: UserCheck, allowedRoles: ['Admin Daftung', 'Admin WO'] },
-        { id: 'std',             label: 'Standar Konstruksi',   icon: Layers, allowedRoles: ['Admin Daftung', 'Admin WO', 'Pengawas'] },
-        { id: 'audit',           label: 'Audit Log Aktivitas',  icon: History, allowedRoles: ['Admin Daftung', 'Admin WO'] },
-        { id: 'pengaturan',      label: 'Pengaturan',           icon: Settings, allowedRoles: ['Admin Daftung'] },
+        { id: 'kontrak',         label: 'Master Kontrak (KHS)',        icon: FileSpreadsheet, allowedRoles: ['Super Admin', 'Admin Daftung', 'Admin WO'] },
+        { id: 'master-material', label: 'Kontrak Pengadaan Material',  icon: Boxes, allowedRoles: ['Super Admin', 'Admin Daftung', 'Admin WO', 'Admin Gudang'] },
+        { id: 'pengawas',        label: 'Master Pengawas',             icon: UserCheck, allowedRoles: ['Super Admin', 'Admin Daftung', 'Admin WO'] },
+        { id: 'std',             label: 'Standar Konstruksi',   icon: Layers, allowedRoles: ['Super Admin', 'Admin Daftung', 'Admin WO', 'Pengawas'] },
+        { id: 'audit',           label: 'Audit Log Aktivitas',  icon: History, allowedRoles: ['Super Admin', 'Admin Daftung', 'Admin WO', 'Approval'] },
+        { id: 'pengaturan',      label: 'Pengaturan & User',    icon: Settings, allowedRoles: ['Super Admin', 'Admin Daftung'] },
       ],
     },
   ];

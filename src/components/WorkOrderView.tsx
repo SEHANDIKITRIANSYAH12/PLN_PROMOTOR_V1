@@ -34,6 +34,7 @@ import { RabDocumentModal } from '@/components/RabDocumentModal';
 import { SignaturePadModal } from '@/components/SignaturePadModal';
 import { getSurveyPackages, calculateRabFromSurvey, calculateTiangRabFromSurvey } from '@/data/surveyRabCalculator';
 import { WoMaterialItem, WoJasaItem } from '@/types';
+import { filterWorkOrdersForUser } from '@/lib/permissions';
 
 const DEFAULT_HASIAN_PARAF = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMTIwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEyMCI+PHBhdGggZD0iTSA0MCw3MCBDIDUwLDUwIDcwLDI1IDc4LDEyIEMgODIsNSA3NSw4IDcwLDIyIEMgNjIsNDggNTUsODAgNDgsMTEyIE0gNTIsNzIgQyA2MCw0OCA3Miw0MCA4Miw0MiBDIDkwLDQ0IDg4LDYyIDg5LDc2IEMgOTIsMjggMTAyLDIwIDEwOCwzMCBDIDExMiwzOCAxMTAsNjggMTEyLDgwIEMgMTE2LDQ4IDEyNiw0NSAxMzIsNTYgQyAxMzYsNjYgMTM4LDgyIDE0NCwxMDIgTSA2Miw1OCBMIDEzMCw1NiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAzMzY2IiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+';
 
@@ -59,7 +60,10 @@ export const WorkOrderView: React.FC = () => {
     deleteWorkOrder, 
     showToast,
     customKhsPrices,
-    submitWoToAsman
+    submitWoToAsman,
+    reassignSupervisor,
+    currentUser,
+    currentRole
   } = usePromotorStore();
 
   // Sumber tunggal daftar rekanan: seed master + vendor yang lahir dari Master
@@ -106,6 +110,12 @@ export const WorkOrderView: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>('PENDING');
   const [woPage, setWoPage] = useState(1);
   const [woPageSize, setWoPageSize] = useState(5);
+
+  // Modal Alihkan Pengawas
+  const [reassignModalWo, setReassignModalWo] = useState<WorkOrderRecord | null>(null);
+  const [reassignType, setReassignType] = useState<'Pengawas 1' | 'Pengawas 2'>('Pengawas 1');
+  const [reassignNewSupervisor, setReassignNewSupervisor] = useState<string>('');
+  const [reassignReason, setReassignReason] = useState<string>('');
 
   // State Modal Apply WO Baru di Menu Work Order
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
@@ -566,7 +576,12 @@ export const WorkOrderView: React.FC = () => {
     setSelectedDocWo(previewWo);
   };
 
-  const filteredWorkOrders = workOrders.filter((w) => {
+  const visibleWorkOrders = useMemo(
+    () => filterWorkOrdersForUser(workOrders, currentUser),
+    [workOrders, currentUser]
+  );
+
+  const filteredWorkOrders = visibleWorkOrders.filter((w) => {
     const matchSearch =
       w.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       w.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -588,8 +603,8 @@ export const WorkOrderView: React.FC = () => {
     woPage * woPageSize
   );
 
-  const draftWoCount = workOrders.filter((w) => w.status === 'Draf' || w.approvalStatus === 'DRAFT').length;
-  const pendingApprovalCount = workOrders.filter((w) => w.status === 'Menunggu Persetujuan Asman' || w.approvalStatus === 'PENDING').length;
+  const draftWoCount = visibleWorkOrders.filter((w) => w.status === 'Draf' || w.approvalStatus === 'DRAFT').length;
+  const pendingApprovalCount = visibleWorkOrders.filter((w) => w.status === 'Menunggu Persetujuan Asman' || w.approvalStatus === 'PENDING').length;
   const currentDaftung = allApplyCandidates.find((d) => d.id === selectedDaftungId);
 
   return (
@@ -822,6 +837,40 @@ export const WorkOrderView: React.FC = () => {
                                   </div>
                                 </div>
                               )}
+                              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                {(currentRole === 'Super Admin' || currentRole === 'Admin WO') && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReassignModalWo(w);
+                                      setReassignType('Pengawas 1');
+                                      setReassignNewSupervisor(supervisors[0] ? `${supervisors[0].name} (${supervisors[0].role})` : '');
+                                      setReassignReason('');
+                                    }}
+                                    className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded border border-blue-200 transition cursor-pointer"
+                                    title="Alihkan pengawas jika berhalangan"
+                                  >
+                                    <UserCheck className="w-2.5 h-2.5" />
+                                    <span>Alihkan</span>
+                                  </button>
+                                )}
+                                {w.supervisorHistory && w.supervisorHistory.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReassignModalWo(w);
+                                      setReassignType('Pengawas 1');
+                                      setReassignNewSupervisor(supervisors[0] ? `${supervisors[0].name} (${supervisors[0].role})` : '');
+                                      setReassignReason('');
+                                    }}
+                                    className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 px-1 py-0.5 rounded border border-amber-200 transition cursor-pointer"
+                                    title="Lihat riwayat pengalihan pengawas"
+                                  >
+                                    <Clock className="w-2.5 h-2.5" />
+                                    <span>{w.supervisorHistory.length}x Dialihkan</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           );
                         })()}
@@ -1755,6 +1804,199 @@ export const WorkOrderView: React.FC = () => {
           setIsCreatorSignPadOpen(false);
         }}
       />
+
+      {/* MODAL: ALIHKAN PENGAWAS LAPANGAN (Super Admin & Admin WO) */}
+      {reassignModalWo && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-blue-100 text-blue-700 rounded-xl">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">Alihkan Penugasan Pengawas Lapangan</h3>
+                  <p className="text-[11px] text-slate-500 font-mono">WO: {reassignModalWo.id} • {reassignModalWo.category}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReassignModalWo(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 overflow-y-auto space-y-4 text-xs">
+              {/* Info WO */}
+              <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 grid grid-cols-2 gap-2 text-slate-700">
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Pelanggan</span>
+                  <span className="font-bold text-slate-800">{reassignModalWo.customerName}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Vendor Pelaksana</span>
+                  <span className="font-medium text-slate-800 truncate block">{reassignModalWo.vendor}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Pengawas 1 Saat Ini</span>
+                  <span className="font-semibold text-blue-800">{reassignModalWo.supervisor1 || reassignModalWo.supervisor}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Pengawas 2 Saat Ini</span>
+                  <span className="font-semibold text-slate-700">{reassignModalWo.supervisor2 || '—'}</span>
+                </div>
+              </div>
+
+              {/* Form Pengalihan (hanya untuk Super Admin & Admin WO) */}
+              {(currentRole === 'Super Admin' || currentRole === 'Admin WO') ? (
+                <div className="space-y-3.5 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">
+                      Pilih Posisi Pengawas yang Dialihkan:
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setReassignType('Pengawas 1')}
+                        className={`p-2.5 rounded-xl border text-left font-bold transition cursor-pointer ${
+                          reassignType === 'Pengawas 1'
+                            ? 'bg-blue-50 border-blue-500 text-blue-900 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="text-[10px] font-normal text-slate-500">Posisi Utama</div>
+                        <div>Pengawas 1 (P1)</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReassignType('Pengawas 2')}
+                        className={`p-2.5 rounded-xl border text-left font-bold transition cursor-pointer ${
+                          reassignType === 'Pengawas 2'
+                            ? 'bg-blue-50 border-blue-500 text-blue-900 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="text-[10px] font-normal text-slate-500">Posisi Pendamping</div>
+                        <div>Pengawas 2 (P2)</div>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">
+                      Pilih Pengawas Pengganti Baru:
+                    </label>
+                    <select
+                      value={reassignNewSupervisor}
+                      onChange={(e) => setReassignNewSupervisor(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">-- Pilih Pengawas Baru --</option>
+                      {supervisors.map((s) => {
+                        const full = `${s.name} (${s.role})`;
+                        return (
+                          <option key={s.id} value={full}>
+                            {s.name} — {s.role} ({s.unit})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">
+                      Alasan Pengalihan (Wajib dicatat pada Audit Log):
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={reassignReason}
+                      onChange={(e) => setReassignReason(e.target.value)}
+                      placeholder="Contoh: Pengawas sebelumnya sakit / cuti dinas / mutasi penugasan ke ULP lain..."
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
+                  ℹ️ Anda tidak memiliki izin untuk mengalihkan pengawas. Pengalihan hanya dapat dilakukan oleh <b>Admin WO</b> atau <b>Super Admin</b>.
+                </div>
+              )}
+
+              {/* Riwayat Pengalihan Sebelumnya */}
+              {reassignModalWo.supervisorHistory && reassignModalWo.supervisorHistory.length > 0 && (
+                <div className="pt-2 border-t border-slate-100">
+                  <h4 className="font-bold text-slate-700 text-[11px] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Riwayat Pengalihan Pengawas ({reassignModalWo.supervisorHistory.length})</span>
+                  </h4>
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {reassignModalWo.supervisorHistory.map((h, idx) => (
+                      <div key={idx} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px]">
+                        <div className="flex items-center justify-between font-semibold text-slate-800">
+                          <span className="font-bold text-blue-700">{h.type}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {new Date(h.changedAt).toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-slate-600">
+                          <span className="line-through text-slate-400">{h.previousSupervisor}</span>
+                          <span className="mx-1 text-slate-400">→</span>
+                          <span className="font-bold text-emerald-700">{h.newSupervisor}</span>
+                        </div>
+                        <div className="mt-1 text-[10.5px] text-slate-500 italic">
+                          "{h.reason}" • <span className="font-medium text-slate-600">Oleh: {h.changedBy}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setReassignModalWo(null)}
+                className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Tutup
+              </button>
+              {(currentRole === 'Super Admin' || currentRole === 'Admin WO') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!reassignNewSupervisor.trim()) {
+                      showToast('⚠️ Silakan pilih pengawas baru!');
+                      return;
+                    }
+                    if (!reassignReason.trim()) {
+                      showToast('⚠️ Silakan isi alasan pengalihan pengawas!');
+                      return;
+                    }
+                    reassignSupervisor(
+                      reassignModalWo.id,
+                      reassignType === 'Pengawas 1' ? '1' : '2',
+                      reassignNewSupervisor,
+                      reassignReason,
+                      currentUser.name
+                    );
+                    setReassignModalWo(null);
+                  }}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Simpan Pengalihan</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

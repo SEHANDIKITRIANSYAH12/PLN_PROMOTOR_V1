@@ -106,9 +106,10 @@ async function readSurveys(tx: Tx) {
 // ---------------------------------------------------------------------------
 async function writeDaftungs(tx: Tx, rows: DaftungRecord[]) {
   await tx.daftung.deleteMany();
-  for (let i = 0; i < rows.length; i++) {
-    await tx.daftung.create({ data: { ...drop(rows[i], []), sysIdx: i } });
-  }
+  if (rows.length === 0) return;
+  await tx.daftung.createMany({
+    data: rows.map((r, i) => ({ ...drop(r, []), sysIdx: i })),
+  });
 }
 
 const readDaftungs = (tx: Tx) =>
@@ -168,12 +169,10 @@ async function readWorkOrders(tx: Tx) {
 // ---------------------------------------------------------------------------
 async function writeReservationTx(tx: Tx, rows: ReservationTransaction[]) {
   await tx.reservationTransaction.deleteMany();
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    await tx.reservationTransaction.create({
-      data: { ...drop(r, ['items']), items: json(r.items ?? []), sysIdx: i },
-    });
-  }
+  if (rows.length === 0) return;
+  await tx.reservationTransaction.createMany({
+    data: rows.map((r, i) => ({ ...drop(r, ['items']), items: json(r.items ?? []), sysIdx: i })),
+  });
 }
 
 const readReservationTx = (tx: Tx) =>
@@ -182,17 +181,15 @@ const readReservationTx = (tx: Tx) =>
 
 async function writePickupTx(tx: Tx, rows: VendorPickupTransaction[]) {
   await tx.vendorPickupTransaction.deleteMany();
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    await tx.vendorPickupTransaction.create({
-      data: {
-        ...drop(r, ['items', 'suratJalanPhotos']),
-        items: json(r.items ?? []),
-        suratJalanPhotos: r.suratJalanPhotos ?? [],
-        sysIdx: i,
-      },
-    });
-  }
+  if (rows.length === 0) return;
+  await tx.vendorPickupTransaction.createMany({
+    data: rows.map((r, i) => ({
+      ...drop(r, ['items', 'suratJalanPhotos']),
+      items: json(r.items ?? []),
+      suratJalanPhotos: r.suratJalanPhotos ?? [],
+      sysIdx: i,
+    })),
+  });
 }
 
 const readPickupTx = (tx: Tx) =>
@@ -204,12 +201,10 @@ const readPickupTx = (tx: Tx) =>
 // ---------------------------------------------------------------------------
 async function writeVendors(tx: Tx, rows: VendorRecord[]) {
   await tx.vendor.deleteMany();
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    await tx.vendor.create({
-      data: { ...drop(r, ['jenisPekerjaan']), jenisPekerjaan: r.jenisPekerjaan ?? [], sysIdx: i },
-    });
-  }
+  if (rows.length === 0) return;
+  await tx.vendor.createMany({
+    data: rows.map((r, i) => ({ ...drop(r, ['jenisPekerjaan']), jenisPekerjaan: r.jenisPekerjaan ?? [], sysIdx: i })),
+  });
 }
 
 const readVendors = (tx: Tx) =>
@@ -217,9 +212,10 @@ const readVendors = (tx: Tx) =>
 
 async function writeContracts(tx: Tx, rows: ContractRecord[]) {
   await tx.contract.deleteMany();
-  for (let i = 0; i < rows.length; i++) {
-    await tx.contract.create({ data: { ...drop(rows[i], []), sysIdx: i } });
-  }
+  if (rows.length === 0) return;
+  await tx.contract.createMany({
+    data: rows.map((r, i) => ({ ...drop(r, []), sysIdx: i })),
+  });
 }
 
 const readContracts = (tx: Tx) =>
@@ -254,9 +250,10 @@ async function readMaterialContracts(tx: Tx) {
 
 async function writeSupervisors(tx: Tx, rows: SupervisorRecord[]) {
   await tx.supervisor.deleteMany();
-  for (let i = 0; i < rows.length; i++) {
-    await tx.supervisor.create({ data: { ...drop(rows[i], []), sysIdx: i } });
-  }
+  if (rows.length === 0) return;
+  await tx.supervisor.createMany({
+    data: rows.map((r, i) => ({ ...drop(r, []), sysIdx: i })),
+  });
 }
 
 const readSupervisors = (tx: Tx) =>
@@ -265,9 +262,10 @@ const readSupervisors = (tx: Tx) =>
 /// Kuncinya `code`, bukan `id`.
 async function writeStocks(tx: Tx, rows: StockMaterial[]) {
   await tx.stock.deleteMany();
-  for (let i = 0; i < rows.length; i++) {
-    await tx.stock.create({ data: { ...drop(rows[i], []), sysIdx: i } });
-  }
+  if (rows.length === 0) return;
+  await tx.stock.createMany({
+    data: rows.map((r, i) => ({ ...drop(r, []), sysIdx: i })),
+  });
 }
 
 const readStocks = (tx: Tx) =>
@@ -307,9 +305,10 @@ async function readSweepings(tx: Tx) {
 // ---------------------------------------------------------------------------
 async function writeAudits(tx: Tx, rows: AuditRecord[]) {
   await tx.audit.deleteMany();
-  for (let i = 0; i < rows.length; i++) {
-    await tx.audit.create({ data: { ...drop(rows[i], []), sysIdx: i } });
-  }
+  if (rows.length === 0) return;
+  await tx.audit.createMany({
+    data: rows.map((r, i) => ({ ...drop(r, []), sysIdx: i })),
+  });
 }
 
 const readAudits = (tx: Tx) =>

@@ -10,7 +10,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
-  const { currentRole, setCurrentRole, currentPage, toastMessage, clearToast, showToast } = usePromotorStore();
+  const { currentRole, setCurrentRole, currentUser, setCurrentUser, users, currentPage, toastMessage, clearToast, showToast } = usePromotorStore();
   const [isRbacOpen, setIsRbacOpen] = useState(false);
 
   const titles: Record<string, { title: string; sub: string }> = {
@@ -38,36 +38,28 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
 
   const headerInfo = titles[currentPage] || { title: 'PROMOTOR PLN', sub: 'Sistem Monitoring & Material Kontrol' };
 
-  const rbacUsers = [
-    {
-      name: 'Budi Santoso, S.T.',
-      sub: 'Super Administrator / Admin',
-      role: 'Admin Daftung' as Role,
-      badge: 'Super Admin',
-      badgeColor: 'bg-purple-100 text-purple-700 border-purple-200',
-    },
-    {
-      name: 'Ahmad Fauzi',
-      sub: 'Petugas Survey Lapangan',
-      role: 'Pengawas' as Role,
-      badge: 'Surveyor',
-      badgeColor: 'bg-amber-100 text-amber-700 border-amber-200',
-    },
-    {
-      name: 'Faisal Reza, S.T.',
-      sub: 'Pengawas Teknik Konstruksi',
-      role: 'Admin WO' as Role,
-      badge: 'Pengawas Teknik',
-      badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
-    },
-    {
-      name: 'Siti Rahmawati',
-      sub: 'Admin Logistik & Gudang',
-      role: 'Admin Gudang' as Role,
-      badge: 'Admin Gudang',
-      badgeColor: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    },
-  ];
+  const getRoleBadgeStyle = (role: Role) => {
+    switch (role) {
+      case 'Super Admin':
+        return { badge: 'Super Admin', color: 'bg-purple-100 text-purple-700 border-purple-200' };
+      case 'Admin Survey':
+        return { badge: 'Admin Survey', color: 'bg-sky-100 text-sky-700 border-sky-200' };
+      case 'Admin Daftung':
+        return { badge: 'Admin Daftung', color: 'bg-violet-100 text-violet-700 border-violet-200' };
+      case 'Admin WO':
+        return { badge: 'Admin WO', color: 'bg-blue-100 text-blue-700 border-blue-200' };
+      case 'Pengawas':
+        return { badge: 'Pengawas', color: 'bg-teal-100 text-teal-700 border-teal-200' };
+      case 'Vendor':
+        return { badge: 'Vendor', color: 'bg-amber-100 text-amber-800 border-amber-200' };
+      case 'Admin Gudang':
+        return { badge: 'Admin Gudang', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+      case 'Approval':
+        return { badge: 'Asman (Approval)', color: 'bg-rose-100 text-rose-700 border-rose-200' };
+      default:
+        return { badge: role, color: 'bg-slate-100 text-slate-700 border-slate-200' };
+    }
+  };
 
   return (
     <>
@@ -116,66 +108,70 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
           <div className="relative">
             <button
               onClick={() => setIsRbacOpen(!isRbacOpen)}
-              className="flex items-center gap-2.5 p-1.5 pl-2.5 pr-2 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 shadow-2xs transition text-left"
+              className="flex items-center gap-2.5 p-1.5 pl-2.5 pr-2 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 shadow-2xs transition text-left cursor-pointer"
             >
               <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center text-xs shadow-2xs">
-                👨‍💼
+                {currentUser?.role === 'Vendor' ? '🏢' : currentUser?.role === 'Pengawas' ? '👷' : currentUser?.role === 'Approval' ? '👔' : '👨‍💼'}
               </div>
               <div className="hidden sm:block">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-800">Budi Santoso, S.T.</span>
-                  <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 border border-purple-200">
-                    {currentRole}
+                  <span className="text-xs font-bold text-slate-800">{currentUser?.name || 'Pengguna'}</span>
+                  <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded border ${getRoleBadgeStyle(currentRole).color}`}>
+                    {getRoleBadgeStyle(currentRole).badge}
                   </span>
                 </div>
-                <div className="text-[10px] text-slate-400 font-medium">PLN ULP Rangkasbitung</div>
+                <div className="text-[10px] text-slate-400 font-medium truncate max-w-[180px]">
+                  {currentUser?.unit || currentUser?.vendorName || 'PLN UP3 Banten Selatan'}
+                </div>
               </div>
               <ChevronDown className="w-4 h-4 text-slate-400 ml-0.5" />
             </button>
 
             {/* RBAC Modal Dropdown (Exactly Matching Mockup) */}
             {isRbacOpen && (
-              <div className="absolute right-0 top-14 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="absolute right-0 top-14 w-88 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                 <div className="pb-3 border-b border-slate-100">
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    SIMULASI AKUN & HAK AKSES (RBAC)
+                    SIMULASI AKUN & HAK AKSES (8 ROLES)
                   </div>
                   <div className="text-xs text-slate-600 mt-0.5 leading-snug">
-                    Pilih role untuk menguji tampilan menu & izin aksi:
+                    Pilih akun pengguna untuk menguji tampilan menu & pembatasan aksi:
                   </div>
                 </div>
 
-                <div className="py-2 space-y-1.5">
-                  {rbacUsers.map((u, idx) => {
-                    const isSelected = currentRole === u.role;
+                <div className="py-2 space-y-1.5 max-h-96 overflow-y-auto">
+                  {users.map((u) => {
+                    const isSelected = currentUser?.id === u.id || (!currentUser && currentRole === u.role);
+                    const badgeInfo = getRoleBadgeStyle(u.role);
                     return (
                       <button
-                        key={idx}
+                        key={u.id}
+                        type="button"
                         onClick={() => {
-                          setCurrentRole(u.role);
+                          setCurrentUser(u);
                           setIsRbacOpen(false);
-                          showToast(`Hak akses berganti ke: ${u.badge} (${u.role})`);
+                          showToast(`Hak akses berganti ke: ${u.name} (${u.role})`);
                         }}
                         className={`
-                          w-full p-2.5 rounded-xl border flex items-center justify-between text-left transition-all
+                          w-full p-2.5 rounded-xl border flex items-center justify-between text-left transition-all cursor-pointer
                           ${isSelected 
                             ? 'bg-blue-50/70 border-blue-300 shadow-2xs' 
                             : 'bg-white border-slate-100 hover:bg-slate-50 hover:border-slate-200'}
                         `}
                       >
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0 pr-2">
                           <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm shrink-0">
-                            👤
+                            {u.role === 'Vendor' ? '🏢' : u.role === 'Pengawas' ? '👷' : u.role === 'Approval' ? '👔' : '👤'}
                           </div>
-                          <div>
-                            <div className="text-xs font-bold text-slate-800">{u.name}</div>
-                            <div className="text-[10px] text-slate-400">{u.sub}</div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-slate-800 truncate">{u.name}</div>
+                            <div className="text-[10px] text-slate-400 truncate">{u.unit || u.vendorName || u.role}</div>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded border ${u.badgeColor}`}>
-                            {u.badge}
+                          <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded border ${badgeInfo.color}`}>
+                            {badgeInfo.badge}
                           </span>
                           {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 stroke-[3]" />}
                         </div>
