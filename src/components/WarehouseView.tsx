@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { usePromotorStore } from '@/store/usePromotorStore';
-import { StockMaterial, WorkOrderRecord } from '@/types';
+import { StockMaterial } from '@/types';
 import {
   Warehouse,
   AlertTriangle,
@@ -14,33 +14,16 @@ import {
   Trash2,
   X,
   Save,
-  Package,
-  RotateCcw,
-  FileText
+  Package
 } from 'lucide-react';
 import { Pagination } from '@/components/Pagination';
 
 export const WarehouseView: React.FC = () => {
-  const { stocks, updateStock, addStock, deleteStock, showToast, workOrders, adminGudangApproveRetur, adminGudangRejectRetur } = usePromotorStore();
-  const [warehouseTab, setWarehouseTab] = useState<'stocks' | 'retur'>('stocks');
+  const { stocks, updateStock, addStock, deleteStock, showToast } = usePromotorStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [stockPage, setStockPage] = useState(1);
   const [stockPageSize, setStockPageSize] = useState(10);
-
-  // Daftar WO yang memiliki pengajuan retur material
-  const pendingReturWos = useMemo(() => {
-    return workOrders.filter(
-      (w: WorkOrderRecord) =>
-        w.returStatus === 'MENUNGGU_VERIFIKASI_GUDANG' ||
-        w.returStatus === 'RETUR_DISETUJUI' ||
-        (w.materials || []).some((m) => (m.qtyReturned || 0) > 0)
-    );
-  }, [workOrders]);
-
-  const activeReturCount = useMemo(() => {
-    return workOrders.filter((w: WorkOrderRecord) => w.returStatus === 'MENUNGGU_VERIFIKASI_GUDANG').length;
-  }, [workOrders]);
 
   // Modal Edit / Tambah Material Gudang
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -198,41 +181,7 @@ export const WarehouseView: React.FC = () => {
         </div>
       </div>
 
-      {/* Tab Switcher Gudang */}
-      <div className="flex items-center gap-2 border-b border-slate-200">
-        <button
-          type="button"
-          onClick={() => setWarehouseTab('stocks')}
-          className={`pb-3 px-3 text-xs font-bold border-b-2 flex items-center gap-2 transition cursor-pointer ${
-            warehouseTab === 'stocks'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <Warehouse className="w-4 h-4" />
-          <span>Stok Fisik & Saldo SAP ({stocks.length})</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setWarehouseTab('retur')}
-          className={`pb-3 px-3 text-xs font-bold border-b-2 flex items-center gap-2 transition cursor-pointer ${
-            warehouseTab === 'retur'
-              ? 'border-amber-600 text-amber-700'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          <RotateCcw className="w-4 h-4" />
-          <span>Verifikasi Retur Material Rekanan (TUG-10)</span>
-          {activeReturCount > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-              {activeReturCount} Menunggu
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* Tab 1: Stok Fisik & Saldo SAP */}
-      {warehouseTab === 'stocks' && (
+      {/* Master Data: Stok Fisik & Saldo SAP */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         {/* Search & Filter Toolbar */}
         <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
@@ -430,198 +379,6 @@ export const WarehouseView: React.FC = () => {
           pageSizeOptions={[5, 10, 25, 50]}
         />
       </div>
-      )}
-
-      {/* Tab 2: Verifikasi Retur Material Rekanan (TUG-10) */}
-      {warehouseTab === 'retur' && (
-        <div className="space-y-4">
-          <div className="bg-amber-50/60 p-4 rounded-xl border border-amber-200 flex items-start gap-3">
-            <RotateCcw className="w-5 h-5 text-amber-700 mt-0.5 shrink-0" />
-            <div className="text-xs text-amber-900 leading-relaxed">
-              <span className="font-bold">Alur Pengembalian Material (TUG-10):</span> Material sisa pekerjaan yang dikembalikan oleh Vendor/Rekanan dengan <b>Nomor Slip Pengembalian TUG-10</b> harus diperiksa kondisi fisiknya oleh Admin Gudang sebelum kuantiti otomatis ditambahkan kembali ke <b>Stok Fisik Gudang</b>.
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <h3 className="font-bold text-xs text-slate-800 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-amber-600" />
-                Daftar Pengajuan Retur Material Rekanan ({pendingReturWos.length})
-              </h3>
-              <span className="text-[11px] font-bold text-slate-500">
-                Menunggu Verifikasi: <b className="text-amber-700">{activeReturCount}</b> WO
-              </span>
-            </div>
-
-            {pendingReturWos.length === 0 ? (
-              <div className="p-12 text-center text-slate-400">
-                <RotateCcw className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                <p className="text-xs font-semibold text-slate-600">Belum Ada Pengajuan Retur Material</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Ketika vendor melakukan retur pada menu Pengambilan Material & Jasa, berkas slip TUG-10 akan muncul di sini.
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {pendingReturWos.map((wo) => {
-                  const returnedItems = (wo.materials || []).filter((m) => (m.qtyReturned || 0) > 0);
-                  const isPending = wo.returStatus === 'MENUNGGU_VERIFIKASI_GUDANG';
-                  return (
-                    <div key={wo.id} className="p-5 hover:bg-slate-50/60 transition">
-                      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                        <div className="space-y-1.5 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono font-bold text-xs text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200">
-                              {wo.id}
-                            </span>
-                            <span className="text-xs font-bold text-slate-900">{wo.customerName}</span>
-                            <span className="text-[11px] text-slate-500 font-mono">({wo.idpel})</span>
-                            {isPending ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3 text-amber-700" />
-                                Menunggu Verifikasi Fisik
-                              </span>
-                            ) : wo.returStatus === 'RETUR_DITOLAK' ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1">
-                                <X className="w-3 h-3 text-rose-600" />
-                                Retur Ditolak
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                Retur Diterima & Masuk Stok Gudang
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-600 pt-1">
-                            <div>
-                              <span className="text-slate-400 block text-[10px] uppercase font-bold">Vendor Rekanan</span>
-                              <span className="font-semibold text-slate-800">{wo.vendor || '-'}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block text-[10px] uppercase font-bold">No. Slip Retur (TUG-10)</span>
-                              <span className="font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 inline-block">
-                                {wo.slipReturNumber || 'TUG10-PENDING'}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block text-[10px] uppercase font-bold">Tanggal Retur</span>
-                              <span className="font-medium text-slate-800">{wo.slipReturDate || wo.vendorRealizationDate || '-'}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block text-[10px] uppercase font-bold">Pengawas Lapangan</span>
-                              <span className="font-semibold text-slate-800">{wo.supervisor || '-'}</span>
-                            </div>
-                          </div>
-
-                          {/* Tabel Rincian Material yang Diretur */}
-                          <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
-                            <table className="w-full text-left text-xs">
-                              <thead className="bg-slate-100 text-[10px] font-bold text-slate-600 uppercase border-b border-slate-200">
-                                <tr>
-                                  <th className="py-2 px-3">No Material</th>
-                                  <th className="py-2 px-3">Nama Material</th>
-                                  <th className="py-2 px-3 text-center">Satuan</th>
-                                  <th className="py-2 px-3 text-right">Qty Diambil</th>
-                                  <th className="py-2 px-3 text-right">Qty Terpasang</th>
-                                  <th className="py-2 px-3 text-right bg-amber-50/80 text-amber-900 font-bold">Qty Diretur (TUG-10)</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                {returnedItems.map((m, idx) => (
-                                  <tr key={idx} className="hover:bg-slate-50">
-                                    <td className="py-2 px-3 font-mono text-[11px] text-slate-700">{m.kode || '-'}</td>
-                                    <td className="py-2 px-3 font-medium text-slate-800">{m.material}</td>
-                                    <td className="py-2 px-3 text-center text-slate-500 text-[11px]">{m.unit}</td>
-                                    <td className="py-2 px-3 text-right font-mono text-slate-600">{m.qtyTaken || m.qtyAllocated || m.qtyReksis}</td>
-                                    <td className="py-2 px-3 text-right font-mono text-emerald-700 font-bold">{m.qtyInstalled ?? (m.qtyTaken || m.qtyAllocated || m.qtyReksis)}</td>
-                                    <td className="py-2 px-3 text-right font-mono font-bold text-amber-700 bg-amber-50/50">
-                                      +{m.qtyReturned} {m.unit}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {wo.returApprovedBy && (
-                            <div className="text-[10px] text-emerald-800 font-medium bg-emerald-50 p-2 rounded border border-emerald-200 flex items-center gap-2 mt-2">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              <span>
-                                Diverifikasi oleh <b>{wo.returApprovedBy}</b> pada {wo.returApprovedAt}. {wo.returNotes && `Catatan: "${wo.returNotes}"`}
-                              </span>
-                            </div>
-                          )}
-
-                          {wo.returRejectionReason && (
-                            <div className="text-[10px] text-rose-800 font-medium bg-rose-50 p-2 rounded border border-rose-200 flex items-center gap-2 mt-2">
-                              <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                              <span>
-                                Ditolak oleh <b>{wo.returRejectedBy}</b> pada {wo.returRejectedAt}. Alasan: &quot;{wo.returRejectionReason}&quot;
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Action Verifikasi */}
-                        <div className="flex flex-col items-end justify-center shrink-0 min-w-[200px] border-t lg:border-t-0 lg:border-l lg:pl-4 pt-3 lg:pt-0 border-slate-200">
-                          {isPending ? (
-                            <div className="flex flex-col gap-2 w-full">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (confirm(`Verifikasi fisik material retur untuk WO ${wo.id}? Stok fisik gudang akan otomatis ditambah.`)) {
-                                    adminGudangApproveRetur(
-                                      wo.id,
-                                      'Admin Gudang UP3 BTS',
-                                      'Fisik material retur sesuai Slip TUG-10, kondisi baik & telah disimpan di rak gudang.'
-                                    );
-                                    showToast(`Retur ${wo.id} disetujui. Stok gudang bertambah.`);
-                                  }
-                                }}
-                                className="w-full px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition"
-                              >
-                                <CheckCircle2 className="w-4 h-4" />
-                                <span>Terima & Tambah Stok</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const reason = prompt('Masukkan alasan penolakan retur material:', 'Fisik barang tidak sesuai dengan Slip Retur TUG-10');
-                                  if (reason && reason.trim()) {
-                                    adminGudangRejectRetur(wo.id, 'Admin Gudang UP3 BTS', reason.trim());
-                                  }
-                                }}
-                                className="w-full px-3.5 py-1.5 border border-rose-300 bg-white hover:bg-rose-50 text-rose-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition"
-                              >
-                                <X className="w-3.5 h-3.5 text-rose-600" />
-                                <span>Tolak Retur</span>
-                              </button>
-                            </div>
-                          ) : wo.returStatus === 'RETUR_DITOLAK' ? (
-                            <div className="text-right">
-                              <span className="inline-block text-[11px] font-bold text-rose-700 bg-rose-100/80 px-2.5 py-1 rounded border border-rose-300">
-                                ✕ Retur Ditolak
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="text-right">
-                              <span className="inline-block text-[11px] font-bold text-emerald-700 bg-emerald-100/80 px-2.5 py-1 rounded border border-emerald-300">
-                                Selesai Masuk Stok
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Modal Edit / Tambah Material Gudang */}
       {isModalOpen && (
