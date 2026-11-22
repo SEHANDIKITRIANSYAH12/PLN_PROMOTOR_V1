@@ -11,7 +11,8 @@ import {
   FileText,
   ShieldCheck,
   Clock,
-  RotateCcw
+  RotateCcw,
+  Calendar
 } from 'lucide-react';
 import { SurveyRecord } from '@/types';
 import { Pagination } from '@/components/Pagination';
@@ -40,6 +41,7 @@ export const PraDaftungView: React.FC = () => {
   const [dayaBaruVal, setDayaBaruVal] = useState('');
   const [alamatVal, setAlamatVal] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'Sudah Bayar' | 'Belum Bayar'>('Sudah Bayar');
+  const [paymentDateVal, setPaymentDateVal] = useState('');
   const [nidiVal, setNidiVal] = useState(true);
   const [sloVal, setSloVal] = useState(true);
 
@@ -77,7 +79,8 @@ export const PraDaftungView: React.FC = () => {
     setNewCustomerName(s.isNameChanged ? s.customerName : '');
     setDayaBaruVal(s.dayaBaru || s.daya || '');
     setAlamatVal(s.location || s.address || '');
-    setPaymentStatus(s.paymentStatus === 'Sudah Bayar' ? 'Sudah Bayar' : 'Sudah Bayar');
+    setPaymentStatus(s.paymentStatus || 'Sudah Bayar');
+    setPaymentDateVal(s.paymentDate || new Date().toISOString().split('T')[0]);
     setNidiVal(s.nidi !== undefined ? s.nidi : true);
     setSloVal(s.slo !== undefined ? s.slo : true);
   };
@@ -99,6 +102,9 @@ export const PraDaftungView: React.FC = () => {
     const nextStatus = paymentStatus === 'Sudah Bayar' ? 'Siap Apply WO' : 'Masuk Antrean AP2T';
     const effectiveDaya = dayaBaruVal.trim() || verifyingSurvey.dayaBaru || verifyingSurvey.daya;
     const effectiveAlamat = alamatVal.trim() || verifyingSurvey.location;
+    const effectivePaymentDate = paymentStatus === 'Sudah Bayar'
+      ? (paymentDateVal.trim() || new Date().toISOString().split('T')[0])
+      : undefined;
     
     updateSurvey(verifyingSurvey.id, {
       customerName: effectiveCustomerName,
@@ -111,6 +117,7 @@ export const PraDaftungView: React.FC = () => {
         address: effectiveAlamat,
       }),
       paymentStatus: paymentStatus,
+      paymentDate: effectivePaymentDate,
       status: nextStatus,
       nidi: nidiVal,
       slo: sloVal,
@@ -223,7 +230,7 @@ export const PraDaftungView: React.FC = () => {
                   <th className="py-3 px-3.5 min-w-[130px] whitespace-nowrap">DAYA & TARIF BARU</th>
                   <th className="py-3 px-3.5 min-w-[130px] whitespace-nowrap">DAYA & TARIF LAMA</th>
                   <th className="py-3 px-3.5 min-w-[220px]">LOKASI & ULP</th>
-                  <th className="py-3 px-3 text-center whitespace-nowrap">STATUS BAYAR</th>
+                  <th className="py-3 px-3 text-center whitespace-nowrap">STATUS & TGL BAYAR</th>
                   <th className="py-3 px-3 text-center whitespace-nowrap">NIDI / SLO</th>
                   <th className="py-3 px-3 text-center whitespace-nowrap">DOKUMEN RAB</th>
                   <th className="py-3 px-3.5 text-center whitespace-nowrap">AKSI</th>
@@ -304,10 +311,20 @@ export const PraDaftungView: React.FC = () => {
 
                         <td className="py-3.5 px-3 text-center align-middle whitespace-nowrap">
                           {isPaid ? (
-                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              <span>Sudah Bayar</span>
-                            </span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1 shadow-2xs">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <span>Sudah Bayar</span>
+                              </span>
+                              {s.paymentDate ? (
+                                <span className="text-[10px] text-slate-600 font-semibold inline-flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" title="Tanggal Pelunasan AP2T">
+                                  <Calendar className="w-2.5 h-2.5 text-emerald-600" />
+                                  <span>{s.paymentDate}</span>
+                                </span>
+                              ) : (
+                                <span className="text-[9.5px] text-slate-400 italic">Tgl: —</span>
+                              )}
+                            </div>
                           ) : (
                             <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 inline-flex items-center gap-1">
                               <Clock className="w-3 h-3 text-amber-600" />
@@ -610,16 +627,46 @@ export const PraDaftungView: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Status Pembayaran di Kasir AP2T:</label>
-                <select
-                  value={paymentStatus}
-                  onChange={(e) => setPaymentStatus(e.target.value as typeof paymentStatus)}
-                  className="w-full p-2.5 border border-slate-300 rounded-xl font-bold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
-                >
-                  <option value="Sudah Bayar">✓ Sudah Bayar (Lunas BP/UJL ➔ Siap Apply WO)</option>
-                  <option value="Belum Bayar">⏳ Belum Bayar (Tetap di Antrean Verifikasi AP2T)</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Status Pembayaran di Kasir AP2T:</label>
+                  <select
+                    value={paymentStatus}
+                    onChange={(e) => {
+                      const next = e.target.value as typeof paymentStatus;
+                      setPaymentStatus(next);
+                      if (next === 'Sudah Bayar' && !paymentDateVal) {
+                        setPaymentDateVal(new Date().toISOString().split('T')[0]);
+                      }
+                    }}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl font-bold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer text-xs"
+                  >
+                    <option value="Sudah Bayar">✓ Sudah Bayar (Lunas BP/UJL ➔ Siap Apply WO)</option>
+                    <option value="Belum Bayar">⏳ Belum Bayar (Tetap di Antrean Verifikasi AP2T)</option>
+                  </select>
+                </div>
+
+                {paymentStatus === 'Sudah Bayar' && (
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Tanggal Bayar AP2T:</span>
+                      </span>
+                      <span className="text-rose-500 text-[10px]">* Wajib Diisi</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={paymentDateVal}
+                      onChange={(e) => setPaymentDateVal(e.target.value)}
+                      required={paymentStatus === 'Sudah Bayar'}
+                      className="w-full p-2.5 border-2 border-emerald-400 rounded-xl font-bold text-slate-900 bg-emerald-50/20 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shadow-xs cursor-pointer text-xs"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Tanggal pelunasan tagihan BP/UJL di loket atau bank (AP2T).
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">

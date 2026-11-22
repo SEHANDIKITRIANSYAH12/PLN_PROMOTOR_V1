@@ -83,6 +83,7 @@ model Survey {
   jumlahKubikelLBS      String?
 
   paymentStatus      String?
+  paymentDate        String?
   nidi               Boolean?
   slo                Boolean?
   originalCustomerName String?

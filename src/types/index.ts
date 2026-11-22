@@ -89,6 +89,7 @@ export interface SurveyRecord {
   daya?: string;
   tarif?: string;
   paymentStatus?: 'Sudah Bayar' | 'Belum Bayar';
+  paymentDate?: string; // Tanggal pelunasan AP2T (YYYY-MM-DD)
   nidi?: boolean;
   slo?: boolean;
   status: 'Menunggu verifikasi Daftung' | 'Masuk Antrean AP2T' | 'Terverifikasi' | 'Draf' | 'Siap Apply WO' | 'Perlu Revisi';
